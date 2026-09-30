@@ -1,0 +1,375 @@
+@import "tailwindcss" source("../");
+
+/*
+ * Bintro theme: crisp white surfaces with a cool, faintly blue neutral scale, a
+ * royal-blue action color and gold accents (tips, highlights, the brand mark),
+ * plus green / amber / red status colors for scan feedback and stock levels.
+ */
+@theme {
+  --color-page: #ffffff;
+  --color-surface: #f3f5fa;
+  --color-surface-2: #e7eaf3;
+  --color-ink: #121a36;
+  --color-ink-2: #545c78;
+  --color-line: #e1e5ef;
+  --color-action: #1f3fb8;
+  --color-action-press: #16308f;
+  --color-action-tint: #e8edfc;
+  --color-royal: #0d1b52;
+  --color-royal-2: #2a4fd6;
+  --color-gold: #c99a2e;
+  --color-gold-bright: #f0c75e;
+  --color-gold-ink: #7f5c05;
+  --color-gold-tint: #fcf6e6;
+  --color-good: #4d6403;
+  --color-good-tint: #eef3de;
+  --color-warn: #a4520b;
+  --color-warn-tint: #fdefe2;
+  --color-bad: #b3261e;
+  --color-bad-tint: #fbe9e7;
+  --radius-sheet: 24px;
+  --shadow-card: 0 1px 2px rgba(13, 27, 82, 0.06), 0 4px 16px rgba(13, 27, 82, 0.07);
+  --shadow-lift: 0 2px 6px rgba(13, 27, 82, 0.08), 0 18px 40px -12px rgba(13, 27, 82, 0.28);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html,
+body {
+  @apply m-0 bg-page text-ink;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-royal-2);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Buttons shared across every tab. */
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-full border-0 px-5 py-3 text-[15px] font-semibold cursor-pointer select-none;
+  transition: background-color 0.15s, transform 0.1s;
+}
+.btn:active {
+  transform: scale(0.97);
+}
+.btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.btn-primary {
+  @apply text-white;
+  background: linear-gradient(180deg, var(--color-royal-2), var(--color-action));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(13, 27, 82, 0.25);
+}
+.btn-primary:hover {
+  background: linear-gradient(180deg, var(--color-action), var(--color-action-press));
+}
+.btn-gold {
+  @apply text-royal;
+  background: linear-gradient(180deg, var(--color-gold-bright), var(--color-gold));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 1px 2px rgba(127, 92, 5, 0.3);
+}
+.btn-gold:hover {
+  filter: brightness(1.04);
+}
+.btn-tonal {
+  @apply bg-surface text-ink hover:bg-surface-2;
+}
+.btn-text {
+  @apply bg-transparent text-action px-3 py-2.5;
+}
+.btn-danger {
+  @apply bg-transparent text-bad px-0 py-2.5;
+}
+.btn-sm {
+  @apply px-3.5 py-2 text-sm;
+}
+
+.chip {
+  @apply rounded-full border border-line bg-white px-3.5 py-2 text-sm font-semibold whitespace-nowrap cursor-pointer;
+}
+.chip[aria-pressed="true"] {
+  @apply bg-royal text-white border-royal;
+}
+
+.field-input {
+  @apply w-full rounded-xl border border-line bg-white px-3.5 py-3 text-base outline-none;
+}
+.field-input:focus {
+  border-color: var(--color-action);
+  box-shadow: 0 0 0 3px var(--color-action-tint);
+}
+
+/* The big scan button. `--c` is the ring color and `--t` its fill for each state. */
+.orb {
+  --c: var(--color-action);
+  --t: #fff;
+  width: min(260px, 68vw);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 0;
+  cursor: pointer;
+  background: var(--t);
+  /* Royal ring, a white gap and a fine gold halo — the app's signature mark. */
+  box-shadow: inset 0 0 0 10px var(--c), 0 0 0 6px #fff, 0 0 0 7.5px var(--g, var(--color-gold)), var(--shadow-lift);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: box-shadow 0.25s, background 0.25s, transform 0.15s;
+}
+.orb:active {
+  transform: scale(0.97);
+}
+.orb-in {
+  --g: var(--color-good-tint);
+  --c: var(--color-good);
+  --t: var(--color-good-tint);
+}
+.orb-out {
+  --c: var(--color-action);
+  --t: var(--color-action-tint);
+}
+.orb-warn {
+  --g: var(--color-warn-tint);
+  --c: var(--color-warn);
+  --t: var(--color-warn-tint);
+}
+.orb-bad {
+  --g: var(--color-bad-tint);
+  --c: var(--color-bad);
+  --t: var(--color-bad-tint);
+}
+.orb-bump {
+  animation: orb-bump 0.45s ease;
+}
+@keyframes orb-bump {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* Hairline under the header and above the tab bar: royal fading into gold. */
+.royal-rule {
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-action) 0%, var(--color-royal-2) 45%, var(--color-gold) 80%, var(--color-gold-bright) 100%);
+}
+
+/* Brand tile: deep royal with a soft top light and a gold keyline. */
+.brand-tile {
+  background:
+    radial-gradient(120% 90% at 30% 0%, rgba(255, 255, 255, 0.22), transparent 55%),
+    linear-gradient(160deg, var(--color-royal-2), var(--color-royal));
+  box-shadow: inset 0 0 0 1.5px rgba(240, 199, 94, 0.75), 0 2px 8px rgba(13, 27, 82, 0.3);
+}
+
+/* Tip light bulb: gold glyph that glows softly so it reads as "something helpful here". */
+.tip-bulb {
+  @apply grid place-items-center border-0 cursor-pointer rounded-full shrink-0;
+  color: var(--color-gold-ink);
+  background: radial-gradient(circle at 50% 40%, #fff7dc 0%, var(--color-gold-tint) 60%);
+  box-shadow: inset 0 0 0 1px rgba(201, 154, 46, 0.35);
+  transition: transform 0.15s, box-shadow 0.2s;
+}
+.tip-bulb:hover {
+  box-shadow: inset 0 0 0 1px rgba(201, 154, 46, 0.6), 0 0 0 5px rgba(240, 199, 94, 0.22);
+}
+.tip-bulb:active {
+  transform: scale(0.94);
+}
+.tip-bulb[data-fresh="true"] svg {
+  animation: bulb-glow 2.4s ease-in-out infinite;
+}
+@keyframes bulb-glow {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(240, 199, 94, 0)); }
+  50% { filter: drop-shadow(0 0 6px rgba(240, 199, 94, 0.95)); }
+}
+
+/* Tip card: warm gold paper with a royal category badge. */
+.tip-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  background:
+    radial-gradient(90% 70% at 100% 0%, rgba(240, 199, 94, 0.28), transparent 60%),
+    linear-gradient(180deg, #fffaf0, var(--color-gold-tint));
+  box-shadow: inset 0 0 0 1px rgba(201, 154, 46, 0.3);
+}
+.tip-nudge {
+  animation: nudge-in 0.45s cubic-bezier(0.2, 0.9, 0.25, 1.15);
+}
+@keyframes nudge-in {
+  from { opacity: 0; transform: translateY(24px) scale(0.96); }
+}
+.tip-swap {
+  animation: tip-swap 0.28s ease;
+}
+@keyframes tip-swap {
+  from { opacity: 0; transform: translateX(10px); }
+}
+
+.skel {
+  height: 14px;
+  border-radius: 6px;
+  margin: 6px 0;
+  background: linear-gradient(90deg, var(--color-surface) 25%, var(--color-surface-2) 50%, var(--color-surface) 75%);
+  background-size: 200% 100%;
+  animation: skel 1.2s infinite;
+}
+@keyframes skel {
+  to { background-position: -200% 0; }
+}
+
+/* Bottom sheet: slides up on phones, becomes a centered dialog on wider screens. */
+.sheet-scrim {
+  animation: fade-in 0.2s ease;
+}
+.sheet-panel {
+  animation: sheet-up 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (min-width: 700px) {
+  .sheet-panel {
+    animation: sheet-pop 0.22s ease;
+  }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+@keyframes sheet-up {
+  from { transform: translateY(105%); }
+}
+@keyframes sheet-pop {
+  from { opacity: 0; transform: translateY(24px) scale(0.98); }
+}
+
+.toast-in {
+  animation: toast-in 0.25s ease;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(16px); }
+}
+
+/* Camera view from html5-qrcode fills the full-screen scanner. */
+#bintro-reader video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/*
+ * Purchase-order print sheet. The sheet is portalled to <body> and hidden on
+ * screen; printing hides the app chrome and leaves just the order.
+ */
+.po-print-sheet {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 14mm;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  body > *:not(.po-print-sheet) {
+    display: none !important;
+  }
+
+  .po-print-sheet {
+    display: block !important;
+    color: #000;
+    background: #fff;
+    font-family: Tahoma, Verdana, Geneva, sans-serif;
+  }
+
+  .po-print-sheet h1 {
+    font-size: 20px;
+    margin: 0 0 4px;
+  }
+
+  .po-print-sheet h2 {
+    font-size: 14px;
+    margin: 0 0 6px;
+    border-bottom: 2px solid #000;
+    padding-bottom: 3px;
+  }
+
+  .po-print-sheet .po-meta {
+    margin: 0 0 2px;
+    font-size: 11px;
+    color: #444;
+  }
+
+  .po-print-sheet .po-note {
+    margin: 10px 0 0;
+    padding: 8px 10px;
+    border: 1px solid #999;
+    font-size: 12px;
+  }
+
+  .po-print-sheet .po-group {
+    margin-top: 18px;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .po-print-sheet table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .po-print-sheet th,
+  .po-print-sheet td {
+    border-bottom: 1px solid #ccc;
+    padding: 5px 8px;
+    text-align: left;
+    font-size: 12px;
+    vertical-align: top;
+  }
+
+  .po-print-sheet th {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #555;
+  }
+
+  .po-print-sheet .po-num {
+    text-align: right;
+  }
+
+  .po-print-sheet .po-sub {
+    font-size: 10px;
+    color: #666;
+  }
+
+  .po-print-sheet .po-total {
+    margin: 16px 0 4px;
+    font-size: 14px;
+    font-weight: bold;
+    text-align: right;
+  }
+}
