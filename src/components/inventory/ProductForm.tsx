@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Camera, Copy, ExternalLink, Globe, Lock, Plus, Sparkles, Tags, Wand2, X } from 'lucide-react'
 import type { Product } from './types'
-import { lookupBarcodeDetails, readLabelPhoto } from '@/server/inventory.functions'
+import { lookupBarcodeDetails, readLabelPhoto, readSpokenProduct } from '@/server/inventory.functions'
 import { saveProductCategories, suggestProduct } from '@/server/business.functions'
 import { checkWebPrice, confirmPrices } from '@/server/insights.functions'
 import { PRICE_STALE_DAYS, WEB_PRICE_SOURCE_LABELS, daysBetween, type WebPriceResult } from '@/lib/insights'
@@ -16,6 +16,7 @@ import { useBusiness } from '@/components/business/BusinessContext'
 import { CategorySetupSheet } from '@/components/business/CategorySetupSheet'
 import { categorySuggestionsFor, findCategory, guessTaxGroup, taxGroupById, type ProductCategory } from '@/lib/tax-categories'
 import { COPY_PROMPT_OFF_KEY, CopyPreviousSheet } from './CopyPreviousSheet'
+import { MicButton, SpeakDetails } from './VoiceInput'
 
 export type ProductFormValues = {
   barcode: string
@@ -96,6 +97,7 @@ export function ProductForm({
   const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? '')
   const [prefill, setPrefill] = useState<Prefill>({ kind: 'none' })
   const [reading, setReading] = useState(false)
+  const [hearing, setHearing] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -372,6 +374,48 @@ export function ProductForm({
     }
   }
 
+  /** Talk-to-text: AI pulls the fields out of what was said; without AI it becomes the name. */
+  async function onSpoken(transcript: string) {
+    setError('')
+    if (!aiOn) {
+      setName(transcript.charAt(0).toUpperCase() + transcript.slice(1))
+      setPrefill({ kind: 'found', note: 'Heard you. Bintro Plus also picks out brand, size and prices.' })
+      return
+    }
+    setHearing(true)
+    try {
+      const r = await readSpokenProduct({ data: { transcript } })
+      if (!r.ok) {
+        setError(r.message)
+        return
+      }
+      // Speaking is deliberate, so what was said overrides what's typed.
+      if (r.brand) setBrand(r.brand)
+      if (r.name) setName(r.name)
+      if (r.size) setSize(r.size)
+      if (r.category) setCategory(r.category)
+      if (r.vendor) setVendor(r.vendor)
+      else setVendor((v) => v || vendorFor(r.brand || brand))
+      if (r.qty !== null) setQty(String(r.qty))
+      if (r.par !== null) setPar(String(r.par))
+      if (r.unitCostCents) setCost(centsToDollars(r.unitCostCents))
+      if (r.retailPriceCents) setRetail(centsToDollars(r.retailPriceCents))
+      if (r.unitCostCents || r.retailPriceCents) autoPriced.current = true
+      setPrefill({ kind: 'found', note: `Heard: “${transcript}”. Check it before saving.` })
+      maybeAutoPrice({
+        brand: r.brand || brand,
+        name: r.name || name,
+        size: r.size || size,
+        category: r.category || category,
+        vendor: r.vendor || vendor,
+      })
+    } catch {
+      setError("Couldn't fill that in. Check your connection and try again.")
+    } finally {
+      setHearing(false)
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) {
@@ -435,6 +479,8 @@ export function ProductForm({
           <b>No match in the barcode databases.</b> Snap the front label and Bintro fills this in for you.
         </div>
       )}
+
+      <SpeakDetails aiOn={aiOn} busy={hearing} onTranscript={onSpoken} />
 
       <div className={`grid gap-2 mb-4 ${canCopy ? 'grid-cols-2' : ''}`}>
         <button
@@ -507,7 +553,7 @@ export function ProductForm({
       />
 
       <Field label="Product name" htmlFor="pf-name">
-        <div ref={nameRef}>
+        <div ref={nameRef} className="flex gap-2 [&>:first-child]:flex-1 [&>:first-child]:min-w-0">
           <AutoInput
             id="pf-name"
             value={name}
@@ -517,17 +563,27 @@ export function ProductForm({
             placeholder={copiedFrom ? `e.g. ${copiedFrom.name}` : 'Start typing — Bintro suggests as you go'}
             onBlur={() => setTimeout(() => maybeAutoPrice(), 150)}
           />
+          <MicButton label="product name" onText={setName} />
         </div>
       </Field>
       <Field label="Brand" htmlFor="pf-brand">
-        <AutoInput
-          id="pf-brand"
-          value={brand}
-          onChange={setBrand}
-          onPick={(b) => setVendor((v) => v || vendorFor(b))}
-          suggestions={brands}
-          onBlur={() => setVendor((v) => v || vendorFor(brand))}
-        />
+        <div className="flex gap-2 [&>:first-child]:flex-1 [&>:first-child]:min-w-0">
+          <AutoInput
+            id="pf-brand"
+            value={brand}
+            onChange={setBrand}
+            onPick={(b) => setVendor((v) => v || vendorFor(b))}
+            suggestions={brands}
+            onBlur={() => setVendor((v) => v || vendorFor(brand))}
+          />
+          <MicButton
+            label="brand"
+            onText={(b) => {
+              setBrand(b)
+              setVendor((v) => v || vendorFor(b))
+            }}
+          />
+        </div>
       </Field>
       <Field label="Category" htmlFor="pf-category">
         <div onFocus={maybeOfferCategories}>
@@ -589,17 +645,23 @@ export function ProductForm({
       )}
       {quickCategories.length > 0 && !category.trim() && <div className="mb-3" />}
       <Field label="Size" htmlFor="pf-size">
-        <AutoInput id="pf-size" value={size} onChange={setSize} suggestions={sizes} placeholder={type.sizes[0]} />
+        <div className="flex gap-2 [&>:first-child]:flex-1 [&>:first-child]:min-w-0">
+          <AutoInput id="pf-size" value={size} onChange={setSize} suggestions={sizes} placeholder={type.sizes[0]} />
+          <MicButton label="size" onText={setSize} />
+        </div>
       </Field>
       <QuickChips label="Common sizes" options={type.sizes} value={size} onPick={setSize} />
       <Field label="Buy it from" htmlFor="pf-vendor">
-        <AutoInput
-          id="pf-vendor"
-          value={vendor}
-          onChange={setVendor}
-          suggestions={vendors}
-          placeholder={type.vendorExample}
-        />
+        <div className="flex gap-2 [&>:first-child]:flex-1 [&>:first-child]:min-w-0">
+          <AutoInput
+            id="pf-vendor"
+            value={vendor}
+            onChange={setVendor}
+            suggestions={vendors}
+            placeholder={type.vendorExample}
+          />
+          <MicButton label="supplier" onText={setVendor} />
+        </div>
       </Field>
 
       <div className="bg-surface rounded-2xl p-3 mb-3">

@@ -14,6 +14,9 @@ import { useToast } from '@/components/ui/Toast'
 import { EmptyState, StatTile, Thumb, dollarsShort, timeAgo } from '@/components/ui/bits'
 import { CameraScanner } from './CameraScanner'
 import { ProductForm } from './ProductForm'
+import { STAFF_IDLE_MINUTES, getStaffAskMode, type StaffPrompt } from './StaffPicker'
+import { onBluetoothCode } from '@/lib/bluetooth-scanner'
+import { checkUnknownScan, type ScanCheck } from '@/lib/barcodes'
 
 type Mode = 'in' | 'out'
 
@@ -47,6 +50,41 @@ function beep(ok: boolean) {
   navigator.vibrate?.(ok ? 40 : [60, 40, 60])
 }
 
+/** Harsh double buzz for a partial or mis-read barcode, clearly different from the scan beep. */
+function errorBuzz() {
+  try {
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    audioCtx = audioCtx ?? new Ctx()
+    const t = audioCtx.currentTime
+    for (const [start, freq] of [[0, 330], [0.22, 220]] as const) {
+      const o = audioCtx.createOscillator()
+      const g = audioCtx.createGain()
+      o.type = 'square'
+      o.frequency.value = freq
+      g.gain.setValueAtTime(0.0001, t + start)
+      g.gain.linearRampToValueAtTime(0.14, t + start + 0.01)
+      g.gain.setValueAtTime(0.14, t + start + 0.15)
+      g.gain.exponentialRampToValueAtTime(0.0001, t + start + 0.18)
+      o.connect(g)
+      g.connect(audioCtx.destination)
+      o.start(t + start)
+      o.stop(t + start + 0.2)
+    }
+  } catch {
+    // Sound is a nicety; the orb still says "Scan again".
+  }
+  navigator.vibrate?.([120, 60, 120])
+}
+
+const PARTIAL_SUB: Record<Exclude<ScanCheck, { ok: true }>['reason'], string> = {
+  short: 'Only part of the barcode came through. Scan it again.',
+  fragment: 'Only part of the barcode came through. Scan it again.',
+  checksum: "That barcode didn't read cleanly. Scan it again.",
+}
+
+// When this device last confirmed who's scanning; kept across tab changes.
+let staffConfirmedAt = 0
+
 function startOfToday() {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
@@ -55,6 +93,7 @@ function startOfToday() {
 
 export function ScanView({
   staffName,
+  askStaff,
   recent,
   products,
   belowParCount,
@@ -62,6 +101,8 @@ export function ScanView({
   onOpenRestock,
 }: {
   staffName: string
+  /** Opens the centered "Who's scanning?" picker; resolves with the name or null. */
+  askStaff: (prompt: StaffPrompt) => Promise<string | null>
   recent: MovementRow[]
   products: Product[]
   belowParCount: number
@@ -83,6 +124,10 @@ export function ScanView({
   const [linkResults, setLinkResults] = useState<Product[]>([])
   const [today, setToday] = useState<ActivityRow[]>([])
   const orbTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // A partial / mis-read scan, kept so staff can still use it if it really is the full code.
+  const [partialCode, setPartialCode] = useState<string | null>(null)
+  // Who the scan in progress belongs to (also used after saving a new barcode).
+  const scanWho = useRef(staffName)
 
   // Today's totals refresh whenever the recent feed changes (every scan or undo).
   useEffect(() => {
@@ -112,13 +157,30 @@ export function ScanView({
     }
   }
 
+  /**
+   * Asks who's scanning before each scan (or, if the device is set to, only after
+   * a quiet spell). Resolves with the name, or null if the picker was closed.
+   */
+  const confirmStaff = useCallback(
+    async (direction: Mode) => {
+      const fresh = Date.now() - staffConfirmedAt < STAFF_IDLE_MINUTES * 60_000
+      if (getStaffAskMode() === 'idle' && staffName.trim() && fresh) return staffName.trim()
+      const who = await askStaff({ direction })
+      if (who) staffConfirmedAt = Date.now()
+      return who
+    },
+    [askStaff, staffName],
+  )
+
   const submitScan = useCallback(
-    async (code: string, direction: Mode = mode) => {
+    async (code: string, direction: Mode = mode, who: string = scanWho.current) => {
       const trimmed = code.trim()
       if (!trimmed || busy) return
+      setPartialCode(null)
+      scanWho.current = who
       setBusy(true)
       try {
-        const result = await scanMovement({ data: { barcode: trimmed, type: direction, qty, staffName } })
+        const result = await scanMovement({ data: { barcode: trimmed, type: direction, qty, staffName: who } })
         if (result.status === 'unknown') {
           beep(true)
           showOrb({ kind: 'warn', title: 'New product', sub: 'Looking it up' })
@@ -141,6 +203,7 @@ export function ScanView({
           await onChanged()
           toast('Scan undone')
         })
+        staffConfirmedAt = Date.now()
         await onChanged()
       } catch {
         beep(false)
@@ -151,13 +214,76 @@ export function ScanView({
     },
     // showOrb/toast are stable enough for this handler; mode, qty and staff drive it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mode, qty, staffName, busy, onChanged],
+    [mode, qty, busy, onChanged],
   )
+
+  /**
+   * Scanner and camera reads that match no product and don't look like a whole
+   * retail barcode (too short, part of a known one, or a bad check digit) get the
+   * error buzz and a "Scan again" instead of a bogus new product.
+   */
+  const rejectIfPartial = useCallback(
+    (code: string) => {
+      const trimmed = code.trim()
+      const barcodes = products.map((p) => p.barcode)
+      if (barcodes.includes(trimmed)) return false
+      const check = checkUnknownScan(trimmed, barcodes)
+      if (check.ok) return false
+      errorBuzz()
+      showOrb({ kind: 'bad', title: 'Scan again', sub: PARTIAL_SUB[check.reason] })
+      setPartialCode(trimmed)
+      return true
+    },
+    // showOrb is stable enough; the product list drives it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [products],
+  )
+
+  /** A code from a wand or Bluetooth scanner: check it's whole, confirm who's scanning, then log it. */
+  const scanFromDevice = useCallback(
+    async (code: string) => {
+      if (rejectIfPartial(code)) return
+      const who = await confirmStaff(mode)
+      if (who) await submitScan(code, mode, who)
+    },
+    [rejectIfPartial, confirmStaff, submitScan, mode],
+  )
+
+  /** Fragments shorter than any barcode (the wand sent a few characters then Enter). */
+  const fragmentRef = useRef(() => {})
+  fragmentRef.current = () => {
+    errorBuzz()
+    showOrb({ kind: 'bad', title: 'Scan again', sub: PARTIAL_SUB.short })
+    setPartialCode(null)
+  }
+
+  async function acceptPartialCode() {
+    const code = partialCode
+    if (!code) return
+    setPartialCode(null)
+    const who = await confirmStaff(mode)
+    if (who) await submitScan(code, mode, who)
+  }
+
+  async function startCamera() {
+    const who = await confirmStaff(mode)
+    if (!who) return
+    scanWho.current = who
+    setCameraOpen(true)
+  }
+
+  async function startTyping() {
+    const who = await confirmStaff(mode)
+    if (!who) return
+    scanWho.current = who
+    setTypedCode('')
+    setTyping(true)
+  }
 
   // Bluetooth and USB wand scanners "type" the code fast and press Enter. Catch that
   // anywhere on this screen, as long as nobody is typing in a field or a sheet is open.
-  const submitRef = useRef(submitScan)
-  submitRef.current = submitScan
+  const submitRef = useRef(scanFromDevice)
+  submitRef.current = scanFromDevice
   useEffect(() => {
     let buffer = ''
     let lastKey = 0
@@ -172,6 +298,10 @@ export function ScanView({
         if (buffer.length >= 4) {
           e.preventDefault()
           submitRef.current(buffer)
+        } else if (buffer.length >= 2) {
+          // Two or three characters this fast is a scanner cutting out, not a person typing.
+          e.preventDefault()
+          fragmentRef.current()
         }
         buffer = ''
         return
@@ -179,7 +309,15 @@ export function ScanView({
       if (e.key.length === 1) buffer += e.key
     }
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    // Scanners connected over Bluetooth Low Energy in Settings → Scanner.
+    const offBluetooth = onBluetoothCode((code) => {
+      if (document.querySelector('[role="dialog"]')) return
+      submitRef.current(code)
+    })
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      offBluetooth()
+    }
   }, [])
 
   function closeUnknown() {
@@ -238,7 +376,7 @@ export function ScanView({
         <button
           key={bump}
           className={`orb ${orbClass} ${bump > 0 && orb.kind !== 'idle' ? 'orb-bump' : ''}`}
-          onClick={() => setCameraOpen(true)}
+          onClick={startCamera}
           aria-live="polite"
           disabled={busy}
         >
@@ -256,6 +394,15 @@ export function ScanView({
             {orb.kind === 'idle' ? (mode === 'in' ? 'Receiving stock onto the shelf' : IDLE_SUB) : orb.sub}
           </span>
         </button>
+
+        {partialCode && (
+          <p className="mt-4 mb-0 text-[13px] text-ink-2" role="status">
+            Read only <b className="num text-ink">{partialCode}</b>.{' '}
+            <button type="button" className="border-0 bg-transparent p-0 text-action font-semibold cursor-pointer" onClick={acceptPartialCode}>
+              That's the full code — use it
+            </button>
+          </p>
+        )}
 
         <div className="flex items-center gap-3 mt-5">
           <span className="text-sm font-semibold text-ink-2">Qty per scan</span>
@@ -282,12 +429,18 @@ export function ScanView({
           <span className="w-2 h-2 rounded-full bg-good shadow-[0_0_0_4px_var(--color-good-tint)]" aria-hidden="true" />
           Bluetooth and USB scanners work anytime on this screen
         </p>
+        <p className="m-0 text-[13px] text-ink-2">
+          {staffName.trim() ? (
+            <>
+              Last scanned by <b className="text-ink">{staffName.trim()}</b> · you'll pick your name before each scan
+            </>
+          ) : (
+            "You'll pick your name before each scan"
+          )}
+        </p>
         <button
           className="btn btn-text"
-          onClick={() => {
-            setTypedCode('')
-            setTyping(true)
-          }}
+          onClick={startTyping}
         >
           Type a barcode instead
         </button>
@@ -348,7 +501,7 @@ export function ScanView({
         onClose={() => setCameraOpen(false)}
         onScan={(code) => {
           setCameraOpen(false)
-          submitScan(code)
+          if (!rejectIfPartial(code)) submitScan(code)
         }}
       />
 

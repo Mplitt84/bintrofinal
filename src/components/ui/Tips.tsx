@@ -2,10 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowRight, Boxes, CalendarClock, ChevronLeft, ChevronRight, Leaf, Lightbulb, PiggyBank, X } from 'lucide-react'
 import { Sheet } from '@/components/ui/Sheet'
 import { useBusiness } from '@/components/business/BusinessContext'
-import { TIP_CATEGORIES, dayNumber, tipsFor, type Tip, type TipCategory, type TipTab } from '@/lib/tips'
+import { TIP_CATEGORIES, tipsFor, type Tip, type TipCategory, type TipTab } from '@/lib/tips'
 
-const SEEN_DAY_KEY = 'bintro-tips-seen-day'
+const LAST_SHOWN_KEY = 'bintro-tips-last-shown'
+const SHOWN_COUNT_KEY = 'bintro-tips-shown-count'
 const AUTO_KEY = 'bintro-tips-auto'
+const PREFS_EVENT = 'bintro-tips-prefs'
+
+/** How often the tip pop-up comes back. */
+export const TIP_INTERVAL_MINUTES = 10
+const TIP_INTERVAL_MS = TIP_INTERVAL_MINUTES * 60_000
 
 export type TipNavigate = (tab: TipTab, section?: 'import' | 'categories') => void
 
@@ -36,17 +42,47 @@ function writeStorage(key: string, value: string) {
   }
 }
 
-/** True until today's tip has been seen (pop-up shown or sheet opened). */
-export function useFreshTip() {
-  const [fresh, setFresh] = useState(false)
+function lastShown() {
+  return Number(readStorage(LAST_SHOWN_KEY)) || 0
+}
+
+/** Device setting from Settings → Look & feel (and the tip sheet): tip pop-ups on or off for good. */
+export function getTipPopups() {
+  return readStorage(AUTO_KEY) !== '0'
+}
+
+export function setTipPopups(on: boolean) {
+  writeStorage(AUTO_KEY, on ? '1' : '0')
+  window.dispatchEvent(new Event(PREFS_EVENT))
+}
+
+/** Live tip pop-up preference, kept in sync between Settings and the tip sheet. */
+export function useTipPopups() {
+  const [on, setOn] = useState(true)
   useEffect(() => {
-    setFresh(readStorage(SEEN_DAY_KEY) !== String(dayNumber()))
+    const sync = () => setOn(getTipPopups())
+    sync()
+    window.addEventListener(PREFS_EVENT, sync)
+    return () => window.removeEventListener(PREFS_EVENT, sync)
+  }, [])
+  return on
+}
+
+/** True once a new tip is due (every TIP_INTERVAL_MINUTES) until it's seen (pop-up shown or sheet opened). */
+export function useFreshTip() {
+  const popups = useTipPopups()
+  const [due, setDue] = useState(false)
+  useEffect(() => {
+    const check = () => setDue(Date.now() - lastShown() >= TIP_INTERVAL_MS)
+    check()
+    const timer = setInterval(check, 30_000)
+    return () => clearInterval(timer)
   }, [])
   const markSeen = useCallback(() => {
-    writeStorage(SEEN_DAY_KEY, String(dayNumber()))
-    setFresh(false)
+    writeStorage(LAST_SHOWN_KEY, String(Date.now()))
+    setDue(false)
   }, [])
-  return { fresh, markSeen }
+  return { fresh: due && popups, markSeen }
 }
 
 /** Gold light bulb for the header. Glows gently while today's tip is unread. */
@@ -92,14 +128,13 @@ export function TipSheet({
   const { profile } = useBusiness()
   const [category, setCategory] = useState<TipCategory | null>(null)
   const [index, setIndex] = useState(0)
-  const [auto, setAuto] = useState(true)
+  const auto = useTipPopups()
   const tips = useMemo(() => tipsFor(profile.businessType, tab, category ?? undefined), [profile.businessType, tab, category])
   const tip = tips[Math.min(index, tips.length - 1)]
 
   useEffect(() => {
     if (!open) return
     setIndex(0)
-    setAuto(readStorage(AUTO_KEY) !== '0')
   }, [open, tab])
 
   useEffect(() => {
@@ -120,8 +155,7 @@ export function TipSheet({
   }
 
   function toggleAuto(next: boolean) {
-    setAuto(next)
-    writeStorage(AUTO_KEY, next ? '1' : '0')
+    setTipPopups(next)
   }
 
   return (
@@ -215,8 +249,10 @@ export function TipSheet({
 
       <label className="flex items-center justify-between gap-3 mt-5 pt-4 border-t border-line cursor-pointer">
         <span className="text-sm">
-          <b className="block">Daily tip pop-up</b>
-          <span className="text-ink-2 text-[13px]">One short tip a day, matched to the tab you're on.</span>
+          <b className="block">Tip pop-ups</b>
+          <span className="text-ink-2 text-[13px]">
+            A short business tip every {TIP_INTERVAL_MINUTES} minutes, matched to the tab you're on. Also in Settings → Look &amp; feel.
+          </span>
         </span>
         <input
           type="checkbox"
@@ -230,8 +266,9 @@ export function TipSheet({
 }
 
 /**
- * Once-a-day pop-up with a tip for the current tab. Waits a few seconds after
- * load, stays out of the way of open sheets, and can be turned off in the tip sheet.
+ * Business tip pop-up for the current tab, every TIP_INTERVAL_MINUTES. Each one shows
+ * the next tip in the list, waits while a sheet is open, and can be turned off for
+ * good in Settings → Look & feel or the tip sheet.
  */
 export function TipNudge({
   tab,
@@ -241,7 +278,7 @@ export function TipNudge({
   onNavigate,
 }: {
   tab: TipTab
-  /** False while the day's tip has already been seen. */
+  /** False while something else (e.g. an insight pop-up) is showing. */
   enabled: boolean
   onSeen: () => void
   onOpenAll: () => void
@@ -251,19 +288,31 @@ export function TipNudge({
   const [tip, setTip] = useState<Tip | null>(null)
   const [offset, setOffset] = useState(0)
 
+  const popups = useTipPopups()
+  const [retry, setRetry] = useState(0)
+
   useEffect(() => {
-    if (!enabled || tip || tab === 'settings' || readStorage(AUTO_KEY) === '0') return
+    if (!popups) setTip(null)
+    if (!enabled || !popups || tip || tab === 'settings') return
+    const wait = Math.max(3500, lastShown() + TIP_INTERVAL_MS - Date.now())
     const timer = setTimeout(() => {
-      // Don't cover a form or pop-up someone is in the middle of.
-      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return
-      const first = tipsFor(profile.businessType, tab)[0]
-      if (!first) return
-      setTip(first)
-      setOffset(0)
+      // Don't cover a form or pop-up someone is in the middle of; try again shortly.
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) {
+        setRetry((r) => r + 1)
+        return
+      }
+      const list = tipsFor(profile.businessType, tab)
+      if (list.length === 0) return
+      // Rotate so each pop-up brings a different tip.
+      const count = Number(readStorage(SHOWN_COUNT_KEY)) || 0
+      writeStorage(SHOWN_COUNT_KEY, String(count + 1))
+      const i = count % list.length
+      setTip(list[i])
+      setOffset(i)
       onSeen()
-    }, 3500)
+    }, wait)
     return () => clearTimeout(timer)
-  }, [enabled, tab, tip, profile.businessType, onSeen])
+  }, [enabled, popups, tab, tip, retry, profile.businessType, onSeen])
 
   if (!tip) return null
 
@@ -277,17 +326,17 @@ export function TipNudge({
   return (
     <aside
       role="status"
-      aria-label="Tip of the day"
+      aria-label="Business tip"
       className="tip-nudge print:hidden fixed z-40 right-4 left-4 min-[560px]:left-auto min-[560px]:w-[380px] bottom-[calc(92px+env(safe-area-inset-bottom,0px))] min-[1060px]:bottom-6 min-[1060px]:right-6"
     >
-      <div className="tip-card p-4 pr-3" style={{ boxShadow: 'var(--shadow-lift), inset 0 0 0 1px rgba(201,154,46,0.35)' }}>
+      <div className="tip-card p-4 pr-3" style={{ boxShadow: 'var(--shadow-lift), inset 0 0 0 1px color-mix(in srgb, var(--color-gold) 35%, transparent)' }}>
         <div className="flex items-start gap-3">
           <span className="w-10 h-10 rounded-full brand-tile grid place-items-center shrink-0 text-gold-bright" aria-hidden="true">
             <Lightbulb size={20} strokeWidth={2.2} />
           </span>
           <div className="min-w-0 flex-1" key={tip.id}>
             <p className="m-0 text-[12px] font-semibold uppercase tracking-[0.08em] text-gold-ink">
-              Tip of the day · {categoryLabel(tip.category)}
+              Business tip · {categoryLabel(tip.category)}
             </p>
             <b className="block text-[16px] leading-snug text-royal mt-0.5">{tip.title}</b>
             <p className="m-0 mt-1 text-[14px] text-ink leading-snug">{tip.body}</p>
@@ -326,6 +375,16 @@ export function TipNudge({
             }}
           >
             All tips
+          </button>
+          <button
+            type="button"
+            className="btn btn-text btn-sm !text-ink-2 ml-auto"
+            onClick={() => {
+              setTip(null)
+              setTipPopups(false)
+            }}
+          >
+            Don't show again
           </button>
         </div>
       </div>

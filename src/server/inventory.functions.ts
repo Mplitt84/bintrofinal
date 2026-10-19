@@ -18,7 +18,7 @@ import {
   buildPurchaseOrderLines,
 } from "./inventory.server.js";
 import { sendPurchaseOrderEmail, sendRestockEmail } from "./email.server.js";
-import { lookupBarcodeOnline, readProductLabel } from "./product-lookup.server.js";
+import { lookupBarcodeOnline, parseSpokenProduct, readProductLabel } from "./product-lookup.server.js";
 import { findBusinessContext, findBusinessProfile } from "./business.server.js";
 import { MAX_ORDER_QTY } from "../lib/inventory-defaults.js";
 import { assertFeature, assertProductRoom } from "./account.server.js";
@@ -211,4 +211,12 @@ export const readLabelPhoto = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     await assertFeature("ai");
     return readProductLabel(data.image, data.mediaType, await findBusinessContext());
+  });
+
+/** Talk-to-text: turns a spoken product description into form fields with AI. */
+export const readSpokenProduct = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ transcript: z.string().trim().min(1).max(1000) }))
+  .handler(async ({ data }) => {
+    await assertFeature("ai");
+    return parseSpokenProduct(data.transcript, await findBusinessContext());
   });

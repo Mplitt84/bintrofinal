@@ -1,26 +1,26 @@
 @import "tailwindcss" source("../");
 
 /*
- * Bintro theme: crisp white surfaces with a cool, faintly blue neutral scale, a
- * royal-blue action color and gold accents (tips, highlights, the brand mark),
+ * Bintro theme defaults (the burgundy, olive & cream palette): cream surfaces, a
+ * burgundy action color and olive accents (tips, highlights, the brand mark),
  * plus green / amber / red status colors for scan feedback and stock levels.
  */
 @theme {
-  --color-page: #ffffff;
-  --color-surface: #f3f5fa;
-  --color-surface-2: #e7eaf3;
-  --color-ink: #121a36;
-  --color-ink-2: #545c78;
-  --color-line: #e1e5ef;
-  --color-action: #1f3fb8;
-  --color-action-press: #16308f;
-  --color-action-tint: #e8edfc;
-  --color-royal: #0d1b52;
-  --color-royal-2: #2a4fd6;
-  --color-gold: #c99a2e;
-  --color-gold-bright: #f0c75e;
-  --color-gold-ink: #7f5c05;
-  --color-gold-tint: #fcf6e6;
+  --color-page: #fdf9f1;
+  --color-surface: #f6efe2;
+  --color-surface-2: #ece3d2;
+  --color-ink: #2a1719;
+  --color-ink-2: #6a5853;
+  --color-line: #e8dfcd;
+  --color-action: #7a1f35;
+  --color-action-press: #5f1729;
+  --color-action-tint: #f5e6e8;
+  --color-royal: #3f0e1b;
+  --color-royal-2: #9a2d47;
+  --color-gold: #7d8a3a;
+  --color-gold-bright: #b9c46e;
+  --color-gold-ink: #4d571b;
+  --color-gold-tint: #f1f1dc;
   --color-good: #4d6403;
   --color-good-tint: #eef3de;
   --color-warn: #a4520b;
@@ -28,8 +28,8 @@
   --color-bad: #b3261e;
   --color-bad-tint: #fbe9e7;
   --radius-sheet: 24px;
-  --shadow-card: 0 1px 2px rgba(13, 27, 82, 0.06), 0 4px 16px rgba(13, 27, 82, 0.07);
-  --shadow-lift: 0 2px 6px rgba(13, 27, 82, 0.08), 0 18px 40px -12px rgba(13, 27, 82, 0.28);
+  --shadow-card: 0 1px 2px rgba(63, 14, 27, 0.06), 0 4px 16px rgba(63, 14, 27, 0.07);
+  --shadow-lift: 0 2px 6px rgba(63, 14, 27, 0.08), 0 18px 40px -12px rgba(63, 14, 27, 0.28);
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -72,7 +72,7 @@ body {
 .btn-primary {
   @apply text-white;
   background: linear-gradient(180deg, var(--color-royal-2), var(--color-action));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(13, 27, 82, 0.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px color-mix(in srgb, var(--color-royal) 25%, transparent);
 }
 .btn-primary:hover {
   background: linear-gradient(180deg, var(--color-action), var(--color-action-press));
@@ -80,7 +80,7 @@ body {
 .btn-gold {
   @apply text-royal;
   background: linear-gradient(180deg, var(--color-gold-bright), var(--color-gold));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 1px 2px rgba(127, 92, 5, 0.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 1px 2px color-mix(in srgb, var(--color-gold-ink) 30%, transparent);
 }
 .btn-gold:hover {
   filter: brightness(1.04);
@@ -174,19 +174,19 @@ body {
   background:
     radial-gradient(120% 90% at 30% 0%, rgba(255, 255, 255, 0.22), transparent 55%),
     linear-gradient(160deg, var(--color-royal-2), var(--color-royal));
-  box-shadow: inset 0 0 0 1.5px rgba(240, 199, 94, 0.75), 0 2px 8px rgba(13, 27, 82, 0.3);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--color-gold-bright) 75%, transparent), 0 2px 8px color-mix(in srgb, var(--color-royal) 30%, transparent);
 }
 
 /* Tip light bulb: gold glyph that glows softly so it reads as "something helpful here". */
 .tip-bulb {
   @apply grid place-items-center border-0 cursor-pointer rounded-full shrink-0;
   color: var(--color-gold-ink);
-  background: radial-gradient(circle at 50% 40%, #fff7dc 0%, var(--color-gold-tint) 60%);
-  box-shadow: inset 0 0 0 1px rgba(201, 154, 46, 0.35);
+  background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--color-gold-tint) 40%, #fff) 0%, var(--color-gold-tint) 60%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-gold) 35%, transparent);
   transition: transform 0.15s, box-shadow 0.2s;
 }
 .tip-bulb:hover {
-  box-shadow: inset 0 0 0 1px rgba(201, 154, 46, 0.6), 0 0 0 5px rgba(240, 199, 94, 0.22);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-gold) 60%, transparent), 0 0 0 5px color-mix(in srgb, var(--color-gold-bright) 22%, transparent);
 }
 .tip-bulb:active {
   transform: scale(0.94);
@@ -195,8 +195,8 @@ body {
   animation: bulb-glow 2.4s ease-in-out infinite;
 }
 @keyframes bulb-glow {
-  0%, 100% { filter: drop-shadow(0 0 0 rgba(240, 199, 94, 0)); }
-  50% { filter: drop-shadow(0 0 6px rgba(240, 199, 94, 0.95)); }
+  0%, 100% { filter: drop-shadow(0 0 0 transparent); }
+  50% { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--color-gold-bright) 95%, transparent)); }
 }
 
 /* Tip card: warm gold paper with a royal category badge. */
@@ -205,9 +205,9 @@ body {
   overflow: hidden;
   border-radius: 20px;
   background:
-    radial-gradient(90% 70% at 100% 0%, rgba(240, 199, 94, 0.28), transparent 60%),
-    linear-gradient(180deg, #fffaf0, var(--color-gold-tint));
-  box-shadow: inset 0 0 0 1px rgba(201, 154, 46, 0.3);
+    radial-gradient(90% 70% at 100% 0%, color-mix(in srgb, var(--color-gold-bright) 28%, transparent), transparent 60%),
+    linear-gradient(180deg, color-mix(in srgb, var(--color-gold-tint) 40%, #fff), var(--color-gold-tint));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-gold) 30%, transparent);
 }
 .tip-nudge {
   animation: nudge-in 0.45s cubic-bezier(0.2, 0.9, 0.25, 1.15);
@@ -254,6 +254,23 @@ body {
 }
 @keyframes sheet-pop {
   from { opacity: 0; transform: translateY(24px) scale(0.98); }
+}
+
+/* Talk-to-text mic while it's listening: a soft red pulse. */
+.mic-live {
+  animation: mic-pulse 1.2s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-bad) 45%, transparent); }
+  50% { box-shadow: 0 0 0 8px transparent; }
+}
+
+/* Centered "Who's scanning?" pop-up. */
+.staff-pop {
+  animation: staff-pop 0.26s cubic-bezier(0.2, 0.9, 0.25, 1.15);
+}
+@keyframes staff-pop {
+  from { opacity: 0; transform: scale(0.92); }
 }
 
 .toast-in {
