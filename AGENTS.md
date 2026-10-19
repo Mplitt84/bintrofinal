@@ -54,13 +54,16 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │       ├── ScanView.tsx        # Scan tab: in/out switch, scan orb, wand + BLE capture, unknown-barcode sheet, today stats
 │   │       ├── StaffPicker.tsx     # Centered "Who's scanning?" name-tile pop-up + per-device ask mode (every scan | after idle)
 │   │       ├── CameraScanner.tsx   # Full-screen html5-qrcode camera scanner (dynamically imported)
-│   │       ├── ProductForm.tsx     # Shared add/edit form: word prediction, quick chips, barcode lookup, AI label photo, AI price check
+│   │       ├── ProductForm.tsx     # Shared add/edit form: word prediction, quick chips, barcode lookup, AI label photo, AI price check, talk-to-text
+│   │       ├── VoiceInput.tsx      # SpeakDetails ("Speak product details" → AI fills the form) + per-field MicButton
 │   │       ├── InventoryView.tsx   # Products tab: stats, search, filters, list, add/edit sheets
 │   │       ├── ActivityView.tsx    # Activity tab: usage/receipts by period, brand and staff
 │   │       ├── RestockView.tsx     # Restock tab: segmented "1 · Below par" / "2 · Build order"
 │   │       ├── BelowParView.tsx    # Restock step 1: below-par list, email button, "Build vendor order"
 │   │       └── PurchaseOrderView.tsx  # Restock step 2: vendor-grouped PO with CSV/print/email
 │   ├── lib
+│   │   ├── speech.ts              # useDictation(): browser speech recognition (Chrome/Edge/Safari; not Firefox)
+│   │   ├── barcodes.ts            # checkUnknownScan: partial / mis-read barcode detection (length, GS1 check digit, UPC-E, fragment of a known code)
 │   │   ├── palettes.ts            # Display palettes (theme token sets) + paletteStyle() CSS vars
 │   │   ├── bluetooth-scanner.ts   # Web Bluetooth BLE-serial scanner connection (module singleton), code + state listeners
 │   │   ├── plans.ts               # Plan tiers (Free / Plus / Premium), prices, limits, features, AccountSummary type
@@ -120,7 +123,10 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 ## Key Concepts
 
 ### Scanning flow
-`scanMovement` (in `inventory.functions.ts`) looks up the product by barcode. If found, it applies the delta and logs a movement. If not found, the client opens a sheet to either link the barcode to an existing product or create a new one; the new-product form auto-runs `lookupBarcodeDetails` and can prefill from a label photo via `readLabelPhoto` (Claude through the Netlify AI Gateway, only available on deployed sites). Scans come from the camera (`CameraScanner`), a hardware wand (global keydown capture in `ScanView`), or typed entry.
+`scanMovement` (in `inventory.functions.ts`) looks up the product by barcode. If found, it applies the delta and logs a movement. If not found, the client opens a sheet to either link the barcode to an existing product or create a new one; the new-product form auto-runs `lookupBarcodeDetails` and can prefill from a label photo via `readLabelPhoto` (Claude through the Netlify AI Gateway, only available on deployed sites). Scans come from the camera (`CameraScanner`), a hardware wand (global keydown capture in `ScanView`), or typed entry. Camera, wand and Bluetooth codes that match no product and fail `checkUnknownScan` (all-digit codes under 8 digits, part of a stocked barcode, or a bad GS1 check digit) play `errorBuzz()` and show "Scan again" instead of the new-product sheet, with a "That's the full code — use it" escape; 2–3 character wand bursts get the same buzz. Typed codes are never checked.
+
+### Talk-to-text product entry
+`ProductForm` has a "Speak product details" button (`SpeakDetails`): the browser's speech recognition transcribes, then `readSpokenProduct` (AI, Plus) pulls out brand, name, size, category, vendor, count, par, cost and retail — only what was said overrides the form. Without AI the transcript becomes the name. Name, brand, size and supplier also have a per-field mic (`MicButton`, no plan needed). Mics hide on browsers without speech recognition.
 
 ### Server functions
 All database access goes through TanStack Start server functions in `src/server/inventory.functions.ts`, which call helpers in `inventory.server.ts`. Never import `db/index.ts` directly from client components.
