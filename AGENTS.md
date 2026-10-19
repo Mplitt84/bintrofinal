@@ -33,7 +33,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   ├── ui
 │   │   │   ├── Sheet.tsx     # Bottom sheet (dialog on desktop) + Field / SheetActions
 │   │   │   ├── Toast.tsx     # ToastProvider + useToast(message, onUndo?)
-│   │   │   ├── Tips.tsx      # Gold light-bulb tips: header TipBulb, TipSheet (browse by theme), once-a-day TipNudge pop-up
+│   │   │   ├── Tips.tsx      # Gold light-bulb tips: header TipBulb, TipSheet (browse by theme), TipNudge pop-up every 10 min (TIP_INTERVAL_MINUTES), useTipPopups/setTipPopups device on-off
 │   │   │   ├── AutoInput.tsx # Word-prediction input (dropdown, Tab accepts) + QuickChips one-tap choices
 │   │   │   └── bits.tsx      # StatTile/StatGrid, Thumb, EmptyState, PageHead, timeAgo, centsToDollars
 │   │   ├── insights
@@ -43,13 +43,16 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   │   ├── CategorySetupSheet.tsx # Category pop-up (per-type suggestions grouped by tax line) + CategoryManager for Settings
 │   │   │   ├── CalendarView.tsx     # Calendar tab: month grid, agenda, add to Google/Outlook/.ics, subscribe-feed sheet, quick-start events
 │   │   │   ├── BudgetView.tsx       # Budget tab: rolling monthly spend vs budget, chart, expenses, receipt AI, QuickBooks push, CSV
-│   │   │   ├── SettingsView.tsx     # Settings: business profile, account & billing, team members, inventory import, Square/QuickBooks integrations
+│   │   │   ├── SettingsView.tsx     # Settings: business profile, look & feel, account & billing, team, scanner & Bluetooth, inventory import, Square/QuickBooks integrations
+│   │   │   ├── AppearanceSettings.tsx # Settings → Look & feel: color palette picker (warm / cool / earthy / black & grey) + business tips on/off
+│   │   │   ├── ScannerSettings.tsx  # Settings → Scanner & Bluetooth: Web Bluetooth pairing, OS pairing steps, scanner test, ask-who's-scanning mode
 │   │   │   ├── AccountView.tsx      # Settings → Account & billing: plan summary, usage, plan picker, account details; Billing: card, pause, cancel, history
 │   │   │   ├── PlanGate.tsx         # PlanGate / UpgradeCard: locks a view or control behind the plan that includes a feature
 │   │   │   └── ImportView.tsx       # Settings → Import: upload CSV/PDF/photo of stock list or vendor invoice, review lines, AI prices, apply
 │   │   └── inventory
 │   │       ├── types.ts            # Shared Product / MovementRow / ActivityRow / Stats types
-│   │       ├── ScanView.tsx        # Scan tab: in/out switch, scan orb, wand capture, unknown-barcode sheet, today stats
+│   │       ├── ScanView.tsx        # Scan tab: in/out switch, scan orb, wand + BLE capture, unknown-barcode sheet, today stats
+│   │       ├── StaffPicker.tsx     # Centered "Who's scanning?" name-tile pop-up + per-device ask mode (every scan | after idle)
 │   │       ├── CameraScanner.tsx   # Full-screen html5-qrcode camera scanner (dynamically imported)
 │   │       ├── ProductForm.tsx     # Shared add/edit form: word prediction, quick chips, barcode lookup, AI label photo, AI price check
 │   │       ├── InventoryView.tsx   # Products tab: stats, search, filters, list, add/edit sheets
@@ -58,6 +61,8 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │       ├── BelowParView.tsx    # Restock step 1: below-par list, email button, "Build vendor order"
 │   │       └── PurchaseOrderView.tsx  # Restock step 2: vendor-grouped PO with CSV/print/email
 │   ├── lib
+│   │   ├── palettes.ts            # Display palettes (theme token sets) + paletteStyle() CSS vars
+│   │   ├── bluetooth-scanner.ts   # Web Bluetooth BLE-serial scanner connection (module singleton), code + state listeners
 │   │   ├── plans.ts               # Plan tiers (Free / Plus / Premium), prices, limits, features, AccountSummary type
 │   │   ├── bulk-import.ts         # Shared import types (ImportLine, ImportMode, price sources) and limits
 │   │   ├── business-types.ts      # Business types (beauty & wellness + bar; retail/bookstore legacy), sizes/expense categories, profile type, month/day helpers
@@ -100,7 +105,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 
 - **products** — `barcode` (unique), `name`, `category`, `brand`, `size`, `qty`, `reorderThreshold` (defaults to `DEFAULT_REORDER_THRESHOLD`), `unitCostCents`, `retailPriceCents`, `vendor`, `imageUrl` (product photo from barcode lookup, empty string when none), `squareVariationId` (set by Square catalog import), `priceUpdatedAt` (set when cost/retail change or are confirmed; null = never, reminders fall back to `createdAt`).
 - **movements** — an append-only log of every scan: `productId`, `type` (`in` | `out` | `adjust` | `receive`), `delta`, `staffName`, `staffInitials` (derived from the name, kept for older rows), timestamp. Used for the recent-activity feed and to support undo (undo reverses the delta and deletes the row). Deleting a product (Edit product sheet → Delete, tapped twice) also deletes its movements.
-- **business_profile** — single row (`id = 1`): `name`, `businessType` (id from `BUSINESS_TYPES`), `email`, `phone`, `address`, `website`, `orderEmail`, `monthlyBudgetCents`, `weeklyReportEmail` / `monthlyReportEmail` / `fastMoverAlertEmail` (insight email switches, default on), `calendarToken` (secret for the iCal feed URL; not part of the client profile type).
+- **business_profile** — single row (`id = 1`): `name`, `businessType` (id from `BUSINESS_TYPES`), `email`, `phone`, `address`, `website`, `orderEmail`, `monthlyBudgetCents`, `weeklyReportEmail` / `monthlyReportEmail` / `fastMoverAlertEmail` (insight email switches, default on), `palette` (display palette id from `src/lib/palettes.ts`, default `burgundy-olive`), `calendarToken` (secret for the iCal feed URL; not part of the client profile type).
 - **product_categories** — categories the business has added (`name` unique, matched case-insensitively on save) with a `taxGroup` id from `TAX_GROUPS`.
 - **calendar_events** — `title`, `kind` (reorder | delivery | count | bill | tax | task), `date` YYYY-MM-DD, `startTime` HH:MM or '' for all day, `durationMinutes`, `repeat` (none | weekly | monthly | quarterly | yearly), `notes`, `staffName`.
 - **team_members** — saved staff names (`name` unique).
@@ -151,11 +156,14 @@ Tiers live in `src/lib/plans.ts` (prices, product/team limits, `Feature` ids). F
 Env vars: `SQUARE_APPLICATION_ID`, `SQUARE_APPLICATION_SECRET`, `SQUARE_ENVIRONMENT` (`sandbox` optional); `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_ENVIRONMENT` (`sandbox` optional). Redirect URLs are `<site>/api/integrations/{square|quickbooks}/callback`. Square: catalog import (matches by variation id, then UPC/SKU) and sales sync (completed orders → "out" movements by "Square POS", every 15 min). QuickBooks: pushes a month's expenses as Purchases, and stock spend per vendor once the month has ended.
 
 ### Staff attribution
-Staff set their name from the workspace pill in the header (opens a sheet with saved team members as one-tap chips; the team is managed in Settings); it is persisted to `localStorage` and passed down to
-each view, which forwards it to the server functions as `staffName`.
+Before each scan (orb tap, typed barcode, wand or Bluetooth scan) the Scan tab opens `StaffPicker`, a centered pop-up with a tile per saved team member (`askStaff()` in `index.tsx` returns a promise with the picked name). Settings → Scanner & Bluetooth can switch a device to ask only after 10 minutes without a scan (`shagnoir-ask-staff`). The header pill opens the same picker. The name is persisted to `localStorage` and passed down to
+each view, which forwards it to the server functions as `staffName`; new names join the team.
+
+### Bluetooth scanners
+Keyboard (HID) scanners pair in the OS Bluetooth settings (Settings shows the steps per device) and are caught by the Scan tab's keydown capture. Scanners with a BLE serial service can connect from Settings via Web Bluetooth (Chrome/Edge; not Safari/iOS) — `src/lib/bluetooth-scanner.ts` keeps the connection alive across tabs, auto-reconnects, and `ScanView` subscribes with `onBluetoothCode`.
 
 ### Styling
-Bintro uses a light theme with royal blue and gold accents. Tokens (`--color-page`, `surface`, `ink`, `line`, `action` royal blue, `royal`/`royal-2` deep blues, `gold`/`gold-bright`/`gold-ink`/`gold-tint`, `good`/`warn`/`bad` + `-tint`) live under `@theme` in `src/styles.css`, along with shared classes: `.brand-tile`, `.royal-rule`, `.tip-bulb`, `.tip-card`, `.btn` (`-primary`/`-gold`/`-tonal`/`-text`/`-danger`/`-sm`), `.chip` (uses `aria-pressed`), `.field-input`, `.orb`, `.skel`. Use bottom sheets (`Sheet`) for dialogs and `useToast` for confirmations. Gold is for accents and tips (use `gold-ink` for gold text on white); royal blue is for actions. New tips go in `src/lib/tips.ts`. localStorage keys keep their `shagnoir-` prefix so existing devices keep their data.
+Bintro's default theme is burgundy, olive and cream (`burgundy-olive`; the original royal blue & gold is the `royal` palette). Tokens keep their original names (`--color-page`, `surface`, `ink`, `line`, `action` = burgundy, `royal`/`royal-2` = deep burgundies, `gold*` = olive accents, `gold`/`gold-bright`/`gold-ink`/`gold-tint`, `good`/`warn`/`bad` + `-tint`) live under `@theme` in `src/styles.css`, along with shared classes: `.brand-tile`, `.royal-rule`, `.tip-bulb`, `.tip-card`, `.btn` (`-primary`/`-gold`/`-tonal`/`-text`/`-danger`/`-sm`), `.chip` (uses `aria-pressed`), `.field-input`, `.orb`, `.skel`. The business's palette (Settings → Look & feel, `profile.palette`) overrides these tokens at runtime via `paletteStyle()` on `<html>` and the app wrapper, so never hardcode theme hex/rgba values — use the tokens or `color-mix()` on them. Use bottom sheets (`Sheet`) for dialogs and `useToast` for confirmations. Gold is for accents and tips (use `gold-ink` for gold text on white); the action color is for actions. New tips go in `src/lib/tips.ts`. localStorage keys keep their `shagnoir-` prefix so existing devices keep their data.
 
 ## Development Commands
 

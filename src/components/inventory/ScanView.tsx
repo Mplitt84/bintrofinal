@@ -14,6 +14,8 @@ import { useToast } from '@/components/ui/Toast'
 import { EmptyState, StatTile, Thumb, dollarsShort, timeAgo } from '@/components/ui/bits'
 import { CameraScanner } from './CameraScanner'
 import { ProductForm } from './ProductForm'
+import { STAFF_IDLE_MINUTES, getStaffAskMode, type StaffPrompt } from './StaffPicker'
+import { onBluetoothCode } from '@/lib/bluetooth-scanner'
 
 type Mode = 'in' | 'out'
 
@@ -47,6 +49,9 @@ function beep(ok: boolean) {
   navigator.vibrate?.(ok ? 40 : [60, 40, 60])
 }
 
+// When this device last confirmed who's scanning; kept across tab changes.
+let staffConfirmedAt = 0
+
 function startOfToday() {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
@@ -55,6 +60,7 @@ function startOfToday() {
 
 export function ScanView({
   staffName,
+  askStaff,
   recent,
   products,
   belowParCount,
@@ -62,6 +68,8 @@ export function ScanView({
   onOpenRestock,
 }: {
   staffName: string
+  /** Opens the centered "Who's scanning?" picker; resolves with the name or null. */
+  askStaff: (prompt: StaffPrompt) => Promise<string | null>
   recent: MovementRow[]
   products: Product[]
   belowParCount: number
@@ -83,6 +91,8 @@ export function ScanView({
   const [linkResults, setLinkResults] = useState<Product[]>([])
   const [today, setToday] = useState<ActivityRow[]>([])
   const orbTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // Who the scan in progress belongs to (also used after saving a new barcode).
+  const scanWho = useRef(staffName)
 
   // Today's totals refresh whenever the recent feed changes (every scan or undo).
   useEffect(() => {
@@ -112,13 +122,29 @@ export function ScanView({
     }
   }
 
+  /**
+   * Asks who's scanning before each scan (or, if the device is set to, only after
+   * a quiet spell). Resolves with the name, or null if the picker was closed.
+   */
+  const confirmStaff = useCallback(
+    async (direction: Mode) => {
+      const fresh = Date.now() - staffConfirmedAt < STAFF_IDLE_MINUTES * 60_000
+      if (getStaffAskMode() === 'idle' && staffName.trim() && fresh) return staffName.trim()
+      const who = await askStaff({ direction })
+      if (who) staffConfirmedAt = Date.now()
+      return who
+    },
+    [askStaff, staffName],
+  )
+
   const submitScan = useCallback(
-    async (code: string, direction: Mode = mode) => {
+    async (code: string, direction: Mode = mode, who: string = scanWho.current) => {
       const trimmed = code.trim()
       if (!trimmed || busy) return
+      scanWho.current = who
       setBusy(true)
       try {
-        const result = await scanMovement({ data: { barcode: trimmed, type: direction, qty, staffName } })
+        const result = await scanMovement({ data: { barcode: trimmed, type: direction, qty, staffName: who } })
         if (result.status === 'unknown') {
           beep(true)
           showOrb({ kind: 'warn', title: 'New product', sub: 'Looking it up' })
@@ -141,6 +167,7 @@ export function ScanView({
           await onChanged()
           toast('Scan undone')
         })
+        staffConfirmedAt = Date.now()
         await onChanged()
       } catch {
         beep(false)
@@ -151,13 +178,37 @@ export function ScanView({
     },
     // showOrb/toast are stable enough for this handler; mode, qty and staff drive it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mode, qty, staffName, busy, onChanged],
+    [mode, qty, busy, onChanged],
   )
+
+  /** A code from a wand or Bluetooth scanner: confirm who's scanning, then log it. */
+  const scanFromDevice = useCallback(
+    async (code: string) => {
+      const who = await confirmStaff(mode)
+      if (who) await submitScan(code, mode, who)
+    },
+    [confirmStaff, submitScan, mode],
+  )
+
+  async function startCamera() {
+    const who = await confirmStaff(mode)
+    if (!who) return
+    scanWho.current = who
+    setCameraOpen(true)
+  }
+
+  async function startTyping() {
+    const who = await confirmStaff(mode)
+    if (!who) return
+    scanWho.current = who
+    setTypedCode('')
+    setTyping(true)
+  }
 
   // Bluetooth and USB wand scanners "type" the code fast and press Enter. Catch that
   // anywhere on this screen, as long as nobody is typing in a field or a sheet is open.
-  const submitRef = useRef(submitScan)
-  submitRef.current = submitScan
+  const submitRef = useRef(scanFromDevice)
+  submitRef.current = scanFromDevice
   useEffect(() => {
     let buffer = ''
     let lastKey = 0
@@ -179,7 +230,15 @@ export function ScanView({
       if (e.key.length === 1) buffer += e.key
     }
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    // Scanners connected over Bluetooth Low Energy in Settings → Scanner.
+    const offBluetooth = onBluetoothCode((code) => {
+      if (document.querySelector('[role="dialog"]')) return
+      submitRef.current(code)
+    })
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      offBluetooth()
+    }
   }, [])
 
   function closeUnknown() {
@@ -238,7 +297,7 @@ export function ScanView({
         <button
           key={bump}
           className={`orb ${orbClass} ${bump > 0 && orb.kind !== 'idle' ? 'orb-bump' : ''}`}
-          onClick={() => setCameraOpen(true)}
+          onClick={startCamera}
           aria-live="polite"
           disabled={busy}
         >
@@ -282,12 +341,18 @@ export function ScanView({
           <span className="w-2 h-2 rounded-full bg-good shadow-[0_0_0_4px_var(--color-good-tint)]" aria-hidden="true" />
           Bluetooth and USB scanners work anytime on this screen
         </p>
+        <p className="m-0 text-[13px] text-ink-2">
+          {staffName.trim() ? (
+            <>
+              Last scanned by <b className="text-ink">{staffName.trim()}</b> · you'll pick your name before each scan
+            </>
+          ) : (
+            "You'll pick your name before each scan"
+          )}
+        </p>
         <button
           className="btn btn-text"
-          onClick={() => {
-            setTypedCode('')
-            setTyping(true)
-          }}
+          onClick={startTyping}
         >
           Type a barcode instead
         </button>
