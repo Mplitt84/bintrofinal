@@ -38,7 +38,7 @@ export function InventoryView({
     if (category !== 'all' && p.category !== category) return false
     if (query.trim()) {
       const q = query.toLowerCase()
-      const haystack = [p.name, p.brand, p.barcode, p.vendor, p.category].join(' ').toLowerCase()
+      const haystack = [p.name, p.brand, p.barcode, ...(p.extraBarcodes ?? []), p.vendor, p.category].join(' ').toLowerCase()
       if (!haystack.includes(q)) return false
     }
     return true

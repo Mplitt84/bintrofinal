@@ -12,7 +12,24 @@ export async function findAllProducts() {
 }
 
 export async function findProductByBarcode(barcode: string) {
-  const rows = await db.select().from(products).where(eq(products.barcode, barcode));
+  const rows = await db
+    .select()
+    .from(products)
+    .where(or(eq(products.barcode, barcode), sql`${barcode} = any(${products.extraBarcodes})`))
+    .orderBy(sql`${products.barcode} = ${barcode} desc`)
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** The product (other than `exceptId`) that already scans with this code, as its main or an extra barcode. */
+export async function findBarcodeOwner(barcode: string, exceptId = 0) {
+  const rows = await db
+    .select()
+    .from(products)
+    .where(
+      sql`${products.id} <> ${exceptId} and (${products.barcode} = ${barcode} or ${barcode} = any(${products.extraBarcodes}))`,
+    )
+    .limit(1);
   return rows[0] ?? null;
 }
 
@@ -35,6 +52,7 @@ export async function searchProductsByText(query: string) {
       or(
         like(sql`lower(${products.name})`, q),
         like(sql`lower(${products.barcode})`, q),
+        like(sql`lower(array_to_string(${products.extraBarcodes}, ' '))`, q),
         like(sql`lower(${products.brand})`, q),
         like(sql`lower(${products.category})`, q),
       ),
@@ -97,6 +115,7 @@ export async function updateProductFields(
     unitCostCents: number;
     retailPriceCents: number;
     imageUrl: string;
+    extraBarcodes: string[];
   }>,
 ) {
   // Stamp the price date only when cost or retail actually changes, so the

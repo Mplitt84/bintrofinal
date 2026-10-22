@@ -29,6 +29,7 @@ export type ProductFormValues = {
   unitCostCents: number
   retailPriceCents: number
   imageUrl: string
+  extraBarcodes: string[]
 }
 
 type PriceState =
@@ -74,6 +75,9 @@ export function ProductForm({
   onDelete?: () => Promise<void>
 }) {
   const [barcode, setBarcode] = useState(product?.barcode ?? initialBarcode)
+  const [extraBarcodes, setExtraBarcodes] = useState<string[]>(product?.extraBarcodes ?? [])
+  const [extraDraft, setExtraDraft] = useState('')
+  const [extraOpen, setExtraOpen] = useState(false)
   const [name, setName] = useState(product?.name ?? '')
   const [brand, setBrand] = useState(product?.brand ?? '')
   const [vendor, setVendor] = useState(product?.vendor ?? '')
@@ -372,6 +376,29 @@ export function ProductForm({
     }
   }
 
+  /** Saved extras plus whatever is still typed in the add box, so Save doesn't drop it. */
+  function pendingExtras() {
+    const draft = extraDraft.trim()
+    return draft && !extraBarcodes.includes(draft) ? [...extraBarcodes, draft] : extraBarcodes
+  }
+
+  function addExtra() {
+    const code = extraDraft.trim()
+    if (!code) return
+    if (code === barcode.trim() || extraBarcodes.includes(code)) {
+      setError('This product already scans with that code.')
+      return
+    }
+    const owner = products.find((p) => p.id !== product?.id && (p.barcode === code || p.extraBarcodes?.includes(code)))
+    if (owner) {
+      setError(`That code already belongs to ${owner.name}.`)
+      return
+    }
+    setError('')
+    setExtraBarcodes([...extraBarcodes, code])
+    setExtraDraft('')
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) {
@@ -397,6 +424,7 @@ export function ProductForm({
         unitCostCents: Math.max(0, Math.round((Number(cost) || 0) * 100)),
         retailPriceCents: Math.max(0, Math.round((Number(retail) || 0) * 100)),
         imageUrl,
+        extraBarcodes: pendingExtras().filter((c) => c !== barcode.trim()),
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : ''
@@ -750,6 +778,72 @@ export function ProductForm({
           </div>
         </Field>
       )}
+      {product && (
+        <div className="mt-3">
+          {extraBarcodes.length > 0 && (
+            <div className="mb-2">
+              <p className="text-ink-2 text-[13px] font-semibold m-0 mb-1.5">Also scans as</p>
+              <div className="flex flex-wrap gap-2">
+                {extraBarcodes.map((code) => (
+                  <span key={code} className="chip">
+                    {code}
+                    <button
+                      type="button"
+                      className="-mr-1 p-0.5 text-ink-2"
+                      aria-label={`Remove ${code}`}
+                      onClick={() => setExtraBarcodes(extraBarcodes.filter((c) => c !== code))}
+                    >
+                      <X size={14} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {extraOpen ? (
+            <Field label="Additional barcode or SKU" htmlFor="pf-extra-barcode">
+              <div className="flex gap-2">
+                <input
+                  id="pf-extra-barcode"
+                  className="field-input"
+                  autoComplete="off"
+                  autoFocus
+                  placeholder="Scan with a wand or type it"
+                  value={extraDraft}
+                  onChange={(e) => setExtraDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    // Hardware scanners end with Enter; add the code instead of submitting the form.
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      addExtra()
+                    }
+                  }}
+                />
+                {extraDraft.trim() ? (
+                  <button type="button" className="btn btn-tonal btn-sm shrink-0" onClick={addExtra}>
+                    Add
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-tonal btn-sm shrink-0"
+                    onClick={() => setExtraDraft(makeSku(products))}
+                    title="Make an internal code, e.g. for a refill or bundle"
+                  >
+                    <Wand2 size={16} />
+                    Make one
+                  </button>
+                )}
+              </div>
+            </Field>
+          ) : (
+            <button type="button" className="btn btn-text btn-sm" onClick={() => setExtraOpen(true)}>
+              <Plus size={16} />
+              Add another SKU
+            </button>
+          )}
+        </div>
+      )}
 
       {error && <p className="text-bad text-sm mt-3 mb-0">{error}</p>}
       {confirmDelete && !deleting && (
@@ -825,7 +919,7 @@ function uniq(values: string[]) {
 
 /** Short internal code for items that don't carry a barcode. */
 function makeSku(products: Product[]) {
-  const taken = new Set(products.map((p) => p.barcode))
+  const taken = new Set(products.flatMap((p) => [p.barcode, ...(p.extraBarcodes ?? [])]))
   let code = ''
   do {
     code = `BT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
