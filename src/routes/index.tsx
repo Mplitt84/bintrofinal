@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Activity, Boxes, CalendarDays, Check, Lock, ScanBarcode, Settings, Store, Truck, TriangleAlert, UserPlus, Wallet } from 'lucide-react'
 import type { MovementRow, Product, Stats, TeamMember } from '@/components/inventory/types'
 import { ScanView } from '@/components/inventory/ScanView'
@@ -18,10 +18,10 @@ import { Sheet, Field, SheetActions } from '@/components/ui/Sheet'
 import { ToastProvider } from '@/components/ui/Toast'
 import { InsightPopup, InsightsBanner, InsightsSheet, type InsightSegment } from '@/components/insights/InsightsSheet'
 import { TipBulb, TipNudge, TipSheet, useFreshTip, type TipNavigate } from '@/components/ui/Tips'
-import { deriveInitials } from '@/lib/inventory-defaults'
+import { deriveInitials, selectBelowPar } from '@/lib/inventory-defaults'
 import { displayBusinessName, type BusinessProfile } from '@/lib/business-types'
 import type { ProductCategory } from '@/lib/tax-categories'
-import { listProducts, getStats, getRecentMovements, getBelowPar } from '@/server/inventory.functions'
+import { listProducts, getStats, getRecentMovements } from '@/server/inventory.functions'
 import { getInsights } from '@/server/insights.functions'
 import type { Insights } from '@/lib/insights'
 import { addTeamMember, getBusinessProfile, listProductCategories, listTeamMembers } from '@/server/business.functions'
@@ -54,17 +54,16 @@ function tabFromHash(hash: string): { tab: Tab; restock?: RestockMode } | null {
 
 export const Route = createFileRoute('/')({
   loader: async () => {
-    const [products, stats, recent, belowPar, profile, team, categories, account] = await Promise.all([
+    const [products, stats, recent, profile, team, categories, account] = await Promise.all([
       listProducts(),
       getStats(),
       getRecentMovements({ data: { limit: 25 } }),
-      getBelowPar(),
       getBusinessProfile(),
       listTeamMembers(),
       listProductCategories(),
       getAccount(),
     ])
-    return { products, stats, recent, belowPar, profile, team, categories, account }
+    return { products, stats, recent, profile, team, categories, account }
   },
   component: Home,
 })
@@ -75,7 +74,8 @@ function Home() {
   const [products, setProducts] = useState<Product[]>(initial.products as Product[])
   const [stats, setStats] = useState<Stats>(initial.stats as Stats)
   const [recent, setRecent] = useState<MovementRow[]>(initial.recent as MovementRow[])
-  const [belowPar, setBelowPar] = useState<Product[]>(initial.belowPar as Product[])
+  // Restock reads the same product rows as the Products tab: no separate copy to go stale.
+  const belowPar = useMemo(() => selectBelowPar(products), [products])
   const [staffName, setStaffName] = useState('')
   const [hydrated, setHydrated] = useState(false)
   const [staffOpen, setStaffOpen] = useState(false)
@@ -178,21 +178,35 @@ function Home() {
 
   async function refresh() {
     loadInsights()
-    const [p, s, r, b] = await Promise.all([
+    const [p, s, r] = await Promise.all([
       listProducts(),
       getStats(),
       getRecentMovements({ data: { limit: 25 } }),
-      getBelowPar(),
     ])
     setProducts(p as Product[])
     setStats(s as Stats)
     setRecent(r as MovementRow[])
-    setBelowPar(b as Product[])
     // Usage (products, team) shows on the Account page.
     getAccount()
       .then((acct) => setAccount(acct as AccountSummary))
       .catch(() => {})
   }
+
+  // Opening Restock always pulls fresh counts, so changes made on another device show up too.
+  useEffect(() => {
+    if (tab !== 'restock') return
+    let live = true
+    Promise.all([listProducts(), getStats()])
+      .then(([p, s]) => {
+        if (!live) return
+        setProducts(p as Product[])
+        setStats(s as Stats)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [tab])
 
   function openStaff() {
     setStaffDraft(staffName)
@@ -433,6 +447,7 @@ function Home() {
               mode={restockMode}
               onMode={setRestockMode}
               items={belowPar}
+              products={products}
               staffName={staffName}
               onChanged={refresh}
             />

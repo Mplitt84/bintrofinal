@@ -4,7 +4,7 @@ import type { Product } from './types'
 import { emailPurchaseOrder } from '@/server/inventory.functions'
 import { Download, Mail, Printer } from 'lucide-react'
 import { EmptyState, PageHead, StatGrid, StatTile, Thumb, centsToDollars } from '@/components/ui/bits'
-import { MAX_ORDER_QTY, clampOrderQty, suggestedOrderQty } from '@/lib/inventory-defaults'
+import { MAX_ORDER_QTY, clampOrderQty, onHandQty, stockStatus, suggestedOrderQty } from '@/lib/inventory-defaults'
 import {
   buildPurchaseOrderCsv,
   groupPurchaseOrderLines,
@@ -44,7 +44,7 @@ function toLine(product: Product, qty: number): PurchaseOrderLine {
     size: product.size,
     category: product.category,
     qty,
-    onHand: product.qty,
+    onHand: Math.max(0, onHandQty(product)),
     reorderThreshold: product.reorderThreshold,
     unitCostCents: product.unitCostCents,
   }
@@ -371,7 +371,7 @@ function VendorGroup({
           const product = products.find((p) => p.id === line.productId)
           if (!product) return null
           const checked = isSelected(line.productId)
-          const out = line.onHand <= 0
+          const out = stockStatus(product) === 'out'
           const suggested = suggestedOrderQty(product)
           const qty = clampOrderQty(line.qty)
           const raw = qtyFor(line.productId)
@@ -396,7 +396,7 @@ function VendorGroup({
                 <div className="font-semibold truncate">{line.name}</div>
                 <div className="text-[13px] text-ink-2 truncate">
                   <span className={out ? 'text-bad font-semibold' : 'text-warn font-semibold'}>
-                    {out ? 'Out' : `${line.onHand} on hand`}
+                    {out ? 'Out' : `Low · ${line.onHand} on hand`}
                   </span>
                   {' · par '}
                   {line.reorderThreshold}
