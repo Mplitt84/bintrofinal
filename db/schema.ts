@@ -50,6 +50,8 @@ export const businessProfile = pgTable("business_profile", {
   monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(0),
   /** Secret part of the calendar subscription URL. Empty until the feed is first shared. */
   calendarToken: text("calendar_token").notNull().default(""),
+  /** Colour theme id, added by an earlier deploy's migrations; not read by the app yet. */
+  palette: text("palette").notNull().default("burgundy-olive"),
   /** Email the weekly best-sellers report (Mondays). */
   weeklyReportEmail: boolean("weekly_report_email").notNull().default(true),
   /** Email the monthly slow-movers + price-check report (1st of the month). */

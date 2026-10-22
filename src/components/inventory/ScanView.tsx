@@ -58,6 +58,7 @@ export function ScanView({
   recent,
   products,
   belowParCount,
+  onProduct,
   onChanged,
   onOpenRestock,
 }: {
@@ -65,6 +66,8 @@ export function ScanView({
   recent: MovementRow[]
   products: Product[]
   belowParCount: number
+  /** Puts a product's new on-hand count on every tab immediately. */
+  onProduct?: (product: Product) => void
   onChanged: () => void | Promise<void>
   onOpenRestock?: () => void
 }) {
@@ -103,6 +106,14 @@ export function ScanView({
     return () => clearTimeout(handle)
   }, [linkQuery])
 
+  async function safeRefresh() {
+    try {
+      await onChanged()
+    } catch {
+      // The next background refresh catches up.
+    }
+  }
+
   function showOrb(next: Orb) {
     setOrb(next)
     setBump((b) => b + 1)
@@ -117,8 +128,16 @@ export function ScanView({
       const trimmed = code.trim()
       if (!trimmed || busy) return
       setBusy(true)
+      let result: Awaited<ReturnType<typeof scanMovement>>
       try {
-        const result = await scanMovement({ data: { barcode: trimmed, type: direction, qty, staffName } })
+        result = await scanMovement({ data: { barcode: trimmed, type: direction, qty, staffName } })
+      } catch {
+        beep(false)
+        showOrb({ kind: 'bad', title: 'Scan failed', sub: 'Check your connection and try again' })
+        setBusy(false)
+        return
+      }
+      try {
         if (result.status === 'unknown') {
           beep(true)
           showOrb({ kind: 'warn', title: 'New product', sub: 'Looking it up' })
@@ -129,6 +148,7 @@ export function ScanView({
         }
         const p = result.product!
         const movement = result.movement!
+        onProduct?.(p as Product)
         const low = p.qty <= p.reorderThreshold
         beep(true)
         showOrb({
@@ -137,21 +157,20 @@ export function ScanView({
           sub: `${p.name} · ${p.qty} on hand${low ? ' · below par' : ''}`,
         })
         toast(`${direction === 'in' ? 'Added' : 'Took'} ${Math.abs(movement.delta)} × ${p.name}`, async () => {
-          await undoMovement({ data: { movementId: movement.id } })
-          await onChanged()
+          const reverted = await undoMovement({ data: { movementId: movement.id } })
+          if (reverted) onProduct?.(reverted as Product)
+          await safeRefresh()
           toast('Scan undone')
         })
-        await onChanged()
-      } catch {
-        beep(false)
-        showOrb({ kind: 'bad', title: 'Scan failed', sub: 'Check your connection and try again' })
       } finally {
         setBusy(false)
       }
+      // The scan is saved; a slow refresh afterwards must not read as a failed scan.
+      await safeRefresh()
     },
     // showOrb/toast are stable enough for this handler; mode, qty and staff drive it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mode, qty, staffName, busy, onChanged],
+    [mode, qty, staffName, busy, onChanged, onProduct],
   )
 
   // Bluetooth and USB wand scanners "type" the code fast and press Enter. Catch that
@@ -196,8 +215,14 @@ export function ScanView({
   }
 
   async function undo(m: MovementRow) {
-    await undoMovement({ data: { movementId: m.id } })
-    await onChanged()
+    try {
+      const reverted = await undoMovement({ data: { movementId: m.id } })
+      if (reverted) onProduct?.(reverted as Product)
+    } catch {
+      toast("Couldn't undo that. Check your connection and try again.")
+      return
+    }
+    await safeRefresh()
     toast(`Undid ${m.productName}`)
   }
 
@@ -349,6 +374,11 @@ export function ScanView({
         onScan={(code) => {
           setCameraOpen(false)
           submitScan(code)
+        }}
+        onTypeInstead={() => {
+          setCameraOpen(false)
+          setTypedCode('')
+          setTyping(true)
         }}
       />
 

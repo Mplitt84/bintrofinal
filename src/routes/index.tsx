@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, Boxes, CalendarDays, Check, Lock, ScanBarcode, Settings, Store, Truck, TriangleAlert, UserPlus, Wallet } from 'lucide-react'
-import type { MovementRow, Product, Stats, TeamMember } from '@/components/inventory/types'
+import type { MovementRow, Product, TeamMember } from '@/components/inventory/types'
 import { ScanView } from '@/components/inventory/ScanView'
 import { InventoryView } from '@/components/inventory/InventoryView'
 import { ActivityView } from '@/components/inventory/ActivityView'
@@ -18,10 +18,10 @@ import { Sheet, Field, SheetActions } from '@/components/ui/Sheet'
 import { ToastProvider } from '@/components/ui/Toast'
 import { InsightPopup, InsightsBanner, InsightsSheet, type InsightSegment } from '@/components/insights/InsightsSheet'
 import { TipBulb, TipNudge, TipSheet, useFreshTip, type TipNavigate } from '@/components/ui/Tips'
-import { deriveInitials } from '@/lib/inventory-defaults'
+import { belowParOf, deriveInitials, stockStats } from '@/lib/inventory-defaults'
 import { displayBusinessName, type BusinessProfile } from '@/lib/business-types'
 import type { ProductCategory } from '@/lib/tax-categories'
-import { listProducts, getStats, getRecentMovements, getBelowPar } from '@/server/inventory.functions'
+import { listProducts, getRecentMovements } from '@/server/inventory.functions'
 import { getInsights } from '@/server/insights.functions'
 import type { Insights } from '@/lib/insights'
 import { addTeamMember, getBusinessProfile, listProductCategories, listTeamMembers } from '@/server/business.functions'
@@ -54,17 +54,15 @@ function tabFromHash(hash: string): { tab: Tab; restock?: RestockMode } | null {
 
 export const Route = createFileRoute('/')({
   loader: async () => {
-    const [products, stats, recent, belowPar, profile, team, categories, account] = await Promise.all([
+    const [products, recent, profile, team, categories, account] = await Promise.all([
       listProducts(),
-      getStats(),
       getRecentMovements({ data: { limit: 25 } }),
-      getBelowPar(),
       getBusinessProfile(),
       listTeamMembers(),
       listProductCategories(),
       getAccount(),
     ])
-    return { products, stats, recent, belowPar, profile, team, categories, account }
+    return { products, recent, profile, team, categories, account }
   },
   component: Home,
 })
@@ -73,9 +71,12 @@ function Home() {
   const initial = Route.useLoaderData()
   const [tab, setTab] = useState<Tab>('scan')
   const [products, setProducts] = useState<Product[]>(initial.products as Product[])
-  const [stats, setStats] = useState<Stats>(initial.stats as Stats)
   const [recent, setRecent] = useState<MovementRow[]>(initial.recent as MovementRow[])
-  const [belowPar, setBelowPar] = useState<Product[]>(initial.belowPar as Product[])
+  // Restock and the stat tiles come from the same list the Products tab shows, so every
+  // scan or edit moves all of them together.
+  const belowPar = useMemo(() => belowParOf(products), [products])
+  const stats = useMemo(() => stockStats(products), [products])
+  const refreshSeq = useRef(0)
   const [staffName, setStaffName] = useState('')
   const [hydrated, setHydrated] = useState(false)
   const [staffOpen, setStaffOpen] = useState(false)
@@ -176,23 +177,53 @@ function Home() {
     setInsightsOpen(true)
   }
 
-  async function refresh() {
-    loadInsights()
-    const [p, s, r, b] = await Promise.all([
-      listProducts(),
-      getStats(),
-      getRecentMovements({ data: { limit: 25 } }),
-      getBelowPar(),
-    ])
-    setProducts(p as Product[])
-    setStats(s as Stats)
-    setRecent(r as MovementRow[])
-    setBelowPar(b as Product[])
-    // Usage (products, team) shows on the Account page.
-    getAccount()
-      .then((acct) => setAccount(acct as AccountSummary))
-      .catch(() => {})
-  }
+  /** Drops a just-saved product into the list right away, before the full refresh lands. */
+  const applyProduct = useCallback((next: Product | null | undefined) => {
+    if (!next) return
+    setProducts((current) => {
+      const found = current.some((p) => p.id === next.id)
+      const merged = found ? current.map((p) => (p.id === next.id ? next : p)) : [...current, next]
+      return found ? merged : merged.sort((a, b) => a.name.localeCompare(b.name))
+    })
+  }, [])
+
+  /**
+   * Re-reads products and the recent feed. Each part updates on its own so one slow or
+   * failed call never leaves the rest stale, and only the newest refresh is applied so an
+   * older response can't overwrite a newer scan.
+   */
+  const refresh = useCallback(
+    async ({ quiet = false }: { quiet?: boolean } = {}) => {
+      const seq = ++refreshSeq.current
+      if (!quiet) loadInsights()
+      const [p, r] = await Promise.allSettled([listProducts(), getRecentMovements({ data: { limit: 25 } })])
+      if (seq !== refreshSeq.current) return
+      if (p.status === 'fulfilled') setProducts(p.value as Product[])
+      if (r.status === 'fulfilled') setRecent(r.value as MovementRow[])
+      if (quiet) return
+      // Usage (products, team) shows on the Account page.
+      getAccount()
+        .then((acct) => setAccount(acct as AccountSummary))
+        .catch(() => {})
+    },
+    [loadInsights],
+  )
+
+  // Other devices, the Square sync and imports change stock too: catch up when the app
+  // comes back to the foreground and every 30 seconds while it's open.
+  useEffect(() => {
+    const catchUp = () => {
+      if (document.visibilityState === 'visible') refresh({ quiet: true }).catch(() => {})
+    }
+    const timer = window.setInterval(catchUp, 30_000)
+    document.addEventListener('visibilitychange', catchUp)
+    window.addEventListener('focus', catchUp)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', catchUp)
+      window.removeEventListener('focus', catchUp)
+    }
+  }, [refresh])
 
   function openStaff() {
     setStaffDraft(staffName)
@@ -388,6 +419,7 @@ function Home() {
               recent={recent}
               products={products}
               belowParCount={belowPar.length}
+              onProduct={applyProduct}
               onChanged={refresh}
               onOpenRestock={() => {
                 setRestockMode('below-par')
@@ -396,7 +428,13 @@ function Home() {
             />
           )}
           {tab === 'products' && (
-            <InventoryView products={products} stats={stats} staffName={staffName} onChanged={refresh} />
+            <InventoryView
+              products={products}
+              stats={stats}
+              staffName={staffName}
+              onProduct={applyProduct}
+              onChanged={refresh}
+            />
           )}
           {tab === 'activity' && (
             <>

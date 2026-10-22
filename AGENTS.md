@@ -123,8 +123,10 @@ All database access goes through TanStack Start server functions in `src/server/
 ### Below par / restock threshold
 A product is below par once `qty <= reorderThreshold`. The threshold default and the par math live in
 `src/lib/inventory-defaults.ts` — change `DEFAULT_REORDER_THRESHOLD` there rather than hardcoding a number, and
-generate a migration if the column default itself changes. `findBelowParProducts` is the single source of truth for
-both the Below Par tab and the emailed list.
+generate a migration if the column default itself changes. `findBelowParProducts` builds the emailed list; in the app, Restock and the Products stat tiles are derived on the client from the same product list (`belowParOf` / `stockStats`, which mirror the server rules) so they always match. Scans and edits apply the returned product immediately, then `refresh()` re-reads; the app also refreshes every 30 s and on focus.
+
+### Email
+Restock lists and purchase orders send through Resend (`RESEND_API_KEY`) or SendGrid (`SENDGRID_API_KEY`). Resend sends from its shared address unless `RESTOCK_EMAIL_FROM` is set (retrying with the shared address if a custom sender is rejected); replies go to the business email. When no provider is set or sending fails, the server returns a `draft` and the app opens the device's mail app with it filled in (`src/lib/mail-draft.ts`).
 
 ### Business profile and types
 `useBusiness()` exposes the profile, the matching `BusinessType` (categories, sizes, expense categories, item noun used in AI prompts and chips) and the display name. Never hardcode the business name — use `displayBusinessName` / `useBusiness().name`.

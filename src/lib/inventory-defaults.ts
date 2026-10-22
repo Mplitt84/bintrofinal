@@ -66,3 +66,28 @@ export function deriveInitials(staffName: string) {
     .map((word) => word[0]!.toUpperCase())
     .join("");
 }
+
+type Stocked = { qty: number; reorderThreshold: number; name: string };
+
+/**
+ * Below-par products, worst shortfall first. Mirrors the server's
+ * findBelowParProducts so the Restock tab can be derived from the same product
+ * list the Products tab shows, and the two can never disagree.
+ */
+export function belowParOf<T extends Stocked>(all: T[]) {
+  return all
+    .filter(isBelowPar)
+    .sort((a, b) => b.reorderThreshold - b.qty - (a.reorderThreshold - a.qty) || a.name.localeCompare(b.name));
+}
+
+/** Header numbers for the Products tab, computed from the product list itself. */
+export function stockStats<T extends Stocked & { unitCostCents: number }>(all: T[]) {
+  return {
+    skuCount: all.length,
+    totalItems: all.reduce((sum, p) => sum + p.qty, 0),
+    lowStock: all.filter((p) => p.qty > 0 && p.qty <= p.reorderThreshold).length,
+    outOfStock: all.filter((p) => p.qty <= 0).length,
+    belowPar: all.filter(isBelowPar).length,
+    totalValueCents: all.reduce((sum, p) => sum + p.qty * p.unitCostCents, 0),
+  };
+}
