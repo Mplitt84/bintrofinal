@@ -4,6 +4,7 @@ import type { Product } from './types'
 import { emailBelowPar } from '@/server/inventory.functions'
 import { unitsToPar } from '@/lib/inventory-defaults'
 import { useBusiness } from '@/components/business/BusinessContext'
+import { mailtoHref, openMailDraft, type MailDraft } from '@/lib/mail-draft'
 import { EmptyState, PageHead, StatGrid, StatTile, Thumb, dollarsShort } from '@/components/ui/bits'
 
 type MailState =
@@ -11,6 +12,8 @@ type MailState =
   | { kind: 'sending' }
   | { kind: 'sent'; message: string }
   | { kind: 'error'; message: string }
+  /** The server couldn't send it, so the device's mail app was opened with it instead. */
+  | { kind: 'drafted'; message: string; draft: MailDraft }
 
 export function BelowParView({
   items,
@@ -24,23 +27,58 @@ export function BelowParView({
   onBuildOrder?: () => void
 }) {
   const [mail, setMail] = useState<MailState>({ kind: 'idle' })
-  const { profile } = useBusiness()
+  const { profile, name: businessName } = useBusiness()
   const sendTo = profile.orderEmail.trim() || profile.email.trim()
 
   const outOfStock = items.filter((p) => p.qty <= 0)
   const unitsNeeded = items.reduce((sum, p) => sum + (unitsToPar(p) || 1), 0)
   const restockCostCents = items.reduce((sum, p) => sum + (unitsToPar(p) || 1) * p.unitCostCents, 0)
 
+  /** Built from what's on screen, for when the server can't be reached at all. */
+  function localDraft(): MailDraft {
+    return {
+      to: sendTo,
+      subject: `${businessName} restock list — ${items.length} item${items.length === 1 ? '' : 's'} below par`,
+      text: [
+        `Products at or below their par level as of ${new Date().toLocaleString()}.`,
+        '',
+        ...items.map((p) => {
+          const bits = [p.brand, p.size].filter(Boolean).join(' ')
+          return `- ${bits ? `${p.name} (${bits})` : p.name} — on hand ${p.qty}, par ${p.reorderThreshold}, order ${unitsToPar(p) || 1}+`
+        }),
+        '',
+        staffName ? `Sent by ${staffName} from Bintro.` : 'Sent from Bintro.',
+      ].join('\n'),
+    }
+  }
+
+  function handOff(draft: MailDraft, why: string) {
+    openMailDraft(draft)
+    setMail({ kind: 'drafted', draft, message: `${why} Your mail app opened with the list filled in — tap Send there.` })
+  }
+
   async function handleEmail() {
     setMail({ kind: 'sending' })
-    const result = await emailBelowPar({ data: { staffName } })
-    if (result.ok) {
-      setMail({
-        kind: 'sent',
-        message: `Sent ${result.count} item${result.count === 1 ? '' : 's'} to ${result.to}.`,
-      })
-    } else {
-      setMail({ kind: 'error', message: result.message })
+    try {
+      // Fresh numbers first, so the email matches what was just scanned.
+      await onChanged()
+    } catch {
+      // Send what's on screen.
+    }
+    try {
+      const result = await emailBelowPar({ data: { staffName } })
+      if (result.ok) {
+        setMail({
+          kind: 'sent',
+          message: `Sent ${result.count} item${result.count === 1 ? '' : 's'} to ${result.to}.`,
+        })
+      } else if (result.draft) {
+        handOff(result.draft, result.reason === 'send_failed' ? "The email service didn't accept it." : result.message)
+      } else {
+        setMail({ kind: 'error', message: result.message })
+      }
+    } catch {
+      handOff(localDraft(), "Bintro couldn't reach the server.")
     }
   }
 
@@ -83,6 +121,14 @@ export function BelowParView({
       </div>
       {mail.kind === 'sent' && <p className="text-good text-sm font-semibold mt-1 mb-3">✓ {mail.message}</p>}
       {mail.kind === 'error' && <p className="text-bad text-sm mt-1 mb-3 max-w-[560px]">{mail.message}</p>}
+      {mail.kind === 'drafted' && (
+        <p className="text-ink-2 text-sm mt-1 mb-3 max-w-[560px]">
+          {mail.message}{' '}
+          <a href={mailtoHref(mail.draft)} className="text-action font-semibold">
+            Open it again
+          </a>
+        </p>
+      )}
 
       <div className="mt-4">
         {items.length === 0 ? (

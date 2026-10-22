@@ -1,7 +1,7 @@
 import { eq, desc, asc, like, or, sql, inArray, gte } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { products, movements } from "../../db/schema.js";
-import { DEFAULT_REORDER_THRESHOLD, clampOrderQty, deriveInitials, isBelowPar } from "../lib/inventory-defaults.js";
+import { DEFAULT_REORDER_THRESHOLD, clampOrderQty, deriveInitials, stockStats } from "../lib/inventory-defaults.js";
 import type { PurchaseOrderLine } from "../lib/purchase-order.js";
 
 export type Product = typeof products.$inferSelect;
@@ -234,21 +234,7 @@ export async function deleteProductById(productId: number) {
 }
 
 export async function computeStats() {
-  const all = await db.select().from(products);
-  const totalItems = all.reduce((sum, p) => sum + p.qty, 0);
-  const lowStock = all.filter((p) => p.qty > 0 && p.qty <= p.reorderThreshold).length;
-  const outOfStock = all.filter((p) => p.qty <= 0).length;
-  const belowPar = all.filter(isBelowPar).length;
-  const totalValueCents = all.reduce((sum, p) => sum + p.qty * p.unitCostCents, 0);
-
-  return {
-    skuCount: all.length,
-    totalItems,
-    lowStock,
-    outOfStock,
-    belowPar,
-    totalValueCents,
-  };
+  return stockStats(await db.select().from(products));
 }
 
 /**

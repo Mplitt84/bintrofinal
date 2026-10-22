@@ -16,12 +16,19 @@ import {
 } from '@/lib/purchase-order'
 import { businessSlug } from '@/lib/business-types'
 import { useBusiness } from '@/components/business/BusinessContext'
+import { mailtoHref, openMailDraft, type MailDraft } from '@/lib/mail-draft'
 
 /** The in-progress order lives on the device, so switching tabs never loses it. */
-const DRAFT_KEY = 'shagnoir-po-draft'
+const DRAFT_KEY = 'shagnoir-po-draft-v2'
+/** Older drafts saved every quantity, even untouched ones, so only their ticks carry over. */
+const LEGACY_DRAFT_KEY = 'shagnoir-po-draft'
 
-/** Per-product order state. `qty` stays a string so the field is comfortable to type in. */
-type DraftRow = { selected: boolean; qty: string }
+/**
+ * Per-product order state. `qty` is only set once staff type or step a quantity; until
+ * then the line follows the live on-hand count. It stays a string so the field is
+ * comfortable to type in.
+ */
+type DraftRow = { selected: boolean; qty?: string }
 type Draft = Record<number, DraftRow>
 
 type MailState =
@@ -29,6 +36,8 @@ type MailState =
   | { kind: 'sending' }
   | { kind: 'sent'; message: string }
   | { kind: 'error'; message: string }
+  /** The server couldn't send it, so the device's mail app was opened with it instead. */
+  | { kind: 'drafted'; message: string; draft: MailDraft }
 
 function resolveQty(raw: string) {
   return clampOrderQty(Number(raw))
@@ -52,16 +61,18 @@ function toLine(product: Product, qty: number): PurchaseOrderLine {
 
 function readDraft(): Draft {
   try {
-    const raw = window.localStorage.getItem(DRAFT_KEY)
+    const current = window.localStorage.getItem(DRAFT_KEY)
+    const raw = current ?? window.localStorage.getItem(LEGACY_DRAFT_KEY)
     if (!raw) return {}
     const parsed = JSON.parse(raw) as Record<string, { selected?: unknown; qty?: unknown }>
     const draft: Draft = {}
     for (const [id, row] of Object.entries(parsed)) {
       const productId = Number(id)
       if (!Number.isInteger(productId)) continue
+      const edited = current !== null && row?.qty !== undefined && row?.qty !== null
       draft[productId] = {
         selected: row?.selected === true,
-        qty: String(clampOrderQty(Number(row?.qty))),
+        ...(edited ? { qty: String(clampOrderQty(Number(row.qty))) } : {}),
       }
     }
     return draft
@@ -98,8 +109,9 @@ export function PurchaseOrderView({
     window.localStorage.setItem(DRAFT_KEY, JSON.stringify(pruned))
   }, [draft, items, hydrated])
 
-  function rowFor(product: Product): DraftRow {
-    return draft[product.id] ?? { selected: false, qty: String(suggestedOrderQty(product)) }
+  /** Hand-set quantity, else enough to reach par at today's on-hand count. */
+  function qtyFor(product: Product, row: DraftRow | undefined = draft[product.id]) {
+    return row?.qty ?? String(suggestedOrderQty(product))
   }
 
   function patchRows(productIds: number[], patch: (product: Product, row: DraftRow) => DraftRow) {
@@ -109,15 +121,14 @@ export function PurchaseOrderView({
       for (const id of productIds) {
         const product = items.find((p) => p.id === id)
         if (!product) continue
-        const row = current[id] ?? { selected: false, qty: String(suggestedOrderQty(product)) }
-        next[id] = patch(product, row)
+        next[id] = patch(product, current[id] ?? { selected: false })
       }
       return next
     })
   }
 
   const allLines = useMemo(
-    () => items.map((product) => toLine(product, resolveQty(rowFor(product).qty))),
+    () => items.map((product) => toLine(product, resolveQty(qtyFor(product)))),
     [items, draft],
   )
   const groups = useMemo(() => groupPurchaseOrderLines(allLines), [allLines])
@@ -145,18 +156,18 @@ export function PurchaseOrderView({
   function bumpQty(product: Product, step: number) {
     patchRows([product.id], (_product, row) => ({
       selected: true,
-      qty: String(clampOrderQty(resolveQty(row.qty) + step)),
+      qty: String(clampOrderQty(resolveQty(qtyFor(_product, row)) + step)),
     }))
   }
 
   function normaliseQty(product: Product) {
-    patchRows([product.id], (_product, row) => ({ ...row, qty: String(resolveQty(row.qty)) }))
+    patchRows([product.id], (_product, row) => (row.qty === undefined ? row : { ...row, qty: String(resolveQty(row.qty)) }))
   }
 
   function resetQuantities() {
     patchRows(
       items.map((p) => p.id),
-      (product, row) => ({ ...row, qty: String(suggestedOrderQty(product)) }),
+      (_product, row) => ({ selected: row.selected }),
     )
   }
 
@@ -184,21 +195,59 @@ export function PurchaseOrderView({
   async function emailOrder() {
     if (nothingSelected) return
     setMail({ kind: 'sending' })
-    const result = await emailPurchaseOrder({
-      data: {
-        lines: selectedLines.map((line) => ({ productId: line.productId, qty: clampOrderQty(line.qty) })),
-        staffName,
-        note: note.trim() || undefined,
-      },
-    })
-    if (result.ok) {
-      setMail({
-        kind: 'sent',
-        message: `Order for ${result.count} item${result.count === 1 ? '' : 's'} sent to ${result.to}.`,
+    try {
+      const result = await emailPurchaseOrder({
+        data: {
+          lines: selectedLines.map((line) => ({ productId: line.productId, qty: clampOrderQty(line.qty) })),
+          staffName,
+          note: note.trim() || undefined,
+        },
       })
-    } else {
-      setMail({ kind: 'error', message: result.message })
+      if (result.ok) {
+        setMail({
+          kind: 'sent',
+          message: `Order for ${result.count} item${result.count === 1 ? '' : 's'} sent to ${result.to}.`,
+        })
+      } else if (result.draft) {
+        handOff(result.draft, result.reason === 'send_failed' ? "The email service didn't accept it." : result.message)
+      } else {
+        setMail({ kind: 'error', message: result.message })
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      // Plan limits come back as errors and need an upgrade, not a mail-app draft.
+      if (/plan|upgrade/i.test(message)) setMail({ kind: 'error', message })
+      else handOff(localDraft(), "Bintro couldn't reach the server.")
     }
+  }
+
+  /** Built from what's on screen, for when the server can't be reached at all. */
+  function localDraft(): MailDraft {
+    const unitCount = selectedLines.reduce((sum, line) => sum + clampOrderQty(line.qty), 0)
+    return {
+      to: business.profile.orderEmail.trim() || business.profile.email.trim(),
+      subject: `${business.name} purchase order — ${selectedLines.length} item${selectedLines.length === 1 ? '' : 's'}, ${unitCount} unit${unitCount === 1 ? '' : 's'}`,
+      text: [
+        `Purchase order prepared ${new Date().toLocaleString()}.`,
+        '',
+        ...selectedLines.map((line) => {
+          const bits = [line.brand, line.size].filter(Boolean).join(' ')
+          return `- ${clampOrderQty(line.qty)} x ${bits ? `${line.name} (${bits})` : line.name} — barcode ${line.barcode}, on hand ${line.onHand}`
+        }),
+        ...(note.trim() ? ['', `Note: ${note.trim()}`] : []),
+        '',
+        staffName ? `Prepared by ${staffName} in Bintro.` : 'Prepared in Bintro.',
+      ].join('\n'),
+    }
+  }
+
+  function handOff(draft: MailDraft, why: string) {
+    openMailDraft(draft)
+    setMail({
+      kind: 'drafted',
+      draft,
+      message: `${why} Your mail app opened with the order filled in — tap Send there (use Download CSV to attach the file).`,
+    })
   }
 
   const head = (
@@ -293,6 +342,14 @@ export function PurchaseOrderView({
 
       {mail.kind === 'sent' && <p className="text-good text-sm font-semibold mb-3">✓ {mail.message}</p>}
       {mail.kind === 'error' && <p className="text-bad text-sm mb-3 max-w-[560px]">{mail.message}</p>}
+      {mail.kind === 'drafted' && (
+        <p className="text-ink-2 text-sm mb-3 max-w-[560px]">
+          {mail.message}{' '}
+          <a href={mailtoHref(mail.draft)} className="text-action font-semibold">
+            Open it again
+          </a>
+        </p>
+      )}
 
       {groups.map((group) => (
         <VendorGroup

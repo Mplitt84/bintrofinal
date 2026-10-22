@@ -6,18 +6,22 @@ import { Sheet } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
 import { EmptyState, PageHead, StatGrid, StatTile, Thumb, centsToDollars, dollarsShort } from '@/components/ui/bits'
 import { ProductForm } from './ProductForm'
+import { isBelowPar } from '@/lib/inventory-defaults'
 
-type StockFilter = 'all' | 'low' | 'out'
+type StockFilter = 'all' | 'below' | 'out'
 
 export function InventoryView({
   products,
   stats,
   staffName,
+  onProduct,
   onChanged,
 }: {
   products: Product[]
   stats: Stats
   staffName: string
+  /** Puts a saved product's new numbers on every tab immediately. */
+  onProduct?: (product: Product) => void
   onChanged: () => void | Promise<void>
 }) {
   const toast = useToast()
@@ -33,7 +37,7 @@ export function InventoryView({
   )
 
   const filtered = products.filter((p) => {
-    if (filter === 'low' && !(p.qty > 0 && p.qty <= p.reorderThreshold)) return false
+    if (filter === 'below' && !isBelowPar(p)) return false
     if (filter === 'out' && p.qty > 0) return false
     if (category !== 'all' && p.category !== category) return false
     if (query.trim()) {
@@ -59,7 +63,7 @@ export function InventoryView({
       <StatGrid>
         <StatTile label="Units on hand" value={stats.totalItems} />
         <StatTile label="Stock value" value={dollarsShort(stats.totalValueCents)} />
-        <StatTile label="Low stock" value={stats.lowStock} tone={stats.lowStock > 0 ? 'warn' : 'good'} />
+        <StatTile label="Below par" value={stats.belowPar} tone={stats.belowPar > 0 ? 'warn' : 'good'} />
         <StatTile label="Out of stock" value={stats.outOfStock} tone={stats.outOfStock > 0 ? 'bad' : 'good'} />
       </StatGrid>
 
@@ -76,9 +80,13 @@ export function InventoryView({
       </label>
 
       <div className="flex gap-2 overflow-x-auto pb-1 mb-4 items-center">
-        {(['all', 'low', 'out'] as const).map((f) => (
+        {(['all', 'below', 'out'] as const).map((f) => (
           <button key={f} className="chip" aria-pressed={filter === f} onClick={() => setFilter(f)}>
-            {f === 'all' ? `All ${stats.skuCount}` : f === 'low' ? 'Low stock' : 'Out of stock'}
+            {f === 'all'
+              ? `All ${stats.skuCount}`
+              : f === 'below'
+                ? `Below par${stats.belowPar ? ` ${stats.belowPar}` : ''}`
+                : `Out of stock${stats.outOfStock ? ` ${stats.outOfStock}` : ''}`}
           </button>
         ))}
         {categories.length > 0 && (
@@ -166,11 +174,12 @@ export function InventoryView({
             saveLabel="Save"
             onCancel={() => setEditing(null)}
             onSave={async ({ barcode, ...values }) => {
-              await updateProduct({ data: { productId: editing.id, ...values, staffName } })
+              let saved = (await updateProduct({ data: { productId: editing.id, ...values, staffName } })) as Product
               // The barcode has its own update path so a relink never touches stock.
               if (barcode !== editing.barcode) {
-                await linkBarcodeToProduct({ data: { productId: editing.id, barcode } })
+                saved = (await linkBarcodeToProduct({ data: { productId: editing.id, barcode } })) as Product
               }
+              if (saved) onProduct?.(saved)
               setEditing(null)
               await onChanged()
               toast(`Saved ${values.name}`)
@@ -198,7 +207,8 @@ export function InventoryView({
             saveLabel="Add product"
             onCancel={() => setAdding(false)}
             onSave={async (values) => {
-              await createProduct({ data: values })
+              const created = (await createProduct({ data: values })) as Product
+              if (created) onProduct?.(created)
               setAdding(false)
               await onChanged()
               toast(`Added ${values.name}`)
