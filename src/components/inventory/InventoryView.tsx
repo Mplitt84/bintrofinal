@@ -6,6 +6,7 @@ import { Sheet } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
 import { EmptyState, PageHead, StatGrid, StatTile, Thumb, centsToDollars, dollarsShort } from '@/components/ui/bits'
 import { ProductForm } from './ProductForm'
+import { stockStatus } from '@/lib/inventory-defaults'
 
 type StockFilter = 'all' | 'low' | 'out'
 
@@ -33,8 +34,8 @@ export function InventoryView({
   )
 
   const filtered = products.filter((p) => {
-    if (filter === 'low' && !(p.qty > 0 && p.qty <= p.reorderThreshold)) return false
-    if (filter === 'out' && p.qty > 0) return false
+    if (filter === 'low' && stockStatus(p) !== 'low') return false
+    if (filter === 'out' && stockStatus(p) !== 'out') return false
     if (category !== 'all' && p.category !== category) return false
     if (query.trim()) {
       const q = query.toLowerCase()
@@ -107,8 +108,9 @@ export function InventoryView({
       ) : (
         <ul className="list-none m-0 p-0">
           {filtered.map((p) => {
-            const out = p.qty <= 0
-            const low = !out && p.qty <= p.reorderThreshold
+            const status = stockStatus(p)
+            const out = status === 'out'
+            const low = status === 'low'
             return (
               <li key={p.id} className="flex items-center gap-3 py-3 border-b border-line last:border-b-0">
                 <Thumb imageUrl={p.imageUrl} label={p.brand || p.name} />

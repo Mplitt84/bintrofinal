@@ -156,10 +156,6 @@ export const undoMovement = createServerFn({ method: "POST" })
     return reverseAndDeleteMovement(data.movementId);
   });
 
-export const getBelowPar = createServerFn({ method: "GET" }).handler(async () => {
-  return findBelowParProducts();
-});
-
 export const emailBelowPar = createServerFn({ method: "POST" })
   .inputValidator((data: { staffName?: string }) => data)
   .handler(async ({ data }) => {

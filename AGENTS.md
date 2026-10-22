@@ -121,10 +121,8 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 All database access goes through TanStack Start server functions in `src/server/inventory.functions.ts`, which call helpers in `inventory.server.ts`. Never import `db/index.ts` directly from client components.
 
 ### Below par / restock threshold
-A product is below par once `qty <= reorderThreshold`. The threshold default and the par math live in
-`src/lib/inventory-defaults.ts` — change `DEFAULT_REORDER_THRESHOLD` there rather than hardcoding a number, and
-generate a migration if the column default itself changes. `findBelowParProducts` is the single source of truth for
-both the Below Par tab and the emailed list.
+Stock status has one rule, `stockStatus()` in `src/lib/inventory-defaults.ts`: **Out** = 0 on hand (blank/missing or negative counts as 0), **Low** = 1+ but at or below the product's `reorderThreshold`, **In stock** = above it; a threshold of 0 means no reorder point, so the product is never Low. Use it everywhere instead of comparing `qty` by hand. Change `DEFAULT_REORDER_THRESHOLD` there rather than hardcoding a number, and
+generate a migration if the column default itself changes. The Restock tab keeps no copy of its own: it derives its list with `selectBelowPar(products)` from the same `products` state the Products tab shows, and reloads products every time Restock opens. `findBelowParProducts` (restock email) applies the same `selectBelowPar` to the products table.
 
 ### Business profile and types
 `useBusiness()` exposes the profile, the matching `BusinessType` (categories, sizes, expense categories, item noun used in AI prompts and chips) and the display name. Never hardcode the business name — use `displayBusinessName` / `useBusiness().name`.
