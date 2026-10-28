@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { pgTable, serial, text, integer, timestamp, jsonb, boolean, unique } from "drizzle-orm/pg-core";
 
 export const products = pgTable("products", {
@@ -18,6 +19,8 @@ export const products = pgTable("products", {
   squareVariationId: text("square_variation_id").notNull().default(""),
   /** Product photo, usually filled in from the barcode database lookup. Empty when none. */
   imageUrl: text("image_url").notNull().default(""),
+  /** Extra barcodes / SKUs that scan to this product (e.g. a new UPC from the supplier). */
+  extraBarcodes: text("extra_barcodes").array().notNull().default(sql`'{}'::text[]`),
   /** When cost or retail price last changed or was confirmed. Null = never (falls back to createdAt for reminders). */
   priceUpdatedAt: timestamp("price_updated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

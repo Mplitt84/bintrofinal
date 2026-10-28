@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Check, Palette as PaletteIcon } from 'lucide-react'
+import { Check, Lightbulb, Palette as PaletteIcon } from 'lucide-react'
 import type { BusinessProfile } from '@/lib/business-types'
 import { PALETTES, PALETTE_FAMILIES, paletteById, type Palette } from '@/lib/palettes'
 import { updateBusinessProfile } from '@/server/business.functions'
 import { useToast } from '@/components/ui/Toast'
+import { TIP_INTERVAL_MINUTES, setTipPopups, useTipPopups } from '@/components/ui/Tips'
 
 /** Settings → Look & feel: pick a color palette that matches the business's brand. */
 export function AppearanceSettings({
@@ -57,7 +58,39 @@ export function AppearanceSettings({
           </div>
         </section>
       ))}
+
+      <TipSettings />
     </div>
+  )
+}
+
+/** Business tip pop-ups: on (every few minutes) or hidden for good on this device. */
+function TipSettings() {
+  const popups = useTipPopups()
+  return (
+    <section className="mt-8 pt-6 border-t border-line" aria-labelledby="tips-title">
+      <h2 id="tips-title" className="text-[18px] font-bold text-royal m-0 mb-1 flex items-center gap-2">
+        <Lightbulb size={18} className="text-gold-ink" /> Business tips
+      </h2>
+      <p className="text-ink-2 text-[13px] mt-0 mb-3">
+        Short tips on saving money, planning orders and cutting waste. This setting is for this device. The light bulb in
+        the header always opens every tip.
+      </p>
+      <label className="flex items-start justify-between gap-3 cursor-pointer border border-line rounded-2xl p-3.5">
+        <span className="text-sm">
+          <b className="block">Pop up a tip every {TIP_INTERVAL_MINUTES} minutes</b>
+          <span className="text-ink-2 text-[13px]">
+            {popups ? 'On. Turn off to hide tip pop-ups permanently.' : 'Hidden permanently. Turn on to see them again.'}
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          checked={popups}
+          onChange={(e) => setTipPopups(e.target.checked)}
+          className="w-5 h-5 mt-0.5 accent-[var(--color-action)] shrink-0"
+        />
+      </label>
+    </section>
   )
 }
 

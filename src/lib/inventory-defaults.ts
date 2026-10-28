@@ -3,14 +3,58 @@
 /** On-hand count at or below which a product is flagged for restock. */
 export const DEFAULT_REORDER_THRESHOLD = 2;
 
-/** A product is below par once its on-hand count reaches its reorder threshold. */
-export function isBelowPar(product: { qty: number; reorderThreshold: number }) {
-  return product.qty <= product.reorderThreshold;
+type StockLevels = { qty: number | null | undefined; reorderThreshold: number | null | undefined };
+
+/** On-hand count as a whole number; a blank or missing quantity counts as 0. */
+export function onHandQty(product: { qty: number | null | undefined }) {
+  const qty = Number(product.qty);
+  return Number.isFinite(qty) ? Math.trunc(qty) : 0;
+}
+
+/** Reorder point as a whole number; blank or missing means the product has none (0). */
+export function reorderPoint(product: { reorderThreshold: number | null | undefined }) {
+  const point = Number(product.reorderThreshold);
+  return Number.isFinite(point) && point > 0 ? Math.trunc(point) : 0;
+}
+
+export type StockStatus = "out" | "low" | "in";
+
+export const STOCK_STATUS_LABEL: Record<StockStatus, string> = { out: "Out", low: "Low", in: "In stock" };
+
+/**
+ * The one rule every screen and email uses:
+ * - Out: nothing on hand (0, blank, or below zero after over-scanning)
+ * - Low: 1 or more on hand, but at or under the product's reorder point
+ * - In stock: above the reorder point. A product with no reorder point is never Low.
+ */
+export function stockStatus(product: StockLevels): StockStatus {
+  const qty = onHandQty(product);
+  if (qty <= 0) return "out";
+  const point = reorderPoint(product);
+  return point > 0 && qty <= point ? "low" : "in";
+}
+
+/** A product needs restocking once it is Out or Low. */
+export function isBelowPar(product: StockLevels) {
+  return stockStatus(product) !== "in";
 }
 
 /** How many units it would take to get a product back to par. */
-export function unitsToPar(product: { qty: number; reorderThreshold: number }) {
-  return Math.max(0, product.reorderThreshold - product.qty);
+export function unitsToPar(product: StockLevels) {
+  return Math.max(0, reorderPoint(product) - onHandQty(product));
+}
+
+/**
+ * Products that need restocking, worst shortfall first. Restock, the restock email and
+ * the tab badge all derive from the same product rows through this, so they never disagree.
+ */
+export function selectBelowPar<T extends StockLevels & { name: string }>(products: T[]): T[] {
+  return products
+    .filter(isBelowPar)
+    .sort(
+      (a, b) =>
+        reorderPoint(b) - onHandQty(b) - (reorderPoint(a) - onHandQty(a)) || a.name.localeCompare(b.name),
+    );
 }
 
 /** Highest quantity a single purchase-order line may request. */
@@ -23,7 +67,7 @@ export const UNASSIGNED_VENDOR_LABEL = "Unassigned";
  * Units suggested for a purchase-order line. Mirrors the restock list: enough to
  * reach par, but never zero, so an at-par item still orders one unit.
  */
-export function suggestedOrderQty(product: { qty: number; reorderThreshold: number }) {
+export function suggestedOrderQty(product: StockLevels) {
   return unitsToPar(product) || 1;
 }
 
@@ -65,4 +109,16 @@ export function deriveInitials(staffName: string) {
     .slice(0, 2)
     .map((word) => word[0]!.toUpperCase())
     .join("");
+}
+
+/** Header numbers for the Products tab, computed from the product list with the same Out / Low rule. */
+export function stockStats<T extends StockLevels & { unitCostCents: number }>(all: T[]) {
+  return {
+    skuCount: all.length,
+    totalItems: all.reduce((sum, p) => sum + Math.max(0, onHandQty(p)), 0),
+    lowStock: all.filter((p) => stockStatus(p) === "low").length,
+    outOfStock: all.filter((p) => stockStatus(p) === "out").length,
+    belowPar: all.filter(isBelowPar).length,
+    totalValueCents: all.reduce((sum, p) => sum + onHandQty(p) * p.unitCostCents, 0),
+  };
 }

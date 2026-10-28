@@ -3,6 +3,7 @@ import { Check, ExternalLink, Mail, Plug, RefreshCw, Trash2, UserPlus, X } from 
 import type { IntegrationStatus, Product, TeamMember } from '@/components/inventory/types'
 import { ImportView } from '@/components/business/ImportView'
 import { AppearanceSettings } from '@/components/business/AppearanceSettings'
+import { ScannerSettings } from '@/components/business/ScannerSettings'
 import { AccountView, type AccountPanel } from '@/components/business/AccountView'
 import { PlanGate, UpgradeCard } from '@/components/business/PlanGate'
 import { businessTypeById, selectableBusinessTypes, type BusinessProfile } from '@/lib/business-types'
@@ -23,7 +24,15 @@ import {
 } from '@/server/business.functions'
 import { sendInsightReportNow } from '@/server/insights.functions'
 
-export type SettingsSection = 'profile' | 'appearance' | 'account' | 'categories' | 'team' | 'import' | 'integrations'
+export type SettingsSection =
+  | 'profile'
+  | 'appearance'
+  | 'account'
+  | 'categories'
+  | 'team'
+  | 'scanner'
+  | 'import'
+  | 'integrations'
 
 const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: 'profile', label: 'Business profile' },
@@ -31,6 +40,7 @@ const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: 'account', label: 'Account & billing' },
   { id: 'categories', label: 'Categories' },
   { id: 'team', label: 'Team' },
+  { id: 'scanner', label: 'Scanner & Bluetooth' },
   { id: 'import', label: 'Import inventory' },
   { id: 'integrations', label: 'Connections' },
 ]
@@ -101,6 +111,7 @@ export function SettingsView({
         </>
       )}
       {section === 'appearance' && <AppearanceSettings profile={profile} onProfile={onProfile} />}
+      {section === 'scanner' && <ScannerSettings />}
       {section === 'account' && <AccountView panel={accountPanel} onPanel={onAccountPanel} />}
       {section === 'categories' && <CategoryManager productCategories={products.map((p) => p.category)} />}
       {section === 'team' && (

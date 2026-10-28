@@ -9,9 +9,17 @@ import {
   type PurchaseOrderLine,
 } from "../lib/purchase-order.js";
 
+import type { MailDraft } from "../lib/mail-draft.js";
+
 export type SendResult =
   | { ok: true; to: string; count: number }
-  | { ok: false; reason: "not_configured" | "empty" | "send_failed"; message: string };
+  | {
+      ok: false;
+      reason: "not_configured" | "empty" | "send_failed";
+      message: string;
+      /** The same email as plain text, so the device's mail app can send it instead. */
+      draft?: MailDraft;
+    };
 
 /** Used when no sender is configured; Resend delivers from it without domain setup (to the account owner only). */
 const FALLBACK_FROM_ADDRESS = "onboarding@resend.dev";
@@ -26,11 +34,17 @@ function orderRecipient(profile: BusinessProfile) {
   return process.env.PURCHASE_ORDER_EMAIL_TO?.trim() || recipient(profile);
 }
 
-function sender(profile: BusinessProfile) {
+/**
+ * Providers only send from addresses they've verified. Resend's shared address always
+ * works, so it's the default there; replies still reach the business via Reply-To.
+ * SendGrid has no shared address, so it uses the business email (its verified sender).
+ */
+function sender(profile: BusinessProfile, provider: "resend" | "sendgrid") {
   const configured = process.env.RESTOCK_EMAIL_FROM?.trim();
   if (configured) return configured;
   const name = displayBusinessName(profile).replace(/[<>"]/g, "");
-  return `Bintro · ${name} <${profile.email.trim() || FALLBACK_FROM_ADDRESS}>`;
+  const address = provider === "sendgrid" ? profile.email.trim() || FALLBACK_FROM_ADDRESS : FALLBACK_FROM_ADDRESS;
+  return `Bintro · ${name} <${address}>`;
 }
 
 function formatDate() {
@@ -109,7 +123,7 @@ function buildHtml(items: Product[], staffName: string) {
 type Attachment = { filename: string; content: string; type: string };
 
 type MailPayload = {
-  from: string;
+  profile: BusinessProfile;
   to: string;
   subject: string;
   text: string;
@@ -117,7 +131,12 @@ type MailPayload = {
   attachments?: Attachment[];
 };
 
-async function sendWithResend(apiKey: string, payload: MailPayload) {
+function replyTo(profile: BusinessProfile) {
+  return profile.email.trim() || profile.orderEmail.trim();
+}
+
+async function sendWithResend(apiKey: string, payload: MailPayload, from: string) {
+  const reply = replyTo(payload.profile);
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -125,8 +144,9 @@ async function sendWithResend(apiKey: string, payload: MailPayload) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: payload.from,
+      from,
       to: [payload.to],
+      ...(reply ? { reply_to: reply } : {}),
       subject: payload.subject,
       text: payload.text,
       html: payload.html,
@@ -147,7 +167,8 @@ async function sendWithResend(apiKey: string, payload: MailPayload) {
 }
 
 async function sendWithSendGrid(apiKey: string, payload: MailPayload) {
-  const from = payload.from;
+  const from = sender(payload.profile, "sendgrid");
+  const reply = replyTo(payload.profile);
   const match = from.match(/^(.*)<(.+)>$/);
   const fromEmail = match ? match[2]!.trim() : from;
   const fromName = match ? match[1]!.trim().replace(/^"|"$/g, "") : undefined;
@@ -161,6 +182,7 @@ async function sendWithSendGrid(apiKey: string, payload: MailPayload) {
     body: JSON.stringify({
       personalizations: [{ to: [{ email: payload.to }] }],
       from: fromName ? { email: fromEmail, name: fromName } : { email: fromEmail },
+      ...(reply && reply !== fromEmail ? { reply_to: { email: reply } } : {}),
       subject: payload.subject,
       content: [
         { type: "text/plain", value: payload.text },
@@ -192,28 +214,43 @@ function providerKeys() {
   };
 }
 
-const NO_RECIPIENT: SendResult = {
+const NO_RECIPIENT: Extract<SendResult, { ok: false }> = {
   ok: false,
   reason: "not_configured",
   message: "Add an email address in Settings → Business profile so Bintro knows where to send this.",
 };
 
-const NOT_CONFIGURED: SendResult = {
+const NOT_CONFIGURED: Extract<SendResult, { ok: false }> = {
   ok: false,
   reason: "not_configured",
   message:
-    "Email is not configured yet. Add a RESEND_API_KEY (or SENDGRID_API_KEY) environment variable in Netlify, then try again.",
+    "Automatic email isn't set up on this site yet (it needs a RESEND_API_KEY or SENDGRID_API_KEY in Netlify).",
 };
 
-/** Sends through whichever provider is configured and normalises the outcome. */
+/**
+ * Sends through whichever provider is configured and normalises the outcome. Every
+ * failure carries a plain-text draft so the app can hand the email to the device's
+ * mail app instead, which means the list can always go out.
+ */
 async function deliver(payload: MailPayload, count: number): Promise<SendResult> {
+  const draft: MailDraft = { to: payload.to, subject: payload.subject, text: payload.text };
   const { resendKey, sendGridKey } = providerKeys();
-  if (!resendKey && !sendGridKey) return NOT_CONFIGURED;
-  if (!payload.to) return NO_RECIPIENT;
+  if (!resendKey && !sendGridKey) return { ...NOT_CONFIGURED, draft };
+  if (!payload.to) return { ...NO_RECIPIENT, draft };
 
   try {
     if (resendKey) {
-      await sendWithResend(resendKey, payload);
+      const from = sender(payload.profile, "resend");
+      try {
+        await sendWithResend(resendKey, payload, from);
+      } catch (error) {
+        // A custom sender on an unverified domain is the usual cause; Resend's shared
+        // address still delivers, so try once more with it.
+        const fallback = `Bintro · ${displayBusinessName(payload.profile).replace(/[<>"]/g, "")} <${FALLBACK_FROM_ADDRESS}>`;
+        if (from === fallback) throw error;
+        console.warn("Resend rejected the sender, retrying with the shared address", error);
+        await sendWithResend(resendKey, payload, fallback);
+      }
     } else {
       await sendWithSendGrid(sendGridKey!, payload);
     }
@@ -224,6 +261,7 @@ async function deliver(payload: MailPayload, count: number): Promise<SendResult>
       ok: false,
       reason: "send_failed",
       message: error instanceof Error ? error.message : "The email provider rejected the request.",
+      draft,
     };
   }
 }
@@ -243,7 +281,7 @@ export async function sendRestockEmail(
 
   return deliver(
     {
-      from: sender(profile),
+      profile,
       to: recipient(profile),
       subject: buildSubject(items, displayBusinessName(profile)),
       text: buildText(items, staffName),
@@ -367,7 +405,7 @@ export async function sendPurchaseOrderEmail(
 
   return deliver(
     {
-      from: sender(profile),
+      profile,
       to: orderRecipient(profile),
       subject: buildOrderSubject(lines, displayBusinessName(profile)),
       text: buildOrderText(lines, staffName, note),
@@ -471,7 +509,7 @@ export async function sendInsightReportEmail(
   const footer = "Sent automatically by Bintro. Turn these emails on or off in Settings → Business profile → Reports & alerts.";
   return deliver(
     {
-      from: sender(profile),
+      profile,
       to: reportRecipient(profile),
       subject: `${displayBusinessName(profile)} · ${report.subject}`,
       text: buildReportText(report.heading, report.summary, report.sections, footer),

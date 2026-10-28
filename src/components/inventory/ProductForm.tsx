@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Camera, Copy, ExternalLink, Globe, Lock, Plus, Sparkles, Tags, Wand2, X } from 'lucide-react'
 import type { Product } from './types'
-import { lookupBarcodeDetails, readLabelPhoto } from '@/server/inventory.functions'
+import { lookupBarcodeDetails, readLabelPhoto, readSpokenProduct } from '@/server/inventory.functions'
 import { saveProductCategories, suggestProduct } from '@/server/business.functions'
 import { checkWebPrice, confirmPrices } from '@/server/insights.functions'
 import { PRICE_STALE_DAYS, WEB_PRICE_SOURCE_LABELS, daysBetween, type WebPriceResult } from '@/lib/insights'
@@ -16,6 +16,7 @@ import { useBusiness } from '@/components/business/BusinessContext'
 import { CategorySetupSheet } from '@/components/business/CategorySetupSheet'
 import { categorySuggestionsFor, findCategory, guessTaxGroup, taxGroupById, type ProductCategory } from '@/lib/tax-categories'
 import { COPY_PROMPT_OFF_KEY, CopyPreviousSheet } from './CopyPreviousSheet'
+import { MicButton, SpeakDetails } from './VoiceInput'
 
 export type ProductFormValues = {
   barcode: string
@@ -29,6 +30,7 @@ export type ProductFormValues = {
   unitCostCents: number
   retailPriceCents: number
   imageUrl: string
+  extraBarcodes: string[]
 }
 
 type PriceState =
@@ -74,6 +76,9 @@ export function ProductForm({
   onDelete?: () => Promise<void>
 }) {
   const [barcode, setBarcode] = useState(product?.barcode ?? initialBarcode)
+  const [extraBarcodes, setExtraBarcodes] = useState<string[]>(product?.extraBarcodes ?? [])
+  const [extraDraft, setExtraDraft] = useState('')
+  const [extraOpen, setExtraOpen] = useState(false)
   const [name, setName] = useState(product?.name ?? '')
   const [brand, setBrand] = useState(product?.brand ?? '')
   const [vendor, setVendor] = useState(product?.vendor ?? '')
@@ -96,6 +101,7 @@ export function ProductForm({
   const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? '')
   const [prefill, setPrefill] = useState<Prefill>({ kind: 'none' })
   const [reading, setReading] = useState(false)
+  const [hearing, setHearing] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -372,6 +378,72 @@ export function ProductForm({
     }
   }
 
+  /** Talk-to-text: AI pulls the fields out of what was said; without AI it becomes the name. */
+  async function onSpoken(transcript: string) {
+    setError('')
+    if (!aiOn) {
+      setName(transcript.charAt(0).toUpperCase() + transcript.slice(1))
+      setPrefill({ kind: 'found', note: 'Heard you. Bintro Plus also picks out brand, size and prices.' })
+      return
+    }
+    setHearing(true)
+    try {
+      const r = await readSpokenProduct({ data: { transcript } })
+      if (!r.ok) {
+        setError(r.message)
+        return
+      }
+      // Speaking is deliberate, so what was said overrides what's typed.
+      if (r.brand) setBrand(r.brand)
+      if (r.name) setName(r.name)
+      if (r.size) setSize(r.size)
+      if (r.category) setCategory(r.category)
+      if (r.vendor) setVendor(r.vendor)
+      else setVendor((v) => v || vendorFor(r.brand || brand))
+      if (r.qty !== null) setQty(String(r.qty))
+      if (r.par !== null) setPar(String(r.par))
+      if (r.unitCostCents) setCost(centsToDollars(r.unitCostCents))
+      if (r.retailPriceCents) setRetail(centsToDollars(r.retailPriceCents))
+      if (r.unitCostCents || r.retailPriceCents) autoPriced.current = true
+      setPrefill({ kind: 'found', note: `Heard: “${transcript}”. Check it before saving.` })
+      maybeAutoPrice({
+        brand: r.brand || brand,
+        name: r.name || name,
+        size: r.size || size,
+        category: r.category || category,
+        vendor: r.vendor || vendor,
+      })
+    } catch {
+      setError("Couldn't fill that in. Check your connection and try again.")
+    } finally {
+      setHearing(false)
+    }
+  }
+
+
+  /** Saved extras plus whatever is still typed in the add box, so Save doesn't drop it. */
+  function pendingExtras() {
+    const draft = extraDraft.trim()
+    return draft && !extraBarcodes.includes(draft) ? [...extraBarcodes, draft] : extraBarcodes
+  }
+
+  function addExtra() {
+    const code = extraDraft.trim()
+    if (!code) return
+    if (code === barcode.trim() || extraBarcodes.includes(code)) {
+      setError('This product already scans with that code.')
+      return
+    }
+    const owner = products.find((p) => p.id !== product?.id && (p.barcode === code || p.extraBarcodes?.includes(code)))
+    if (owner) {
+      setError(`That code already belongs to ${owner.name}.`)
+      return
+    }
+    setError('')
+    setExtraBarcodes([...extraBarcodes, code])
+    setExtraDraft('')
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) {
@@ -397,6 +469,7 @@ export function ProductForm({
         unitCostCents: Math.max(0, Math.round((Number(cost) || 0) * 100)),
         retailPriceCents: Math.max(0, Math.round((Number(retail) || 0) * 100)),
         imageUrl,
+        extraBarcodes: pendingExtras().filter((c) => c !== barcode.trim()),
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : ''
@@ -435,6 +508,8 @@ export function ProductForm({
           <b>No match in the barcode databases.</b> Snap the front label and Bintro fills this in for you.
         </div>
       )}
+
+      <SpeakDetails aiOn={aiOn} busy={hearing} onTranscript={onSpoken} />
 
       <div className={`grid gap-2 mb-4 ${canCopy ? 'grid-cols-2' : ''}`}>
         <button
@@ -507,7 +582,7 @@ export function ProductForm({
       />
 
       <Field label="Product name" htmlFor="pf-name">
-        <div ref={nameRef}>
+        <div ref={nameRef} className="flex gap-2 [&>:first-child]:flex-1 [&>:first-child]:min-w-0">
           <AutoInput
             id="pf-name"
             value={name}
@@ -517,17 +592,27 @@ export function ProductForm({
             placeholder={copiedFrom ? `e.g. ${copiedFrom.name}` : 'Start typing — Bintro suggests as you go'}
             onBlur={() => setTimeout(() => maybeAutoPrice(), 150)}
           />
+          <MicButton label="product name" onText={setName} />
         </div>
       </Field>
       <Field label="Brand" htmlFor="pf-brand">
-        <AutoInput
-          id="pf-brand"
-          value={brand}
-          onChange={setBrand}
-          onPick={(b) => setVendor((v) => v || vendorFor(b))}
-          suggestions={brands}
-          onBlur={() => setVendor((v) => v || vendorFor(brand))}
-        />
+        <div className="flex gap-2 [&>:first-child]:flex-1 [&>:first-child]:min-w-0">
+          <AutoInput
+            id="pf-brand"
+            value={brand}
+            onChange={setBrand}
+            onPick={(b) => setVendor((v) => v || vendorFor(b))}
+            suggestions={brands}
+            onBlur={() => setVendor((v) => v || vendorFor(brand))}
+          />
+          <MicButton
+            label="brand"
+            onText={(b) => {
+              setBrand(b)
+              setVendor((v) => v || vendorFor(b))
+            }}
+          />
+        </div>
       </Field>
       <Field label="Category" htmlFor="pf-category">
         <div onFocus={maybeOfferCategories}>
@@ -589,17 +674,23 @@ export function ProductForm({
       )}
       {quickCategories.length > 0 && !category.trim() && <div className="mb-3" />}
       <Field label="Size" htmlFor="pf-size">
-        <AutoInput id="pf-size" value={size} onChange={setSize} suggestions={sizes} placeholder={type.sizes[0]} />
+        <div className="flex gap-2 [&>:first-child]:flex-1 [&>:first-child]:min-w-0">
+          <AutoInput id="pf-size" value={size} onChange={setSize} suggestions={sizes} placeholder={type.sizes[0]} />
+          <MicButton label="size" onText={setSize} />
+        </div>
       </Field>
       <QuickChips label="Common sizes" options={type.sizes} value={size} onPick={setSize} />
       <Field label="Buy it from" htmlFor="pf-vendor">
-        <AutoInput
-          id="pf-vendor"
-          value={vendor}
-          onChange={setVendor}
-          suggestions={vendors}
-          placeholder={type.vendorExample}
-        />
+        <div className="flex gap-2 [&>:first-child]:flex-1 [&>:first-child]:min-w-0">
+          <AutoInput
+            id="pf-vendor"
+            value={vendor}
+            onChange={setVendor}
+            suggestions={vendors}
+            placeholder={type.vendorExample}
+          />
+          <MicButton label="supplier" onText={setVendor} />
+        </div>
       </Field>
 
       <div className="bg-surface rounded-2xl p-3 mb-3">
@@ -750,6 +841,72 @@ export function ProductForm({
           </div>
         </Field>
       )}
+      {product && (
+        <div className="mt-3">
+          {extraBarcodes.length > 0 && (
+            <div className="mb-2">
+              <p className="text-ink-2 text-[13px] font-semibold m-0 mb-1.5">Also scans as</p>
+              <div className="flex flex-wrap gap-2">
+                {extraBarcodes.map((code) => (
+                  <span key={code} className="chip">
+                    {code}
+                    <button
+                      type="button"
+                      className="-mr-1 p-0.5 text-ink-2"
+                      aria-label={`Remove ${code}`}
+                      onClick={() => setExtraBarcodes(extraBarcodes.filter((c) => c !== code))}
+                    >
+                      <X size={14} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {extraOpen ? (
+            <Field label="Additional barcode or SKU" htmlFor="pf-extra-barcode">
+              <div className="flex gap-2">
+                <input
+                  id="pf-extra-barcode"
+                  className="field-input"
+                  autoComplete="off"
+                  autoFocus
+                  placeholder="Scan with a wand or type it"
+                  value={extraDraft}
+                  onChange={(e) => setExtraDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    // Hardware scanners end with Enter; add the code instead of submitting the form.
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      addExtra()
+                    }
+                  }}
+                />
+                {extraDraft.trim() ? (
+                  <button type="button" className="btn btn-tonal btn-sm shrink-0" onClick={addExtra}>
+                    Add
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-tonal btn-sm shrink-0"
+                    onClick={() => setExtraDraft(makeSku(products))}
+                    title="Make an internal code, e.g. for a refill or bundle"
+                  >
+                    <Wand2 size={16} />
+                    Make one
+                  </button>
+                )}
+              </div>
+            </Field>
+          ) : (
+            <button type="button" className="btn btn-text btn-sm" onClick={() => setExtraOpen(true)}>
+              <Plus size={16} />
+              Add another SKU
+            </button>
+          )}
+        </div>
+      )}
 
       {error && <p className="text-bad text-sm mt-3 mb-0">{error}</p>}
       {confirmDelete && !deleting && (
@@ -825,7 +982,7 @@ function uniq(values: string[]) {
 
 /** Short internal code for items that don't carry a barcode. */
 function makeSku(products: Product[]) {
-  const taken = new Set(products.map((p) => p.barcode))
+  const taken = new Set(products.flatMap((p) => [p.barcode, ...(p.extraBarcodes ?? [])]))
   let code = ''
   do {
     code = `BT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
