@@ -33,7 +33,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   ├── ui
 │   │   │   ├── Sheet.tsx     # Bottom sheet (dialog on desktop) + Field / SheetActions
 │   │   │   ├── Toast.tsx     # ToastProvider + useToast(message, onUndo?)
-│   │   │   ├── Tips.tsx      # Gold light-bulb tips: header TipBulb, TipSheet (browse by theme), once-a-day TipNudge pop-up
+│   │   │   ├── Tips.tsx      # Gold light-bulb tips: header TipBulb, TipSheet (browse by theme), TipNudge pop-up every 10 min (TIP_INTERVAL_MINUTES), useTipPopups/setTipPopups device on-off
 │   │   │   ├── AutoInput.tsx # Word-prediction input (dropdown, Tab accepts) + QuickChips one-tap choices
 │   │   │   └── bits.tsx      # StatTile/StatGrid, Thumb, EmptyState, PageHead, timeAgo, centsToDollars
 │   │   ├── insights
@@ -43,21 +43,29 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   │   ├── CategorySetupSheet.tsx # Category pop-up (per-type suggestions grouped by tax line) + CategoryManager for Settings
 │   │   │   ├── CalendarView.tsx     # Calendar tab: month grid, agenda, add to Google/Outlook/.ics, subscribe-feed sheet, quick-start events
 │   │   │   ├── BudgetView.tsx       # Budget tab: rolling monthly spend vs budget, chart, expenses, receipt AI, QuickBooks push, CSV
-│   │   │   ├── SettingsView.tsx     # Settings: business profile, account & billing, team members, inventory import, Square/QuickBooks integrations
+│   │   │   ├── SettingsView.tsx     # Settings: business profile, look & feel, account & billing, team, scanner & Bluetooth, inventory import, Square/QuickBooks integrations
+│   │   │   ├── AppearanceSettings.tsx # Settings → Look & feel: color palette picker (warm / cool / earthy / black & grey) + business tips on/off
+│   │   │   ├── ScannerSettings.tsx  # Settings → Scanner & Bluetooth: Web Bluetooth pairing, OS pairing steps, scanner test, ask-who's-scanning mode
 │   │   │   ├── AccountView.tsx      # Settings → Account & billing: plan summary, usage, plan picker, account details; Billing: card, pause, cancel, history
 │   │   │   ├── PlanGate.tsx         # PlanGate / UpgradeCard: locks a view or control behind the plan that includes a feature
 │   │   │   └── ImportView.tsx       # Settings → Import: upload CSV/PDF/photo of stock list or vendor invoice, review lines, AI prices, apply
 │   │   └── inventory
 │   │       ├── types.ts            # Shared Product / MovementRow / ActivityRow / Stats types
-│   │       ├── ScanView.tsx        # Scan tab: in/out switch, scan orb, wand capture, unknown-barcode sheet, today stats
+│   │       ├── ScanView.tsx        # Scan tab: in/out switch, scan orb, wand + BLE capture, unknown-barcode sheet, today stats
+│   │       ├── StaffPicker.tsx     # Centered "Who's scanning?" name-tile pop-up + per-device ask mode (every scan | after idle)
 │   │       ├── CameraScanner.tsx   # Full-screen html5-qrcode camera scanner (dynamically imported)
-│   │       ├── ProductForm.tsx     # Shared add/edit form: word prediction, quick chips, barcode lookup, AI label photo, AI price check
+│   │       ├── ProductForm.tsx     # Shared add/edit form: word prediction, quick chips, barcode lookup, AI label photo, AI price check, talk-to-text
+│   │       ├── VoiceInput.tsx      # SpeakDetails ("Speak product details" → AI fills the form) + per-field MicButton
 │   │       ├── InventoryView.tsx   # Products tab: stats, search, filters, list, add/edit sheets
 │   │       ├── ActivityView.tsx    # Activity tab: usage/receipts by period, brand and staff
 │   │       ├── RestockView.tsx     # Restock tab: segmented "1 · Below par" / "2 · Build order"
 │   │       ├── BelowParView.tsx    # Restock step 1: below-par list, email button, "Build vendor order"
 │   │       └── PurchaseOrderView.tsx  # Restock step 2: vendor-grouped PO with CSV/print/email
 │   ├── lib
+│   │   ├── speech.ts              # useDictation(): browser speech recognition (Chrome/Edge/Safari; not Firefox)
+│   │   ├── barcodes.ts            # checkUnknownScan: partial / mis-read barcode detection (length, GS1 check digit, UPC-E, fragment of a known code)
+│   │   ├── palettes.ts            # Display palettes (theme token sets) + paletteStyle() CSS vars
+│   │   ├── bluetooth-scanner.ts   # Web Bluetooth BLE-serial scanner connection (module singleton), code + state listeners
 │   │   ├── plans.ts               # Plan tiers (Free / Plus / Premium), prices, limits, features, AccountSummary type
 │   │   ├── bulk-import.ts         # Shared import types (ImportLine, ImportMode, price sources) and limits
 │   │   ├── business-types.ts      # Business types (beauty & wellness + bar; retail/bookstore legacy), sizes/expense categories, profile type, month/day helpers
@@ -66,6 +74,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   ├── tips.ts                # Tip content (save money, plan ahead, sustainability, smarter stock), per-tab/per-type ordering
 │   │   ├── images.ts              # shrinkImage: downscale photos to base64 JPEG before AI upload
 │   │   ├── inventory-defaults.ts  # Shared constants/helpers: DEFAULT_REORDER_THRESHOLD, par math, initials
+│   │   ├── palettes.ts            # Display palettes (theme token sets) + paletteStyle() CSS vars
 │   │   ├── purchase-order.ts      # PO grouping, totals, CSV
 │   │   └── tax-categories.ts      # Tax groups (Schedule C line, QuickBooks account, why), category suggestions per business type, guessTaxGroup
 │   ├── server
@@ -98,9 +107,9 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 
 ## Data Model
 
-- **products** — `barcode` (unique), `name`, `category`, `brand`, `size`, `qty`, `reorderThreshold` (defaults to `DEFAULT_REORDER_THRESHOLD`), `unitCostCents`, `retailPriceCents`, `vendor`, `imageUrl` (product photo from barcode lookup, empty string when none), `squareVariationId` (set by Square catalog import), `priceUpdatedAt` (set when cost/retail change or are confirmed; null = never, reminders fall back to `createdAt`).
+- **products** — `barcode` (unique), `name`, `category`, `brand`, `size`, `qty`, `reorderThreshold` (defaults to `DEFAULT_REORDER_THRESHOLD`), `unitCostCents`, `retailPriceCents`, `vendor`, `imageUrl` (product photo from barcode lookup, empty string when none), `extraBarcodes` (text[] of additional barcodes / SKUs that also scan to the product — added under "Add another SKU" in the Edit product sheet; `findProductByBarcode` and import matching check them, and `assertBarcodeFree` keeps every code unique across products), `squareVariationId` (set by Square catalog import), `priceUpdatedAt` (set when cost/retail change or are confirmed; null = never, reminders fall back to `createdAt`).
 - **movements** — an append-only log of every scan: `productId`, `type` (`in` | `out` | `adjust` | `receive`), `delta`, `staffName`, `staffInitials` (derived from the name, kept for older rows), timestamp. Used for the recent-activity feed and to support undo (undo reverses the delta and deletes the row). Deleting a product (Edit product sheet → Delete, tapped twice) also deletes its movements.
-- **business_profile** — single row (`id = 1`): `name`, `businessType` (id from `BUSINESS_TYPES`), `email`, `phone`, `address`, `website`, `orderEmail`, `monthlyBudgetCents`, `weeklyReportEmail` / `monthlyReportEmail` / `fastMoverAlertEmail` (insight email switches, default on), `calendarToken` (secret for the iCal feed URL; not part of the client profile type).
+- **business_profile** — single row (`id = 1`): `name`, `businessType` (id from `BUSINESS_TYPES`), `email`, `phone`, `address`, `website`, `orderEmail`, `monthlyBudgetCents`, `weeklyReportEmail` / `monthlyReportEmail` / `fastMoverAlertEmail` (insight email switches, default on), `palette` (display palette id from `src/lib/palettes.ts`, default `burgundy-olive`), `calendarToken` (secret for the iCal feed URL; not part of the client profile type).
 - **product_categories** — categories the business has added (`name` unique, matched case-insensitively on save) with a `taxGroup` id from `TAX_GROUPS`.
 - **calendar_events** — `title`, `kind` (reorder | delivery | count | bill | tax | task), `date` YYYY-MM-DD, `startTime` HH:MM or '' for all day, `durationMinutes`, `repeat` (none | weekly | monthly | quarterly | yearly), `notes`, `staffName`.
 - **team_members** — saved staff names (`name` unique).
@@ -115,16 +124,20 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 ## Key Concepts
 
 ### Scanning flow
-`scanMovement` (in `inventory.functions.ts`) looks up the product by barcode. If found, it applies the delta and logs a movement. If not found, the client opens a sheet to either link the barcode to an existing product or create a new one; the new-product form auto-runs `lookupBarcodeDetails` and can prefill from a label photo via `readLabelPhoto` (Claude through the Netlify AI Gateway, only available on deployed sites). Scans come from the camera (`CameraScanner`), a hardware wand (global keydown capture in `ScanView`), or typed entry.
+`scanMovement` (in `inventory.functions.ts`) looks up the product by barcode. If found, it applies the delta and logs a movement. If not found, the client opens a sheet to either link the barcode to an existing product or create a new one; the new-product form auto-runs `lookupBarcodeDetails` and can prefill from a label photo via `readLabelPhoto` (Claude through the Netlify AI Gateway, only available on deployed sites). Scans come from the camera (`CameraScanner`), a hardware wand (global keydown capture in `ScanView`), or typed entry. Camera, wand and Bluetooth codes that match no product and fail `checkUnknownScan` (all-digit codes under 8 digits, part of a stocked barcode, or a bad GS1 check digit) play `errorBuzz()` and show "Scan again" instead of the new-product sheet, with a "That's the full code — use it" escape; 2–3 character wand bursts get the same buzz. Typed codes are never checked.
+
+### Talk-to-text product entry
+`ProductForm` has a "Speak product details" button (`SpeakDetails`): the browser's speech recognition transcribes, then `readSpokenProduct` (AI, Plus) pulls out brand, name, size, category, vendor, count, par, cost and retail — only what was said overrides the form. Without AI the transcript becomes the name. Name, brand, size and supplier also have a per-field mic (`MicButton`, no plan needed). Mics hide on browsers without speech recognition.
 
 ### Server functions
 All database access goes through TanStack Start server functions in `src/server/inventory.functions.ts`, which call helpers in `inventory.server.ts`. Never import `db/index.ts` directly from client components.
 
 ### Below par / restock threshold
-A product is below par once `qty <= reorderThreshold`. The threshold default and the par math live in
-`src/lib/inventory-defaults.ts` — change `DEFAULT_REORDER_THRESHOLD` there rather than hardcoding a number, and
-generate a migration if the column default itself changes. `findBelowParProducts` is the single source of truth for
-both the Below Par tab and the emailed list.
+Stock status has one rule, `stockStatus()` in `src/lib/inventory-defaults.ts`: **Out** = 0 on hand (blank/missing or negative counts as 0), **Low** = 1+ but at or below the product's `reorderThreshold`, **In stock** = above it; a threshold of 0 means no reorder point, so the product is never Low. Use it everywhere instead of comparing `qty` by hand. Change `DEFAULT_REORDER_THRESHOLD` there rather than hardcoding a number, and
+generate a migration if the column default itself changes. The Restock tab keeps no copy of its own: it derives its list with `selectBelowPar(products)` and the Products stat tiles with `stockStats(products)` from the same `products` state the Products tab shows. `findBelowParProducts` (restock email) and `computeStats` apply the same helpers to the products table. Scans and edits apply the returned product immediately (`applyProduct`), then `refresh()` re-reads; the app also refreshes every 30 s, on focus, and whenever Restock opens.
+
+### Email
+Restock lists and purchase orders send through Resend (`RESEND_API_KEY`) or SendGrid (`SENDGRID_API_KEY`). Resend sends from its shared address unless `RESTOCK_EMAIL_FROM` is set (retrying with the shared address if a custom sender is rejected); replies go to the business email. When no provider is set or sending fails, the server returns a `draft` and the app opens the device's mail app with it filled in (`src/lib/mail-draft.ts`).
 
 ### Business profile and types
 `useBusiness()` exposes the profile, the matching `BusinessType` (categories, sizes, expense categories, item noun used in AI prompts and chips) and the display name. Never hardcode the business name — use `displayBusinessName` / `useBusiness().name`.
@@ -151,11 +164,14 @@ Tiers live in `src/lib/plans.ts` (prices, product/team limits, `Feature` ids). F
 Env vars: `SQUARE_APPLICATION_ID`, `SQUARE_APPLICATION_SECRET`, `SQUARE_ENVIRONMENT` (`sandbox` optional); `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_ENVIRONMENT` (`sandbox` optional). Redirect URLs are `<site>/api/integrations/{square|quickbooks}/callback`. Square: catalog import (matches by variation id, then UPC/SKU) and sales sync (completed orders → "out" movements by "Square POS", every 15 min). QuickBooks: pushes a month's expenses as Purchases, and stock spend per vendor once the month has ended.
 
 ### Staff attribution
-Staff set their name from the workspace pill in the header (opens a sheet with saved team members as one-tap chips; the team is managed in Settings); it is persisted to `localStorage` and passed down to
-each view, which forwards it to the server functions as `staffName`.
+Before each scan (orb tap, typed barcode, wand or Bluetooth scan) the Scan tab opens `StaffPicker`, a centered pop-up with a tile per saved team member (`askStaff()` in `index.tsx` returns a promise with the picked name). Settings → Scanner & Bluetooth can switch a device to ask only after 10 minutes without a scan (`shagnoir-ask-staff`). The header pill opens the same picker. The name is persisted to `localStorage` and passed down to
+each view, which forwards it to the server functions as `staffName`; new names join the team.
+
+### Bluetooth scanners
+Keyboard (HID) scanners pair in the OS Bluetooth settings (Settings shows the steps per device) and are caught by the Scan tab's keydown capture. Scanners with a BLE serial service can connect from Settings via Web Bluetooth (Chrome/Edge; not Safari/iOS) — `src/lib/bluetooth-scanner.ts` keeps the connection alive across tabs, auto-reconnects, and `ScanView` subscribes with `onBluetoothCode`.
 
 ### Styling
-Bintro uses a light theme with royal blue and gold accents. Tokens (`--color-page`, `surface`, `ink`, `line`, `action` royal blue, `royal`/`royal-2` deep blues, `gold`/`gold-bright`/`gold-ink`/`gold-tint`, `good`/`warn`/`bad` + `-tint`) live under `@theme` in `src/styles.css`, along with shared classes: `.brand-tile`, `.royal-rule`, `.tip-bulb`, `.tip-card`, `.btn` (`-primary`/`-gold`/`-tonal`/`-text`/`-danger`/`-sm`), `.chip` (uses `aria-pressed`), `.field-input`, `.orb`, `.skel`. Use bottom sheets (`Sheet`) for dialogs and `useToast` for confirmations. Gold is for accents and tips (use `gold-ink` for gold text on white); royal blue is for actions. New tips go in `src/lib/tips.ts`. localStorage keys keep their `shagnoir-` prefix so existing devices keep their data.
+Bintro's default theme is burgundy, olive and cream (`burgundy-olive`; the original royal blue & gold is the `royal` palette). Tokens keep their original names (`--color-page`, `surface`, `ink`, `line`, `action` = burgundy, `royal`/`royal-2` = deep burgundies, `gold`/`gold-bright`/`gold-ink`/`gold-tint` = olive accents, `good`/`warn`/`bad` + `-tint`) and live under `@theme` in `src/styles.css`, along with shared classes: `.brand-tile`, `.royal-rule`, `.tip-bulb`, `.tip-card`, `.btn` (`-primary`/`-gold`/`-tonal`/`-text`/`-danger`/`-sm`), `.chip` (uses `aria-pressed`), `.field-input`, `.orb`, `.skel`. The business's palette (Settings → Look & feel, `profile.palette`) overrides these tokens at runtime via `paletteStyle()` on `<html>` and the app wrapper, so never hardcode theme hex/rgba values — use the tokens or `color-mix()` on them. Use bottom sheets (`Sheet`) for dialogs and `useToast` for confirmations. Gold is for accents and tips (use `gold-ink` for gold text on white); the action color is for actions. New tips go in `src/lib/tips.ts`. localStorage keys keep their `shagnoir-` prefix so existing devices keep their data.
 
 ## Development Commands
 

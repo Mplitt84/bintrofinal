@@ -1,7 +1,7 @@
 import { eq, desc, asc, like, or, sql, inArray, gte } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { products, movements } from "../../db/schema.js";
-import { DEFAULT_REORDER_THRESHOLD, clampOrderQty, deriveInitials, isBelowPar } from "../lib/inventory-defaults.js";
+import { DEFAULT_REORDER_THRESHOLD, clampOrderQty, deriveInitials, onHandQty, selectBelowPar, stockStats } from "../lib/inventory-defaults.js";
 import type { PurchaseOrderLine } from "../lib/purchase-order.js";
 
 export type Product = typeof products.$inferSelect;
@@ -12,7 +12,24 @@ export async function findAllProducts() {
 }
 
 export async function findProductByBarcode(barcode: string) {
-  const rows = await db.select().from(products).where(eq(products.barcode, barcode));
+  const rows = await db
+    .select()
+    .from(products)
+    .where(or(eq(products.barcode, barcode), sql`${barcode} = any(${products.extraBarcodes})`))
+    .orderBy(sql`${products.barcode} = ${barcode} desc`)
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** The product (other than `exceptId`) that already scans with this code, as its main or an extra barcode. */
+export async function findBarcodeOwner(barcode: string, exceptId = 0) {
+  const rows = await db
+    .select()
+    .from(products)
+    .where(
+      sql`${products.id} <> ${exceptId} and (${products.barcode} = ${barcode} or ${barcode} = any(${products.extraBarcodes}))`,
+    )
+    .limit(1);
   return rows[0] ?? null;
 }
 
@@ -35,6 +52,7 @@ export async function searchProductsByText(query: string) {
       or(
         like(sql`lower(${products.name})`, q),
         like(sql`lower(${products.barcode})`, q),
+        like(sql`lower(array_to_string(${products.extraBarcodes}, ' '))`, q),
         like(sql`lower(${products.brand})`, q),
         like(sql`lower(${products.category})`, q),
       ),
@@ -97,6 +115,7 @@ export async function updateProductFields(
     unitCostCents: number;
     retailPriceCents: number;
     imageUrl: string;
+    extraBarcodes: string[];
   }>,
 ) {
   // Stamp the price date only when cost or retail actually changes, so the
@@ -234,33 +253,16 @@ export async function deleteProductById(productId: number) {
 }
 
 export async function computeStats() {
-  const all = await db.select().from(products);
-  const totalItems = all.reduce((sum, p) => sum + p.qty, 0);
-  const lowStock = all.filter((p) => p.qty > 0 && p.qty <= p.reorderThreshold).length;
-  const outOfStock = all.filter((p) => p.qty <= 0).length;
-  const belowPar = all.filter(isBelowPar).length;
-  const totalValueCents = all.reduce((sum, p) => sum + p.qty * p.unitCostCents, 0);
-
-  return {
-    skuCount: all.length,
-    totalItems,
-    lowStock,
-    outOfStock,
-    belowPar,
-    totalValueCents,
-  };
+  return stockStats(await db.select().from(products));
 }
 
 /**
- * Every product at or below its own par/reorder level, worst shortfall first.
- * Used by both the Below Par tab and the restock email so the two never disagree.
+ * Every product that is Out or Low, worst shortfall first, read live from the products
+ * table. The restock email uses this; the Restock tab derives the same list from the
+ * Products list with the same `selectBelowPar` rule.
  */
 export async function findBelowParProducts() {
-  return db
-    .select()
-    .from(products)
-    .where(sql`${products.qty} <= ${products.reorderThreshold}`)
-    .orderBy(sql`${products.reorderThreshold} - ${products.qty} desc`, asc(products.name));
+  return selectBelowPar(await findAllProducts());
 }
 
 /**
@@ -288,7 +290,7 @@ export async function buildPurchaseOrderLines(
         size: product.size,
         category: product.category,
         qty: clampOrderQty(request.qty),
-        onHand: product.qty,
+        onHand: Math.max(0, onHandQty(product)),
         reorderThreshold: product.reorderThreshold,
         unitCostCents: product.unitCostCents,
       },
