@@ -56,6 +56,8 @@ export const businessProfile = pgTable("business_profile", {
   monthlyReportEmail: boolean("monthly_report_email").notNull().default(true),
   /** Email as soon as items start selling out faster than expected. */
   fastMoverAlertEmail: boolean("fast_mover_alert_email").notNull().default(true),
+  /** Display color palette id from PALETTES (src/lib/palettes.ts), shared by every device. */
+  palette: text().notNull().default("burgundy-olive"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 

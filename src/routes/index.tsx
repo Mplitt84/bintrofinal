@@ -19,6 +19,7 @@ import { ToastProvider } from '@/components/ui/Toast'
 import { InsightPopup, InsightsBanner, InsightsSheet, type InsightSegment } from '@/components/insights/InsightsSheet'
 import { TipBulb, TipNudge, TipSheet, useFreshTip, type TipNavigate } from '@/components/ui/Tips'
 import { deriveInitials } from '@/lib/inventory-defaults'
+import { paletteStyle } from '@/lib/palettes'
 import { displayBusinessName, type BusinessProfile } from '@/lib/business-types'
 import type { ProductCategory } from '@/lib/tax-categories'
 import { listProducts, getStats, getRecentMovements, getBelowPar } from '@/server/inventory.functions'
@@ -124,7 +125,8 @@ function Home() {
           section === 'categories' ||
           section === 'team' ||
           section === 'import' ||
-          section === 'account'
+          section === 'account' ||
+          section === 'appearance'
           ? section
           : 'profile',
       )
@@ -151,6 +153,14 @@ function Home() {
   useEffect(() => {
     document.title = `Bintro — ${businessName}`
   }, [businessName])
+
+  // The palette goes on <html> too so sheets and pop-ups (portalled to <body>) pick it up.
+  const palette = paletteStyle(profile.palette)
+  useEffect(() => {
+    const root = document.documentElement
+    for (const [key, value] of Object.entries(palette)) root.style.setProperty(key, value)
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', palette['--color-page'])
+  }, [profile.palette])
 
   useEffect(() => {
     if (hydrated) window.localStorage.setItem(STAFF_NAME_KEY, staffName)
@@ -305,7 +315,7 @@ function Home() {
       openPlans={openPlans}
     >
     <ToastProvider>
-      <div className="min-h-dvh bg-page text-ink">
+      <div className="min-h-dvh bg-page text-ink" style={palette as React.CSSProperties}>
         <header className="sticky top-0 z-30 bg-page/95 backdrop-blur pt-[env(safe-area-inset-top)]">
           <div className="max-w-[1100px] mx-auto px-4 h-16 flex items-center gap-2 min-[420px]:gap-3">
             <div className="flex items-center gap-2.5 mr-auto">
@@ -445,7 +455,7 @@ function Home() {
         </main>
 
         <nav
-          className="min-[1060px]:hidden fixed bottom-0 inset-x-0 z-30 bg-page/95 backdrop-blur border-t border-line flex pb-[env(safe-area-inset-bottom)] print:hidden shadow-[0_-6px_20px_-12px_rgba(13,27,82,0.25)]"
+          className="min-[1060px]:hidden fixed bottom-0 inset-x-0 z-30 bg-page/95 backdrop-blur border-t border-line flex pb-[env(safe-area-inset-bottom)] print:hidden shadow-[0_-6px_20px_-12px_color-mix(in_srgb,var(--color-royal)_25%,transparent)]"
           aria-label="Sections"
         >
           {tabButtons('bar')}

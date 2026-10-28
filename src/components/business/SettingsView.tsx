@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Check, ExternalLink, Mail, Plug, RefreshCw, Trash2, UserPlus, X } from 'lucide-react'
 import type { IntegrationStatus, Product, TeamMember } from '@/components/inventory/types'
 import { ImportView } from '@/components/business/ImportView'
+import { AppearanceSettings } from '@/components/business/AppearanceSettings'
 import { AccountView, type AccountPanel } from '@/components/business/AccountView'
 import { PlanGate, UpgradeCard } from '@/components/business/PlanGate'
 import { businessTypeById, selectableBusinessTypes, type BusinessProfile } from '@/lib/business-types'
@@ -22,10 +23,11 @@ import {
 } from '@/server/business.functions'
 import { sendInsightReportNow } from '@/server/insights.functions'
 
-export type SettingsSection = 'profile' | 'account' | 'categories' | 'team' | 'import' | 'integrations'
+export type SettingsSection = 'profile' | 'appearance' | 'account' | 'categories' | 'team' | 'import' | 'integrations'
 
 const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: 'profile', label: 'Business profile' },
+  { id: 'appearance', label: 'Look & feel' },
   { id: 'account', label: 'Account & billing' },
   { id: 'categories', label: 'Categories' },
   { id: 'team', label: 'Team' },
@@ -98,6 +100,7 @@ export function SettingsView({
           <ReportSettings profile={profile} onProfile={onProfile} />
         </>
       )}
+      {section === 'appearance' && <AppearanceSettings profile={profile} onProfile={onProfile} />}
       {section === 'account' && <AccountView panel={accountPanel} onPanel={onAccountPanel} />}
       {section === 'categories' && <CategoryManager productCategories={products.map((p) => p.category)} />}
       {section === 'team' && (
