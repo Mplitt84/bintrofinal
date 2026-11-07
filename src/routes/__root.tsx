@@ -13,7 +13,7 @@ export const Route = createRootRoute({
         name: 'viewport',
         content: 'width=device-width, initial-scale=1, viewport-fit=cover',
       },
-      { name: 'theme-color', content: '#ffffff' },
+      { name: 'theme-color', content: '#fdf9f1' },
       { name: 'apple-mobile-web-app-capable', content: 'yes' },
       { name: 'apple-mobile-web-app-title', content: 'Bintro' },
       { name: 'apple-mobile-web-app-status-bar-style', content: 'default' },

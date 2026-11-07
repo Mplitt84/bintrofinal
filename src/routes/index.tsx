@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useCallback, useEffect, useState } from 'react'
-import { Activity, Boxes, CalendarDays, Check, Lock, ScanBarcode, Settings, Store, Truck, TriangleAlert, UserPlus, Wallet } from 'lucide-react'
-import type { MovementRow, Product, Stats, TeamMember } from '@/components/inventory/types'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Activity, Boxes, CalendarDays, Lock, ScanBarcode, Settings, Store, Truck, TriangleAlert, Wallet } from 'lucide-react'
+import type { MovementRow, Product, TeamMember } from '@/components/inventory/types'
 import { ScanView } from '@/components/inventory/ScanView'
 import { InventoryView } from '@/components/inventory/InventoryView'
 import { ActivityView } from '@/components/inventory/ActivityView'
@@ -14,14 +14,16 @@ import { PlanGate } from '@/components/business/PlanGate'
 import type { AccountPanel } from '@/components/business/AccountView'
 import { planHas, type AccountSummary, type Feature } from '@/lib/plans'
 import { getAccount } from '@/server/account.functions'
-import { Sheet, Field, SheetActions } from '@/components/ui/Sheet'
+import { StaffPicker, type StaffPrompt } from '@/components/inventory/StaffPicker'
 import { ToastProvider } from '@/components/ui/Toast'
 import { InsightPopup, InsightsBanner, InsightsSheet, type InsightSegment } from '@/components/insights/InsightsSheet'
 import { TipBulb, TipNudge, TipSheet, useFreshTip, type TipNavigate } from '@/components/ui/Tips'
-import { deriveInitials } from '@/lib/inventory-defaults'
+import { deriveInitials, selectBelowPar, stockStats } from '@/lib/inventory-defaults'
+import { paletteStyle } from '@/lib/palettes'
+import { reconnectSavedBluetoothScanner } from '@/lib/bluetooth-scanner'
 import { displayBusinessName, type BusinessProfile } from '@/lib/business-types'
 import type { ProductCategory } from '@/lib/tax-categories'
-import { listProducts, getStats, getRecentMovements, getBelowPar } from '@/server/inventory.functions'
+import { listProducts, getRecentMovements } from '@/server/inventory.functions'
 import { getInsights } from '@/server/insights.functions'
 import type { Insights } from '@/lib/insights'
 import { addTeamMember, getBusinessProfile, listProductCategories, listTeamMembers } from '@/server/business.functions'
@@ -54,17 +56,15 @@ function tabFromHash(hash: string): { tab: Tab; restock?: RestockMode } | null {
 
 export const Route = createFileRoute('/')({
   loader: async () => {
-    const [products, stats, recent, belowPar, profile, team, categories, account] = await Promise.all([
+    const [products, recent, profile, team, categories, account] = await Promise.all([
       listProducts(),
-      getStats(),
       getRecentMovements({ data: { limit: 25 } }),
-      getBelowPar(),
       getBusinessProfile(),
       listTeamMembers(),
       listProductCategories(),
       getAccount(),
     ])
-    return { products, stats, recent, belowPar, profile, team, categories, account }
+    return { products, recent, profile, team, categories, account }
   },
   component: Home,
 })
@@ -73,13 +73,16 @@ function Home() {
   const initial = Route.useLoaderData()
   const [tab, setTab] = useState<Tab>('scan')
   const [products, setProducts] = useState<Product[]>(initial.products as Product[])
-  const [stats, setStats] = useState<Stats>(initial.stats as Stats)
   const [recent, setRecent] = useState<MovementRow[]>(initial.recent as MovementRow[])
-  const [belowPar, setBelowPar] = useState<Product[]>(initial.belowPar as Product[])
+  // Restock and the stat tiles come from the same list the Products tab shows, so every
+  // scan or edit moves all of them together.
+  const belowPar = useMemo(() => selectBelowPar(products), [products])
+  const stats = useMemo(() => stockStats(products), [products])
+  const refreshSeq = useRef(0)
   const [staffName, setStaffName] = useState('')
   const [hydrated, setHydrated] = useState(false)
-  const [staffOpen, setStaffOpen] = useState(false)
-  const [staffDraft, setStaffDraft] = useState('')
+  const [staffPrompt, setStaffPrompt] = useState<StaffPrompt | null>(null)
+  const staffResolver = useRef<((name: string | null) => void) | null>(null)
   const [profile, setProfile] = useState<BusinessProfile>(initial.profile as BusinessProfile)
   const [team, setTeam] = useState<TeamMember[]>(initial.team as TeamMember[])
   const [categories, setCategories] = useState<ProductCategory[]>(initial.categories as ProductCategory[])
@@ -113,6 +116,7 @@ function Home() {
       if (next) setTab(next.tab)
     }
     window.addEventListener('hashchange', onHash)
+    reconnectSavedBluetoothScanner().catch(() => {})
 
     // Back from a Square / QuickBooks connection: open Settings and say how it went.
     const params = new URLSearchParams(window.location.search)
@@ -124,7 +128,9 @@ function Home() {
           section === 'categories' ||
           section === 'team' ||
           section === 'import' ||
-          section === 'account'
+          section === 'account' ||
+          section === 'appearance' ||
+          section === 'scanner'
           ? section
           : 'profile',
       )
@@ -152,6 +158,14 @@ function Home() {
     document.title = `Bintro — ${businessName}`
   }, [businessName])
 
+  // The palette goes on <html> too so sheets and pop-ups (portalled to <body>) pick it up.
+  const palette = paletteStyle(profile.palette)
+  useEffect(() => {
+    const root = document.documentElement
+    for (const [key, value] of Object.entries(palette)) root.style.setProperty(key, value)
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', palette['--color-page'])
+  }, [profile.palette])
+
   useEffect(() => {
     if (hydrated) window.localStorage.setItem(STAFF_NAME_KEY, staffName)
   }, [staffName, hydrated])
@@ -176,36 +190,82 @@ function Home() {
     setInsightsOpen(true)
   }
 
-  async function refresh() {
-    loadInsights()
-    const [p, s, r, b] = await Promise.all([
-      listProducts(),
-      getStats(),
-      getRecentMovements({ data: { limit: 25 } }),
-      getBelowPar(),
-    ])
-    setProducts(p as Product[])
-    setStats(s as Stats)
-    setRecent(r as MovementRow[])
-    setBelowPar(b as Product[])
-    // Usage (products, team) shows on the Account page.
-    getAccount()
-      .then((acct) => setAccount(acct as AccountSummary))
-      .catch(() => {})
+  /** Drops a just-saved product into the list right away, before the full refresh lands. */
+  const applyProduct = useCallback((next: Product | null | undefined) => {
+    if (!next) return
+    setProducts((current) => {
+      const found = current.some((p) => p.id === next.id)
+      const merged = found ? current.map((p) => (p.id === next.id ? next : p)) : [...current, next]
+      return found ? merged : merged.sort((a, b) => a.name.localeCompare(b.name))
+    })
+  }, [])
+
+  /**
+   * Re-reads products and the recent feed. Each part updates on its own so one slow or
+   * failed call never leaves the rest stale, and only the newest refresh is applied so an
+   * older response can't overwrite a newer scan.
+   */
+  const refresh = useCallback(
+    async ({ quiet = false }: { quiet?: boolean } = {}) => {
+      const seq = ++refreshSeq.current
+      if (!quiet) loadInsights()
+      const [p, r] = await Promise.allSettled([listProducts(), getRecentMovements({ data: { limit: 25 } })])
+      if (seq !== refreshSeq.current) return
+      if (p.status === 'fulfilled') setProducts(p.value as Product[])
+      if (r.status === 'fulfilled') setRecent(r.value as MovementRow[])
+      if (quiet) return
+      // Usage (products, team) shows on the Account page.
+      getAccount()
+        .then((acct) => setAccount(acct as AccountSummary))
+        .catch(() => {})
+    },
+    [loadInsights],
+  )
+
+  // Other devices, the Square sync and imports change stock too: catch up when the app
+  // comes back to the foreground and every 30 seconds while it's open.
+  useEffect(() => {
+    const catchUp = () => {
+      if (document.visibilityState === 'visible') refresh({ quiet: true }).catch(() => {})
+    }
+    const timer = window.setInterval(catchUp, 30_000)
+    document.addEventListener('visibilitychange', catchUp)
+    window.addEventListener('focus', catchUp)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', catchUp)
+      window.removeEventListener('focus', catchUp)
+    }
+  }, [refresh])
+
+  // Opening Restock always pulls fresh counts, so changes made on another device show up too.
+  useEffect(() => {
+    if (tab === 'restock') refresh({ quiet: true }).catch(() => {})
+  }, [tab, refresh])
+
+  /** Opens the centered name picker; resolves with the picked name, or null if it was closed. */
+  const askStaff = useCallback((prompt: StaffPrompt = {}) => {
+    staffResolver.current?.(null)
+    setStaffPrompt(prompt)
+    return new Promise<string | null>((resolve) => {
+      staffResolver.current = resolve
+    })
+  }, [])
+
+  function closeStaff(picked: string | null) {
+    setStaffPrompt(null)
+    const resolve = staffResolver.current
+    staffResolver.current = null
+    resolve?.(picked)
   }
 
-  function openStaff() {
-    setStaffDraft(staffName)
-    setStaffOpen(true)
-  }
-
-  async function saveStaff(e: React.FormEvent) {
-    e.preventDefault()
-    const next = staffDraft.trim().slice(0, 60)
+  async function pickStaff(member: string) {
+    const existing = team.find((m) => m.name.toLowerCase() === member.toLowerCase())
+    const next = existing?.name ?? member
     setStaffName(next)
-    setStaffOpen(false)
+    closeStaff(next)
     // New names join the saved team so they're one tap away next time, on every device.
-    if (next && !team.some((m) => m.name.toLowerCase() === next.toLowerCase())) {
+    if (!existing) {
       try {
         setTeam((await addTeamMember({ data: { name: next } })) as TeamMember[])
       } catch {
@@ -214,9 +274,8 @@ function Home() {
     }
   }
 
-  function pickStaff(member: string) {
-    setStaffName(member)
-    setStaffOpen(false)
+  function openStaff() {
+    askStaff()
   }
 
   function openPlans() {
@@ -226,7 +285,7 @@ function Home() {
 
   function openSettings(section: SettingsSection = 'profile') {
     setSettingsSection(section)
-    setStaffOpen(false)
+    closeStaff(null)
     selectTab('settings')
   }
 
@@ -305,7 +364,7 @@ function Home() {
       openPlans={openPlans}
     >
     <ToastProvider>
-      <div className="min-h-dvh bg-page text-ink">
+      <div className="min-h-dvh bg-page text-ink" style={palette as React.CSSProperties}>
         <header className="sticky top-0 z-30 bg-page/95 backdrop-blur pt-[env(safe-area-inset-top)]">
           <div className="max-w-[1100px] mx-auto px-4 h-16 flex items-center gap-2 min-[420px]:gap-3">
             <div className="flex items-center gap-2.5 mr-auto">
@@ -385,9 +444,11 @@ function Home() {
           {tab === 'scan' && (
             <ScanView
               staffName={staffName}
+              askStaff={askStaff}
               recent={recent}
               products={products}
               belowParCount={belowPar.length}
+              onProduct={applyProduct}
               onChanged={refresh}
               onOpenRestock={() => {
                 setRestockMode('below-par')
@@ -396,7 +457,13 @@ function Home() {
             />
           )}
           {tab === 'products' && (
-            <InventoryView products={products} stats={stats} staffName={staffName} onChanged={refresh} />
+            <InventoryView
+              products={products}
+              stats={stats}
+              staffName={staffName}
+              onProduct={applyProduct}
+              onChanged={refresh}
+            />
           )}
           {tab === 'activity' && (
             <>
@@ -433,6 +500,7 @@ function Home() {
               mode={restockMode}
               onMode={setRestockMode}
               items={belowPar}
+              products={products}
               staffName={staffName}
               onChanged={refresh}
             />
@@ -445,7 +513,7 @@ function Home() {
         </main>
 
         <nav
-          className="min-[1060px]:hidden fixed bottom-0 inset-x-0 z-30 bg-page/95 backdrop-blur border-t border-line flex pb-[env(safe-area-inset-bottom)] print:hidden shadow-[0_-6px_20px_-12px_rgba(13,27,82,0.25)]"
+          className="min-[1060px]:hidden fixed bottom-0 inset-x-0 z-30 bg-page/95 backdrop-blur border-t border-line flex pb-[env(safe-area-inset-bottom)] print:hidden shadow-[0_-6px_20px_-12px_color-mix(in_srgb,var(--color-royal)_25%,transparent)]"
           aria-label="Sections"
         >
           {tabButtons('bar')}
@@ -453,7 +521,7 @@ function Home() {
 
         <TipNudge
           tab={tab}
-          enabled={freshTip && !insightPopupShowing}
+          enabled={!insightPopupShowing}
           onSeen={markTipSeen}
           onOpenAll={() => setTipsOpen(true)}
           onNavigate={navigateFromTip}
@@ -474,55 +542,15 @@ function Home() {
         />
         <TipSheet open={tipsOpen} onClose={() => setTipsOpen(false)} tab={tab} onNavigate={navigateFromTip} />
 
-        <Sheet
-          open={staffOpen}
-          onClose={() => setStaffOpen(false)}
-          title="Who's working?"
-          subtitle="Scans, stock edits and expenses are logged under this name on this device."
-        >
-          {team.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="Team members">
-              {team.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  className="chip flex items-center gap-2 !pl-1.5"
-                  aria-pressed={m.name === name}
-                  onClick={() => pickStaff(m.name)}
-                >
-                  <span className="w-7 h-7 rounded-full bg-action text-white text-[12px] font-bold grid place-items-center">
-                    {deriveInitials(m.name)}
-                  </span>
-                  {m.name}
-                  {m.name === name && <Check size={16} />}
-                </button>
-              ))}
-            </div>
-          )}
-          <form onSubmit={saveStaff}>
-            <Field label={team.length ? 'Someone new' : 'Your name'} htmlFor="staff-name">
-              <input
-                id="staff-name"
-                value={staffDraft}
-                onChange={(e) => setStaffDraft(e.target.value.slice(0, 60))}
-                placeholder="Type a name"
-                autoComplete="name"
-                autoFocus={team.length === 0}
-                className="field-input"
-              />
-            </Field>
-            <p className="text-ink-2 text-[13px] m-0">New names are saved to your team list for next time.</p>
-            <SheetActions>
-              <button type="button" className="btn btn-tonal" onClick={() => openSettings('team')}>
-                Manage team
-              </button>
-              <button type="submit" className="btn btn-primary" disabled={!staffDraft.trim()}>
-                <UserPlus size={18} />
-                Save
-              </button>
-            </SheetActions>
-          </form>
-        </Sheet>
+        <StaffPicker
+          open={staffPrompt !== null}
+          prompt={staffPrompt ?? {}}
+          team={team}
+          current={name}
+          onPick={pickStaff}
+          onClose={() => closeStaff(null)}
+          onManageTeam={() => openSettings('team')}
+        />
       </div>
     </ToastProvider>
     </BusinessProvider>

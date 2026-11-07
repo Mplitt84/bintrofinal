@@ -167,6 +167,8 @@ export type BusinessProfile = {
   monthlyReportEmail: boolean
   /** Email as soon as items start selling out fast. */
   fastMoverAlertEmail: boolean
+  /** Display color palette id (see src/lib/palettes.ts). */
+  palette: string
 }
 
 export const EMPTY_PROFILE: BusinessProfile = {
@@ -181,6 +183,7 @@ export const EMPTY_PROFILE: BusinessProfile = {
   weeklyReportEmail: true,
   monthlyReportEmail: true,
   fastMoverAlertEmail: true,
+  palette: 'burgundy-olive',
 }
 
 export function displayBusinessName(profile: { name: string } | null | undefined) {

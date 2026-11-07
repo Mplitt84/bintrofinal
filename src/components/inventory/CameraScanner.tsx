@@ -13,10 +13,13 @@ export function CameraScanner({
   open,
   onClose,
   onScan,
+  onTypeInstead,
 }: {
   open: boolean
   onClose: () => void
   onScan: (code: string) => void
+  /** Offered when the camera can't start, so staff are never stuck. */
+  onTypeInstead?: () => void
 }) {
   const [message, setMessage] = useState('')
   const scannerRef = useRef<ScannerHandle | null>(null)
@@ -38,38 +41,58 @@ export function CameraScanner({
       }
       if (cancelled) return
       const F = lib.Html5QrcodeSupportedFormats
-      const scanner = new lib.Html5Qrcode(READER_ID, {
-        verbose: false,
-        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-        formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.ITF, F.QR_CODE],
-      })
-      scannerRef.current = scanner
+      const formatsToSupport = [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.ITF, F.QR_CODE]
       let handled = false
-      try {
-        await scanner.start(
-          { facingMode: 'environment' },
-          {
-            fps: 12,
-            qrbox: (w: number, h: number) => ({
-              width: Math.floor(Math.min(w * 0.82, 340)),
-              height: Math.floor(Math.min(h * 0.32, 170)),
-            }),
-          },
-          (text: string) => {
-            if (handled) return
-            handled = true
-            stopScanner().then(() => onScanRef.current(text))
-          },
-          () => {},
-        )
-        if (cancelled) await stopScanner()
-      } catch {
-        scannerRef.current = null
-        if (!cancelled) {
-          setMessage(
-            'Bintro needs camera access to scan. Allow the camera in your browser settings, then try again. You can also use a Bluetooth or USB scanner, or type the code.',
-          )
+      const onDecoded = (text: string) => {
+        if (handled) return
+        handled = true
+        stopScanner().then(() => onScanRef.current(text.trim()))
+      }
+      const config = {
+        fps: 12,
+        qrbox: (w: number, h: number) => ({
+          width: Math.max(80, Math.floor(Math.min(w * 0.82, 340))),
+          height: Math.max(60, Math.floor(Math.min(h * 0.32, 170))),
+        }),
+      }
+
+      // The browser's native barcode detector is fastest, but some devices advertise it and
+      // then fail; fall back to the built-in decoder before giving up on the camera.
+      let lastError: unknown
+      for (const native of [true, false]) {
+        if (cancelled) return
+        let scanner: InstanceType<typeof lib.Html5Qrcode>
+        try {
+          scanner = new lib.Html5Qrcode(READER_ID, {
+            verbose: false,
+            experimentalFeatures: { useBarCodeDetectorIfSupported: native },
+            formatsToSupport,
+          })
+        } catch (error) {
+          lastError = error
+          continue
         }
+        scannerRef.current = scanner
+        try {
+          await scanner.start({ facingMode: 'environment' }, config, onDecoded, () => {})
+          // Closed while the camera was starting: stop this scanner, not whatever the ref holds now.
+          if (cancelled) await stopScanner(scanner)
+          return
+        } catch (error) {
+          lastError = error
+          await stopScanner(scanner)
+          // Permission and missing-camera errors won't change with another decoder.
+          const name = error instanceof Error ? error.name : String(error)
+          if (/NotAllowed|Permission|NotFound|NotReadable|Overconstrained/i.test(name + String(error))) break
+        }
+      }
+      if (!cancelled) {
+        console.error('Camera scanner failed to start', lastError)
+        setMessage(
+          window.isSecureContext === false
+            ? 'The camera only works on the secure (https://) address of this site. You can also use a Bluetooth or USB scanner, or type the code.'
+            : 'Bintro needs camera access to scan. Allow the camera in your browser settings, then try again. You can also use a Bluetooth or USB scanner, or type the code.',
+        )
       }
     }
 
@@ -80,15 +103,18 @@ export function CameraScanner({
     }
   }, [open])
 
-  async function stopScanner() {
-    const scanner = scannerRef.current
-    scannerRef.current = null
-    if (!scanner) return
+  async function stopScanner(target: ScannerHandle | null = scannerRef.current) {
+    if (!target) return
+    if (scannerRef.current === target) scannerRef.current = null
     try {
-      await scanner.stop()
-      scanner.clear()
+      await target.stop()
     } catch {
-      // Already stopped.
+      // Already stopped, or never started.
+    }
+    try {
+      target.clear()
+    } catch {
+      // Nothing to clear.
     }
   }
 
@@ -118,7 +144,14 @@ export function CameraScanner({
         {/* html5-qrcode owns this node's children, so React never renders into it. */}
         <div id={READER_ID} className="absolute inset-0" />
         {message && (
-          <p className="absolute inset-0 m-auto h-fit text-white text-center px-6 py-10 max-w-[420px]">{message}</p>
+          <div className="absolute inset-0 m-auto h-fit text-white text-center px-6 py-10 max-w-[420px]">
+            <p className="m-0 mb-4">{message}</p>
+            {onTypeInstead && (
+              <button className="btn btn-primary" onClick={onTypeInstead}>
+                Type the barcode
+              </button>
+            )}
+          </div>
         )}
       </div>
       <div className="text-white text-center px-5 pt-4 pb-[calc(24px+env(safe-area-inset-bottom,0px))] text-[15px]">

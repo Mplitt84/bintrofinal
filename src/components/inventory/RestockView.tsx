@@ -13,12 +13,15 @@ export function RestockView({
   mode,
   onMode,
   items,
+  products,
   staffName,
   onChanged,
 }: {
   mode: RestockMode
   onMode: (m: RestockMode) => void
   items: Product[]
+  /** Every product, straight from the Products list; `items` is the below-par subset of it. */
+  products: Product[]
   staffName: string
   onChanged: () => void | Promise<void>
 }) {
@@ -49,7 +52,7 @@ export function RestockView({
         ))}
       </div>
       {mode === 'below-par' ? (
-        <BelowParView items={items} staffName={staffName} onChanged={onChanged} onBuildOrder={() => onMode('order')} />
+        <BelowParView items={items} products={products} staffName={staffName} onChanged={onChanged} onBuildOrder={() => onMode('order')} />
       ) : (
         <PlanGate feature="orders">
           <PurchaseOrderView items={items} staffName={staffName} onChanged={onChanged} />

@@ -12,6 +12,8 @@ export type Product = {
   retailPriceCents: number;
   squareVariationId: string;
   imageUrl: string;
+  /** Additional barcodes / SKUs that also scan to this product. */
+  extraBarcodes: string[];
   /** When cost / retail last changed or were confirmed; null = never. */
   priceUpdatedAt: string | Date | null;
   createdAt: string | Date;

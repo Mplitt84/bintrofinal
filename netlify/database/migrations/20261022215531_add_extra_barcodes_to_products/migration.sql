@@ -1,0 +1,1 @@
+ALTER TABLE "products" ADD COLUMN "extra_barcodes" text[] DEFAULT '{}'::text[] NOT NULL;

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { pgTable, serial, text, integer, timestamp, jsonb, boolean, unique } from "drizzle-orm/pg-core";
 
 export const products = pgTable("products", {
@@ -18,6 +19,8 @@ export const products = pgTable("products", {
   squareVariationId: text("square_variation_id").notNull().default(""),
   /** Product photo, usually filled in from the barcode database lookup. Empty when none. */
   imageUrl: text("image_url").notNull().default(""),
+  /** Extra barcodes / SKUs that scan to this product (e.g. a new UPC from the supplier). */
+  extraBarcodes: text("extra_barcodes").array().notNull().default(sql`'{}'::text[]`),
   /** When cost or retail price last changed or was confirmed. Null = never (falls back to createdAt for reminders). */
   priceUpdatedAt: timestamp("price_updated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -56,6 +59,8 @@ export const businessProfile = pgTable("business_profile", {
   monthlyReportEmail: boolean("monthly_report_email").notNull().default(true),
   /** Email as soon as items start selling out faster than expected. */
   fastMoverAlertEmail: boolean("fast_mover_alert_email").notNull().default(true),
+  /** Display color palette id from PALETTES (src/lib/palettes.ts), shared by every device. */
+  palette: text().notNull().default("burgundy-olive"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 

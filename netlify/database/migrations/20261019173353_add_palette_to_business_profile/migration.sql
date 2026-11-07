@@ -1,0 +1,1 @@
+ALTER TABLE "business_profile" ADD COLUMN "palette" text DEFAULT 'royal' NOT NULL;

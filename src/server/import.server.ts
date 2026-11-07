@@ -134,7 +134,12 @@ function findMatch(line: RawLine, all: Product[], minScore = MATCH_SCORE): Produ
   const code = line.barcode.trim();
   if (code) {
     const d = digits(code);
-    const hit = all.find((p) => p.barcode === code || (d.length >= 6 && digits(p.barcode) === d));
+    const hit = all.find(
+      (p) =>
+        p.barcode === code ||
+        p.extraBarcodes.includes(code) ||
+        (d.length >= 6 && [p.barcode, ...p.extraBarcodes].some((b) => digits(b) === d)),
+    );
     if (hit) return hit;
   }
   if (!line.name) return null;
@@ -231,7 +236,7 @@ export async function applyImportLines(params: {
 }): Promise<ImportSummary> {
   const all = await findAllProducts();
   const byId = new Map(all.map((p) => [p.id, p]));
-  const taken = new Set(all.map((p) => p.barcode));
+  const taken = new Set(all.flatMap((p) => [p.barcode, ...p.extraBarcodes]));
   const note = `Import: ${params.source}`.slice(0, 200);
   const summary: ImportSummary = { created: 0, updated: 0, priced: 0, units: 0 };
 

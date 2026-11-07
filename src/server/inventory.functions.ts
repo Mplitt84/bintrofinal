@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   findAllProducts,
   findProductByBarcode,
+  findBarcodeOwner,
   findProductById,
   searchProductsByText,
   insertProduct,
@@ -18,7 +19,7 @@ import {
   buildPurchaseOrderLines,
 } from "./inventory.server.js";
 import { sendPurchaseOrderEmail, sendRestockEmail } from "./email.server.js";
-import { lookupBarcodeOnline, readProductLabel } from "./product-lookup.server.js";
+import { lookupBarcodeOnline, parseSpokenProduct, readProductLabel } from "./product-lookup.server.js";
 import { findBusinessContext, findBusinessProfile } from "./business.server.js";
 import { MAX_ORDER_QTY } from "../lib/inventory-defaults.js";
 import { assertFeature, assertProductRoom } from "./account.server.js";
@@ -75,12 +76,14 @@ export const createProduct = createServerFn({ method: "POST" })
   .inputValidator(CreateProductSchema)
   .handler(async ({ data }) => {
     await assertProductRoom();
+    await assertBarcodeFree(data.barcode.trim());
     return insertProduct(data);
   });
 
 export const linkBarcodeToProduct = createServerFn({ method: "POST" })
   .inputValidator((data: { productId: number; barcode: string }) => data)
   .handler(async ({ data }) => {
+    await assertBarcodeFree(data.barcode.trim(), data.productId);
     return updateProductBarcode(data.productId, data.barcode.trim());
   });
 
@@ -96,13 +99,28 @@ const UpdateProductSchema = z.object({
   retailPriceCents: z.number().int().min(0).optional(),
   qty: z.number().int().optional(),
   imageUrl: z.string().max(2000).optional(),
+  /** Additional barcodes / SKUs that also scan to this product. */
+  extraBarcodes: z.array(z.string().max(64)).max(20).optional(),
   staffName: z.string().optional(),
 });
+
+/** Throws (with "duplicate" in the message, which the form shows as a clash) when another product scans with this code. */
+async function assertBarcodeFree(barcode: string, exceptId?: number) {
+  const owner = await findBarcodeOwner(barcode, exceptId);
+  if (owner) throw new Error(`duplicate barcode: ${barcode} already belongs to ${owner.name}`);
+}
 
 export const updateProduct = createServerFn({ method: "POST" })
   .inputValidator(UpdateProductSchema)
   .handler(async ({ data }) => {
-    const { productId, qty, staffName, ...rest } = data;
+    const { productId, qty, staffName, extraBarcodes, ...rest } = data;
+    let extras: string[] | undefined;
+    if (extraBarcodes !== undefined) {
+      const current = await findProductById(productId);
+      const main = current?.barcode ?? "";
+      extras = Array.from(new Set(extraBarcodes.map((c) => c.trim()).filter((c) => c && c !== main)));
+      for (const code of extras) await assertBarcodeFree(code, productId);
+    }
     if (qty !== undefined) {
       const current = await findProductById(productId);
       if (current && qty !== current.qty) {
@@ -115,7 +133,7 @@ export const updateProduct = createServerFn({ method: "POST" })
         });
       }
     }
-    return updateProductFields(productId, rest);
+    return updateProductFields(productId, extras === undefined ? rest : { ...rest, extraBarcodes: extras });
   });
 
 export const deleteProduct = createServerFn({ method: "POST" })
@@ -155,10 +173,6 @@ export const undoMovement = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     return reverseAndDeleteMovement(data.movementId);
   });
-
-export const getBelowPar = createServerFn({ method: "GET" }).handler(async () => {
-  return findBelowParProducts();
-});
 
 export const emailBelowPar = createServerFn({ method: "POST" })
   .inputValidator((data: { staffName?: string }) => data)
@@ -211,4 +225,12 @@ export const readLabelPhoto = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     await assertFeature("ai");
     return readProductLabel(data.image, data.mediaType, await findBusinessContext());
+  });
+
+/** Talk-to-text: turns a spoken product description into form fields with AI. */
+export const readSpokenProduct = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ transcript: z.string().trim().min(1).max(1000) }))
+  .handler(async ({ data }) => {
+    await assertFeature("ai");
+    return parseSpokenProduct(data.transcript, await findBusinessContext());
   });

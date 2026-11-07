@@ -321,6 +321,90 @@ Fix spelling and capitalisation, fill in anything missing that you're confident 
   };
 }
 
+export type SpokenProductResult =
+  | {
+      ok: true;
+      brand: string;
+      name: string;
+      size: string;
+      category: string;
+      vendor: string;
+      /** Null when not mentioned, so the form keeps what's there. */
+      qty: number | null;
+      par: number | null;
+      unitCostCents: number;
+      retailPriceCents: number;
+    }
+  | { ok: false; message: string };
+
+function spokenTool(itemNoun: string, categories: string[]): ToolSpec {
+  return {
+    name: "record_spoken_product",
+    description: "Record the product details staff said out loud.",
+    input_schema: {
+      type: "object",
+      properties: {
+        brand: { type: "string", description: "Brand or manufacturer, properly spelled and capitalised. Empty if not said." },
+        name: { type: "string", description: `Product name with line, variant or shade, as a ${itemNoun} would be listed. Empty if not said.` },
+        size: { type: "string", description: "Size written compactly, e.g. 300 ml, 8.5 oz, 750 ml. Empty if not said." },
+        category: { type: "string", description: `Category. Prefer one of: ${categories.join(", ")}. Empty if unclear.` },
+        vendor: { type: "string", description: "Distributor or supplier they buy it from. Empty if not said." },
+        qty: { type: "number", description: "Units on hand / on the shelf if said, else -1." },
+        par: { type: "number", description: "Reorder point / par level / minimum if said, else -1." },
+        cost: { type: "number", description: "Per-unit cost or wholesale price in USD if said, else 0." },
+        retail: { type: "number", description: "Per-unit retail or selling price in USD if said, else 0." },
+      },
+      required: ["brand", "name", "size", "category", "vendor", "qty", "par", "cost", "retail"],
+    },
+  };
+}
+
+function toCount(value: unknown) {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n >= 0 ? Math.min(Math.round(n), 100_000) : null;
+}
+
+/**
+ * Talk-to-text for the product form: turns something like "Redken Shades EQ 9V,
+ * two ounce, color, we have six, costs eight fifty, sells for nineteen" into fields.
+ * Only what was actually said is filled in.
+ */
+export async function parseSpokenProduct(
+  transcript: string,
+  business: { itemNoun: string; categories: string[] },
+): Promise<SpokenProductResult> {
+  const r = await callTool(
+    spokenTool(business.itemNoun, business.categories),
+    [
+      {
+        type: "text",
+        text: `Staff at a small business dictated details for a ${business.itemNoun} they're adding to inventory. Speech recognition wrote:
+"${transcript}"
+
+Pull out only what they said. Fix words speech recognition commonly mishears in brand and product names, turn spoken numbers into digits ("eight fifty" as a price = 8.50, "a dozen" = 12), and leave fields empty (or -1 / 0 for numbers) when they weren't mentioned.`,
+      },
+    ],
+    { model: SUGGEST_MODEL, maxTokens: 400, timeoutMs: 20_000 },
+  );
+  if (!r.ok) return r;
+  const result = {
+    ok: true as const,
+    brand: clean(r.input.brand),
+    name: clean(r.input.name),
+    size: clean(r.input.size, 40),
+    category: clean(r.input.category, 60),
+    vendor: clean(r.input.vendor, 120),
+    qty: toCount(r.input.qty),
+    par: toCount(r.input.par),
+    unitCostCents: toCents(r.input.cost),
+    retailPriceCents: toCents(r.input.retail),
+  };
+  if (!result.name && !result.brand && !result.unitCostCents && !result.retailPriceCents && result.qty === null) {
+    return { ok: false, message: "Couldn't pick out product details. Try saying the brand and product name." };
+  }
+  return result;
+}
+
 export type ReceiptResult =
   | { ok: true; amountCents: number; vendor: string; spentOn: string; category: string; note: string }
   | { ok: false; message: string };
