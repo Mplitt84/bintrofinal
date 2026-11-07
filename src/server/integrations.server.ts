@@ -25,8 +25,19 @@ const SQUARE_VERSION = "2025-01-23";
 const QB_MINOR_VERSION = "75";
 const SQUARE_STAFF_NAME = "Square POS";
 
+/** Alternate env var names accepted for backward compatibility with existing Netlify settings. */
+const ENV_ALIASES: Record<string, string[]> = {
+  QUICKBOOKS_CLIENT_ID: ["QB_CLIENT_ID", "QB_ClIENT_ID"],
+  QUICKBOOKS_CLIENT_SECRET: ["QB_CLIENT_SECRET"],
+  QUICKBOOKS_ENVIRONMENT: ["QB_ENVIRONMENT"],
+};
+
 function env(name: string) {
-  return process.env[name]?.trim() ?? "";
+  for (const key of [name, ...(ENV_ALIASES[name] ?? [])]) {
+    const value = process.env[key]?.trim();
+    if (value) return value;
+  }
+  return "";
 }
 
 function isSandbox(provider: Provider) {
