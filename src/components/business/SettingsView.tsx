@@ -284,7 +284,7 @@ function ProfileForm({
           className="field-input"
           value={draft.name}
           onChange={set('name')}
-          placeholder="e.g. Shag Noir Salon"
+          placeholder="e.g. Main Street Salon"
           autoComplete="organization"
         />
       </Field>
