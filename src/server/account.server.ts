@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { count, desc, eq } from "drizzle-orm";
+import { asc, count, desc, eq } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { account, billingEvents, products, teamMembers } from "../../db/schema.js";
+import { account, billingEvents, movements, products, teamMembers } from "../../db/schema.js";
 import {
   FEATURE_INFO,
   TRIAL_DAYS,
@@ -32,9 +32,10 @@ function env(name: string) {
 declare const __BINTRO_BUILD_BRANCH__: string;
 
 /**
- * Pilot testers get Premium (every Plus feature and more) for the life of the
- * pilot: no trial clock, no charges, no plan changes. On for builds of the PILOT
- * branch, or anywhere BINTRO_PILOT_PREMIUM=true (BINTRO_PILOT_PREMIUM=false turns it off).
+ * Pilot sites give testers Premium (every Plus feature and more) free for
+ * PILOT_MONTHS from their first Scan In; before that the clock hasn't started.
+ * On for builds of the PILOT branch, or anywhere BINTRO_PILOT_PREMIUM=true
+ * (BINTRO_PILOT_PREMIUM=false turns it off).
  */
 export function pilotPremium() {
   const flag = env("BINTRO_PILOT_PREMIUM").toLowerCase();
@@ -45,7 +46,34 @@ export function pilotPremium() {
   return branch.toUpperCase() === "PILOT";
 }
 
-const PILOT_MESSAGE = "Premium is included for the life of the pilot, so there's nothing to change or pay.";
+export const PILOT_MONTHS = 18;
+
+function pilotEndsAt(row: AccountRow): Date | null {
+  if (!row.pilotStartedAt) return null;
+  const end = new Date(row.pilotStartedAt);
+  end.setMonth(end.getMonth() + PILOT_MONTHS);
+  return end;
+}
+
+/** Free pilot Premium is on: a pilot site whose 18 months (from the first Scan In) haven't run out. */
+function pilotActive(row: AccountRow) {
+  if (!pilotPremium() || row.pilotEndedAt) return false;
+  const end = pilotEndsAt(row);
+  return !end || end > new Date();
+}
+
+/** When the business first scanned stock in, or null if it hasn't yet. */
+async function firstScanIn(): Promise<Date | null> {
+  const [first] = await db
+    .select({ at: movements.createdAt })
+    .from(movements)
+    .where(eq(movements.type, "in"))
+    .orderBy(asc(movements.createdAt))
+    .limit(1);
+  return first?.at ?? null;
+}
+
+const PILOT_MESSAGE = `Premium is included free during your ${PILOT_MONTHS}-month pilot, so there's nothing to change or pay yet.`;
 
 /** Stripe is on once the secret key is set. Until then plan changes apply right away with no charge. */
 export function billingLive() {
@@ -81,7 +109,7 @@ async function loadAccount(): Promise<AccountRow> {
     .insert(account)
     .values({ id: ACCOUNT_ID, plan: "premium", status: "trialing", trialEndsAt, currentPeriodEnd: trialEndsAt })
     .onConflictDoNothing();
-  await logEvent("trial", `Started a ${TRIAL_DAYS}-day Premium trial`);
+  if (!pilotPremium()) await logEvent("trial", `Started a ${TRIAL_DAYS}-day Premium trial`);
   const [row] = await db.select().from(account).where(eq(account.id, ACCOUNT_ID));
   return settle(row);
 }
@@ -92,17 +120,37 @@ async function loadAccount(): Promise<AccountRow> {
  */
 async function settle(row: AccountRow): Promise<AccountRow> {
   const now = new Date();
-  if (pilotPremium()) {
-    if (row.plan === "premium" && row.status === "active" && !row.trialEndsAt && !row.pausedUntil && !row.cancelAtPeriodEnd) return row;
-    await logEvent("upgrade", "Pilot: Premium included for the life of the pilot");
+  if (pilotPremium() && !row.pilotEndedAt) {
+    // Start the pilot clock at the first Scan In; it's stored so undoing or deleting scans can't reset it.
+    if (!row.pilotStartedAt) {
+      const started = await firstScanIn();
+      if (started) {
+        row = await saveAccount({ pilotStartedAt: started });
+        await logEvent("trial", `Pilot clock started: Premium free for ${PILOT_MONTHS} months from the first Scan In`);
+      }
+    }
+    if (pilotActive(row)) {
+      if (row.plan === "premium" && row.status === "active" && !row.trialEndsAt && !row.pausedUntil && !row.cancelAtPeriodEnd) return row;
+      return saveAccount({
+        plan: "premium",
+        status: "active",
+        trialEndsAt: null,
+        currentPeriodEnd: null,
+        pausedUntil: null,
+        cancelAtPeriodEnd: false,
+        cancelReason: "",
+      });
+    }
+    // The pilot ran out: move to Free once; from here the normal plans apply.
+    await logEvent("downgrade", `Pilot ended after ${PILOT_MONTHS} months. Moved to Free`);
     return saveAccount({
-      plan: "premium",
+      plan: "free",
       status: "active",
       trialEndsAt: null,
       currentPeriodEnd: null,
       pausedUntil: null,
       cancelAtPeriodEnd: false,
-      cancelReason: "",
+      pilotEndedAt: now,
     });
   }
   if (row.status === "trialing" && row.trialEndsAt && row.trialEndsAt <= now && !row.stripeSubscriptionId) {
@@ -137,7 +185,7 @@ async function settle(row: AccountRow): Promise<AccountRow> {
 }
 
 function effectivePlanOf(row: AccountRow): PlanId {
-  if (pilotPremium()) return "premium";
+  if (pilotActive(row)) return "premium";
   if (row.status === "paused") return "free";
   return isPlanId(row.plan) ? row.plan : "free";
 }
@@ -158,7 +206,9 @@ function summarize(row: AccountRow, usage: AccountSummary["usage"]): AccountSumm
       ? { brand: row.cardBrand, last4: row.cardLast4, expMonth: row.cardExpMonth, expYear: row.cardExpYear }
       : null,
     billingLive: billingLive(),
-    pilotPremium: pilotPremium(),
+    pilotPremium: pilotActive(row),
+    pilotStartedAt: pilotActive(row) ? (row.pilotStartedAt?.toISOString() ?? null) : null,
+    pilotEndsAt: pilotActive(row) ? (pilotEndsAt(row)?.toISOString() ?? null) : null,
     memberSince: row.createdAt.toISOString(),
     usage,
   };
@@ -232,7 +282,7 @@ export async function updateAccountDetails(data: { ownerName?: string; billingEm
 export type BillingResult = { account: AccountSummary; redirect?: string; message: string };
 
 export async function changePlan(target: PlanId, interval: BillingInterval, origin: string): Promise<BillingResult> {
-  if (pilotPremium()) return { account: await getAccountSummary(), message: PILOT_MESSAGE };
+  if (pilotActive(await loadAccount())) return { account: await getAccountSummary(), message: PILOT_MESSAGE };
   const row = await loadAccount();
   const plan = planById(target);
   const from = planById(row.plan);
@@ -270,7 +320,7 @@ export async function changePlan(target: PlanId, interval: BillingInterval, orig
 }
 
 export async function pauseBilling(months: number): Promise<BillingResult> {
-  if (pilotPremium()) return { account: await getAccountSummary(), message: PILOT_MESSAGE };
+  if (pilotActive(await loadAccount())) return { account: await getAccountSummary(), message: PILOT_MESSAGE };
   const row = await loadAccount();
   if (row.plan === "free" || row.status === "trialing") {
     throw new PlanLimitError("Only paid plans can be paused.");
@@ -291,7 +341,7 @@ export async function pauseBilling(months: number): Promise<BillingResult> {
 }
 
 export async function resumeBilling(): Promise<BillingResult> {
-  if (pilotPremium()) return { account: await getAccountSummary(), message: PILOT_MESSAGE };
+  if (pilotActive(await loadAccount())) return { account: await getAccountSummary(), message: PILOT_MESSAGE };
   const row = await loadAccount();
   if (billingLive() && row.stripeSubscriptionId) {
     await stripe(`/v1/subscriptions/${row.stripeSubscriptionId}`, { pause_collection: "", cancel_at_period_end: "false" });
@@ -311,7 +361,7 @@ export async function resumeBilling(): Promise<BillingResult> {
 }
 
 export async function cancelPlan(reason: string): Promise<BillingResult> {
-  if (pilotPremium()) return { account: await getAccountSummary(), message: PILOT_MESSAGE };
+  if (pilotActive(await loadAccount())) return { account: await getAccountSummary(), message: PILOT_MESSAGE };
   const row = await loadAccount();
   const name = planById(row.plan).name;
   if (row.plan === "free") throw new PlanLimitError("You're already on the Free plan.");

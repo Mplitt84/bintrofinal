@@ -218,6 +218,10 @@ export const account = pgTable("account", {
   cardLast4: text("card_last4").notNull().default(""),
   cardExpMonth: integer("card_exp_month").notNull().default(0),
   cardExpYear: integer("card_exp_year").notNull().default(0),
+  /** Pilot sites: when the business first scanned stock in, which starts the free Premium pilot clock. */
+  pilotStartedAt: timestamp("pilot_started_at"),
+  /** Pilot sites: set once the free pilot has run out and the account moved to Free. */
+  pilotEndedAt: timestamp("pilot_ended_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

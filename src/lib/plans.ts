@@ -167,8 +167,12 @@ export type AccountSummary = {
   paymentMethod: PaymentMethod | null
   /** true when Stripe keys are set; otherwise plan changes apply with no charge (pilot mode). */
   billingLive: boolean
-  /** The pilot site: Premium is included for the life of the pilot and plans can't be changed. */
+  /** Pilot site within its free window: Premium is included and plans can't be changed. */
   pilotPremium: boolean
+  /** First Scan In, which started the pilot clock (null until then). */
+  pilotStartedAt: string | null
+  /** When free pilot Premium ends (18 months after the first Scan In); null until the clock starts. */
+  pilotEndsAt: string | null
   memberSince: string
   usage: { products: number; team: number }
 }
