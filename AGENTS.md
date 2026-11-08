@@ -4,7 +4,7 @@ Overview of the project structure for developers and AI agents working on this c
 
 ## Project Overview
 
-Bintro is a barcode scan-in/scan-out stock tracker and money manager for small beauty & wellness businesses and bars. Staff tap the big scan orb (camera) or use a hardware scanner, choose in or out, and the on-hand count updates immediately. Unknown barcodes can be prefilled from public product databases, a label photo read by AI, and an AI price estimate. The business name, type and contact details are editable in Settings (the original deployment was Shag Noir Salon). Supported types: hair, barber, nails, brows & lashes, tattoo & piercing, spa & massage, bar, other beauty & wellness. Tabs: Scan, Products, Restock (Below par → Build order), Calendar, Budget, Activity, plus Settings (gear in the header). The active tab lives in the URL hash (`#calendar`, `#restock`…; legacy `#below-par` / `#reorder` open Restock). Optional Square POS and QuickBooks Online connections. Tiered plans (Free / Plus / Premium) live in Settings → Account & billing.
+Bintro is a barcode scan-in/scan-out stock tracker and money manager for small beauty & wellness businesses and bars. Staff tap the big scan orb (camera) or use a hardware scanner, choose in or out, and the on-hand count updates immediately. Unknown barcodes can be prefilled from public product databases, a label photo read by AI, and an AI price estimate. The business name, type and contact details are editable in Settings (the original deployment was Shag Noir Salon). Supported types: hair, barber, nails, brows & lashes, tattoo & piercing, spa & massage, bar, other beauty & wellness. Tabs: Scan, Products, Restock (Below par → Build order → Deliveries), Calendar, Budget, Activity, plus Settings (gear in the header). The active tab lives in the URL hash (`#calendar`, `#restock`…; legacy `#below-par` / `#reorder` open Restock). Optional Square POS and QuickBooks Online connections. Tiered plans (Free / Plus / Premium) live in Settings → Account & billing.
 
 ### Tech Stack
 
@@ -62,7 +62,9 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │       ├── ActivityView.tsx    # Activity tab: usage/receipts by period, brand and staff
 │   │       ├── RestockView.tsx     # Restock tab: segmented "1 · Below par" / "2 · Build order"
 │   │       ├── BelowParView.tsx    # Restock step 1: below-par list, email button, "Build vendor order"
-│   │       └── PurchaseOrderView.tsx  # Restock step 2: vendor-grouped PO with CSV/print/email
+│   │       ├── PurchaseOrderView.tsx  # Restock step 2: vendor-grouped PO with CSV/print/email; saves what went out as open orders
+│   │       ├── DeliveriesView.tsx  # Restock step 3: open orders, check-in, vendor accuracy, recently received
+│   │       └── ReceiveDeliverySheet.tsx # Check a delivery in: invoice/packing-slip photo or PDF (AI) or by hand against a saved order
 │   ├── lib
 │   │   ├── speech.ts              # useDictation(): browser speech recognition (Chrome/Edge/Safari; not Firefox)
 │   │   ├── barcodes.ts            # checkUnknownScan: partial / mis-read barcode detection (length, GS1 check digit, UPC-E, fragment of a known code)
@@ -78,6 +80,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   ├── inventory-defaults.ts  # Shared constants/helpers: DEFAULT_REORDER_THRESHOLD, par math, initials
 │   │   ├── palettes.ts            # Display palettes (theme token sets) + paletteStyle() CSS vars
 │   │   ├── purchase-order.ts      # PO grouping, totals, CSV
+│   │   ├── orders.ts              # Saved order / delivery / vendor score types (client-safe)
 │   │   └── tax-categories.ts      # Tax groups (Schedule C line, QuickBooks account, why), category suggestions per business type, guessTaxGroup
 │   ├── server
 │   │   ├── inventory.server.ts     # DB queries/mutations (server-only)
@@ -87,6 +90,8 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   ├── integrations.server.ts  # Square + QuickBooks OAuth, catalog import, sales sync, month push (server-only)
 │   │   ├── import.server.ts        # Bulk import: CSV parsing, product matching, applying counts/receipts and price updates (server-only)
 │   │   ├── import.functions.ts     # createServerFn wrappers: parseImport, estimateImportPrices, applyImport
+│   │   ├── orders.server.ts        # Saved purchase orders, delivery check-in (reuses applyImportLines in receipt mode), vendor scores (server-only)
+│   │   ├── orders.functions.ts     # saveSentOrder, getOrders, cancelSavedOrder, receiveDeliveryFn
 │   │   ├── email.server.ts         # Restock / PO email via Resend/SendGrid, addressed from the business profile (server-only)
 │   │   ├── product-lookup.server.ts  # Barcode lookup (Open *Facts, UPCitemdb, Open Library) + AI label/receipt reading and price suggestions (Netlify AI Gateway)
 │   │   ├── inventory.functions.ts  # createServerFn wrappers callable from the client
@@ -122,6 +127,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 - **account** — single row (`id = 1`): `plan` (free | plus | premium), `interval` (month | year), `status` (active | trialing | paused | canceled), `trialEndsAt`, `currentPeriodEnd`, `cancelAtPeriodEnd`, `pausedUntil`, owner name / billing email, Stripe customer + subscription ids, cached card brand / last 4. Created on first read with a 30-day Premium trial.
 - **billing_events** — plan changes, pauses, cancellations shown as billing history (Stripe invoices are merged in live).
 - **integrations** — one row per provider (`square`, `quickbooks`): OAuth tokens, account id/name, `pendingState`, `lastSyncAt`, `meta` jsonb (granted Square `scopes`, Square `locationId`, cached account ids, pushed months).
+- **purchase_orders** / **purchase_order_lines** — orders saved when Build order is emailed, printed or downloaded (one per vendor via `vendorGroupLabel`): `vendor`, `status` (open | partial | received | canceled), `note`, `staffName`, `sentVia`, `receivedAt`; lines snapshot the product (`productId`, name, brand, size, barcode) with `qtyOrdered`, `qtyReceived`, `unitCostCents` (cost when ordered) and `receivedCostCents` (invoice cost).
 - **square_outbox** — Bintro stock changes queued for Square: `productId`, `variationId`, `kind` (`delta` = +/- units | `count` = set on-hand), `quantity`, `movementId` (for undo), `status` (pending | sent | error), `error`, `attempts`, `occurredAt`, `sentAt`.
 
 ## Key Concepts
@@ -153,6 +159,9 @@ Monthly spend = stock received (positive `in`/`receive` movements × current `un
 
 ### Bulk import (Settings → Import inventory)
 Staff upload a CSV (any column layout — AI maps the columns, keyword guessing is the fallback), or a PDF / photo of a stock list, vendor invoice or receipt (read by Claude). Lines are matched to products by barcode, then brand + name, then close name overlap. Missing cost / retail prices are filled line by line by batched AI estimates (`estimateImportPrices`) and marked "AI estimate" until edited. Mode "Stock count" sets on-hand with `adjust` movements; "Delivery / receipt" adds units with `receive` movements (so it counts toward Budget) and the file's unit cost becomes the product's cost. New products without a usable barcode get a `BT-XXXXXX` SKU. Movement notes read `Import: <vendor · file>`. Mode "Price update" (auto-picked when a file has prices but no quantities) only changes cost / retail on matched products, using a looser name match; unmatched lines are skipped and stock is untouched.
+
+### Orders and deliveries (Restock step 3)
+Build order saves what goes out (`saveSentOrder`, once per distinct set of lines) as open orders. Below par shows "N on order" from `getOrders().onOrder` so nothing is ordered twice. Deliveries lists open orders; "Check in delivery" (or "Receive a delivery" with no order, also reachable from the Scan tab's "Got a delivery?" button, which sets `autoReceive`) opens `ReceiveDeliverySheet`: a photo or PDF of the invoice / packing slip goes through `parseImport` (AI, Plus) and is laid over the order's lines (matches by product id; extras flagged "Not on the order" / "New product"), or staff mark "Everything arrived as ordered" / count by hand. Flags: Short N, N extra, Cost up/down. `receiveDelivery` applies the lines with `applyImportLines` in receipt mode (receive movements → Budget, Square; invoice costs update products; blank cost keeps the current one), then adds to each order line's `qtyReceived`, sets `receivedCostCents`, and marks the order received or partial (shortages stay on order). Vendor accuracy (`scoreVendors`): fill rate of ordered units, short lines, price changes vs ordered cost, average days to arrive, worst first.
 
 ### Sales insights, reports and price checks
 `computeInsights()` works live from `out` movements. Each item is tagged `useKind` `sold` or `used` from its category's tax group (`SOLD_TAX_GROUPS`: resale, beverage, food; no category → sold only if it has a retail price), so backbar/service supplies are never called sales. Weekly top items (last 7 days vs the week before) carry expected profit (units × (retail − cost)) for sold items and product cost for used items, with sold/used totals in `insights.week`; slow movers (in stock, ≥30 days old, used ≤1× in 30 days, grouped color / retail / other), fast movers (≥3 a week and out within 14 days or selling 1.5× the usual rate) with a bulk order covering 30 days plus par priced at the current `unitCostCents`, and price reminders (older than 90 days or no cost). Thresholds live in `src/lib/insights.ts`. `runInsightReport(kind)` writes an AI summary, saves it to `insight_reports` and emails it (weekly and monthly once per period; fast alerts skip products alerted in the last 3 days). The recipient is env `INSIGHTS_EMAIL_TO`, else the profile email, else the order email; period keys use env `BUSINESS_TIMEZONE` (default America/New_York). In the app, `InsightPopup` shows each new fast alert, the week's best sellers and the month's slow movers once per device (`bintro-insights-*` localStorage keys), and banners on Activity and Restock open `InsightsSheet`. `findWebPrice` uses Claude with the Anthropic web search tool to find prices on manufacturer, authorized distributor or Amazon listings, blocks third-party resale sites (`RESALE_DOMAINS`), and falls back to a labelled AI estimate when search isn't available.

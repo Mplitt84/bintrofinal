@@ -234,3 +234,39 @@ export const billingEvents = pgTable("billing_events", {
   amountCents: integer("amount_cents").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+/**
+ * Purchase orders saved when staff email, print or download an order, so
+ * deliveries can be checked in against them and vendors scored on accuracy.
+ */
+export const purchaseOrders = pgTable("purchase_orders", {
+  id: serial().primaryKey(),
+  vendor: text().notNull().default(""),
+  status: text().notNull().default("open"), // 'open' | 'partial' | 'received' | 'canceled'
+  note: text().notNull().default(""),
+  staffName: text("staff_name").notNull().default(""),
+  /** How it left Bintro: 'email' | 'print' | 'csv'. */
+  sentVia: text("sent_via").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  /** Last delivery checked in against this order. */
+  receivedAt: timestamp("received_at"),
+});
+
+/** One product on a purchase order, with what actually arrived and at what cost. */
+export const purchaseOrderLines = pgTable("purchase_order_lines", {
+  id: serial().primaryKey(),
+  orderId: integer("order_id")
+    .notNull()
+    .references(() => purchaseOrders.id, { onDelete: "cascade" }),
+  productId: integer("product_id").notNull(),
+  name: text().notNull().default(""),
+  brand: text().notNull().default(""),
+  size: text().notNull().default(""),
+  barcode: text().notNull().default(""),
+  qtyOrdered: integer("qty_ordered").notNull().default(0),
+  qtyReceived: integer("qty_received").notNull().default(0),
+  /** Cost per unit when ordered. */
+  unitCostCents: integer("unit_cost_cents").notNull().default(0),
+  /** Cost per unit on the delivery's invoice (0 until received or if the invoice had none). */
+  receivedCostCents: integer("received_cost_cents").notNull().default(0),
+});

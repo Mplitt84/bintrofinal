@@ -1,9 +1,12 @@
+import { useEffect, useState } from 'react'
 import type { Product } from './types'
+import { getOrders } from '@/server/orders.functions'
 import { BelowParView } from './BelowParView'
 import { PurchaseOrderView } from './PurchaseOrderView'
+import { DeliveriesView } from './DeliveriesView'
 import { PlanGate } from '@/components/business/PlanGate'
 
-export type RestockMode = 'below-par' | 'order'
+export type RestockMode = 'below-par' | 'order' | 'deliveries'
 
 /**
  * Restock tab: the below-par list and the vendor purchase order are two steps
@@ -16,6 +19,8 @@ export function RestockView({
   products,
   staffName,
   onChanged,
+  autoReceive,
+  onAutoReceiveHandled,
 }: {
   mode: RestockMode
   onMode: (m: RestockMode) => void
@@ -24,11 +29,21 @@ export function RestockView({
   products: Product[]
   staffName: string
   onChanged: () => void | Promise<void>
+  /** Open "Receive a delivery" as soon as Deliveries shows (from the Scan tab). */
+  autoReceive?: boolean
+  onAutoReceiveHandled?: () => void
 }) {
+  // Units already on open orders, shown on Below par so nothing gets ordered twice.
+  const [onOrder, setOnOrder] = useState<Record<number, number>>({})
+  useEffect(() => {
+    getOrders()
+      .then((o) => setOnOrder(o.onOrder))
+      .catch(() => {})
+  }, [mode, items])
   return (
     <div>
       <div
-        className="inline-flex p-1 rounded-full bg-surface mb-4 print:hidden"
+        className="inline-flex p-1 rounded-full bg-surface mb-4 print:hidden max-w-full overflow-x-auto"
         role="tablist"
         aria-label="Restock step"
       >
@@ -36,6 +51,7 @@ export function RestockView({
           [
             { id: 'below-par', label: `1 · Below par${items.length ? ` (${items.length})` : ''}` },
             { id: 'order', label: '2 · Build order' },
+            { id: 'deliveries', label: '3 · Deliveries' },
           ] as const
         ).map((t) => (
           <button
@@ -52,10 +68,20 @@ export function RestockView({
         ))}
       </div>
       {mode === 'below-par' ? (
-        <BelowParView items={items} products={products} staffName={staffName} onChanged={onChanged} onBuildOrder={() => onMode('order')} />
+        <BelowParView items={items} products={products} staffName={staffName} onChanged={onChanged} onBuildOrder={() => onMode('order')} onOrder={onOrder} />
+      ) : mode === 'order' ? (
+        <PlanGate feature="orders">
+          <PurchaseOrderView items={items} staffName={staffName} onChanged={onChanged} onOpenDeliveries={() => onMode('deliveries')} />
+        </PlanGate>
       ) : (
         <PlanGate feature="orders">
-          <PurchaseOrderView items={items} staffName={staffName} onChanged={onChanged} />
+          <DeliveriesView
+            products={products}
+            staffName={staffName}
+            onChanged={onChanged}
+            autoReceive={autoReceive}
+            onAutoReceiveHandled={onAutoReceiveHandled}
+          />
         </PlanGate>
       )}
     </div>

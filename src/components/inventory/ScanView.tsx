@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowDownToLine, ArrowUpFromLine, Camera, Check, Plus, ScanBarcode, Undo2, X } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpFromLine, Camera, Check, PackagePlus, Plus, ScanBarcode, Undo2, X } from 'lucide-react'
 import type { ActivityRow, MovementRow, Product } from './types'
 import {
   scanMovement,
@@ -101,6 +101,7 @@ export function ScanView({
   onProduct,
   onChanged,
   onOpenRestock,
+  onReceiveDelivery,
 }: {
   staffName: string
   /** Opens the centered "Who's scanning?" picker; resolves with the name or null. */
@@ -112,6 +113,8 @@ export function ScanView({
   onProduct?: (product: Product) => void
   onChanged: () => void | Promise<void>
   onOpenRestock?: () => void
+  /** Opens Restock › Deliveries with the receive-a-delivery sheet. */
+  onReceiveDelivery?: () => void
 }) {
   const toast = useToast()
   const [mode, setMode] = useState<Mode>('out')
@@ -495,6 +498,12 @@ export function ScanView({
           <Camera size={18} />
           Snap & log: photo the SKU or label
         </button>
+        {onReceiveDelivery && (
+          <button type="button" className="btn btn-tonal mt-2" onClick={onReceiveDelivery}>
+            <PackagePlus size={18} />
+            Got a delivery? Check in the invoice
+          </button>
+        )}
         <input
           ref={photoInput}
           type="file"

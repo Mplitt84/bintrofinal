@@ -51,6 +51,7 @@ function tabFromHash(hash: string): { tab: Tab; restock?: RestockMode } | null {
   // Old bookmarks from before Below Par and Reorder were merged.
   if (id === 'below-par') return { tab: 'restock', restock: 'below-par' }
   if (id === 'reorder') return { tab: 'restock', restock: 'order' }
+  if (id === 'deliveries') return { tab: 'restock', restock: 'deliveries' }
   return TAB_IDS.has(id) ? { tab: id as Tab } : null
 }
 
@@ -87,6 +88,8 @@ function Home() {
   const [team, setTeam] = useState<TeamMember[]>(initial.team as TeamMember[])
   const [categories, setCategories] = useState<ProductCategory[]>(initial.categories as ProductCategory[])
   const [restockMode, setRestockMode] = useState<RestockMode>('below-par')
+  // Set by the Scan tab's "Receive a delivery" button so Deliveries opens the receive sheet.
+  const [autoReceive, setAutoReceive] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile')
   const [accountPanel, setAccountPanel] = useState<AccountPanel>('account')
   const [account, setAccount] = useState<AccountSummary>(initial.account as AccountSummary)
@@ -454,6 +457,11 @@ function Home() {
                 setRestockMode('below-par')
                 selectTab('restock')
               }}
+              onReceiveDelivery={() => {
+                setRestockMode('deliveries')
+                setAutoReceive(true)
+                selectTab('restock')
+              }}
             />
           )}
           {tab === 'products' && (
@@ -503,6 +511,8 @@ function Home() {
               products={products}
               staffName={staffName}
               onChanged={refresh}
+              autoReceive={autoReceive}
+              onAutoReceiveHandled={() => setAutoReceive(false)}
             />
           )}
           {tab === 'calendar' && (
