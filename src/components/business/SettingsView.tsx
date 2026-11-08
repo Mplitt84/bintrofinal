@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ArrowUpFromLine, Check, ExternalLink, Mail, Plug, RefreshCw, Trash2, UserPlus, X } from 'lucide-react'
 import type { IntegrationStatus, Product, TeamMember } from '@/components/inventory/types'
 import { ImportView } from '@/components/business/ImportView'
+import { LEGAL_LINKS } from '@/components/legal/LegalPage'
 import { AppearanceSettings } from '@/components/business/AppearanceSettings'
 import { ScannerSettings } from '@/components/business/ScannerSettings'
 import { AccountView, type AccountPanel } from '@/components/business/AccountView'
@@ -132,6 +133,13 @@ export function SettingsView({
         </PlanGate>
       )}
       {section === 'integrations' && <Integrations onChanged={onChanged} />}
+      <nav className="mt-10 pt-4 border-t border-line flex flex-wrap gap-x-4 gap-y-1 text-[13px]" aria-label="Legal">
+        {LEGAL_LINKS.map((l) => (
+          <a key={l.href} href={l.href} target="_blank" rel="noreferrer" className="text-ink-2 font-semibold no-underline">
+            {l.label}
+          </a>
+        ))}
+      </nav>
     </div>
   )
 }
