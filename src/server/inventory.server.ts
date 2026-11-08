@@ -428,3 +428,9 @@ export async function buildPurchaseOrderLines(
     ];
   });
 }
+
+/** How many movements carry exactly this note (used to stop the same sales report being logged twice). */
+export async function countMovementsWithNote(note: string) {
+  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(movements).where(eq(movements.note, note));
+  return row?.n ?? 0;
+}

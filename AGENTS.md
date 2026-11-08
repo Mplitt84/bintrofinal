@@ -82,6 +82,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   ├── palettes.ts            # Display palettes (theme token sets) + paletteStyle() CSS vars
 │   │   ├── purchase-order.ts      # PO grouping, totals, CSV
 │   │   ├── tidy.ts                # ParSuggestion / CategoryGroup / DuplicateGroup types (client-safe)
+│   │   ├── sales-report.ts        # SALES_REPORT_APPS, sales report line/result types, salesReportNote (client-safe)
 │   │   ├── orders.ts              # Saved order / delivery / vendor score types (client-safe)
 │   │   └── tax-categories.ts      # Tax groups (Schedule C line, QuickBooks account, why), category suggestions per business type, guessTaxGroup
 │   ├── server
@@ -91,7 +92,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   ├── business.server.ts      # Profile, team, expenses, budgets, monthly spend overview (server-only)
 │   │   ├── integrations.server.ts  # Square + QuickBooks OAuth, catalog import, sales sync, month push (server-only)
 │   │   ├── import.server.ts        # Bulk import: CSV parsing, product matching, applying counts/receipts and price updates (server-only)
-│   │   ├── import.functions.ts     # createServerFn wrappers: parseImport, estimateImportPrices, applyImport
+│   │   ├── import.functions.ts     # createServerFn wrappers: parseImport, estimateImportPrices, applyImport, applyReceiptPrices, parseSalesReport, logSalesReport
 │   │   ├── tidy.server.ts          # smartPars, categoryGroups/mergeCategoryNames, duplicateGroups, applyCounts (server-only)
 │   │   ├── tidy.functions.ts       # getSmartPars, setPars, getCategoryGroups, mergeCategories, getDuplicateGroups, saveCounts
 │   │   ├── orders.server.ts        # Saved purchase orders, delivery check-in (reuses applyImportLines in receipt mode), vendor scores (server-only)
@@ -166,6 +167,9 @@ Staff upload a CSV (any column layout — AI maps the columns, keyword guessing 
 
 ### Orders and deliveries (Restock step 3)
 Build order saves what goes out (`saveSentOrder`, once per distinct set of lines) as open orders. Below par shows "N on order" from `getOrders().onOrder` so nothing is ordered twice. Deliveries lists open orders; "Check in delivery" (or "Receive a delivery" with no order, also reachable from the Scan tab's "Got a delivery?" button, which sets `autoReceive`) opens `ReceiveDeliverySheet`: a photo or PDF of the invoice / packing slip goes through `parseImport` (AI, Plus) and is laid over the order's lines (matches by product id; extras flagged "Not on the order" / "New product"), or staff mark "Everything arrived as ordered" / count by hand. Flags: Short N, N extra, Cost up/down. `receiveDelivery` applies the lines with `applyImportLines` in receipt mode (receive movements → Budget, Square; invoice costs update products; blank cost keeps the current one), then adds to each order line's `qtyReceived`, sets `receivedCostCents`, and marks the order received or partial (shortages stay on order). Vendor accuracy (`scoreVendors`): fill rate of ordered units, short lines, price changes vs ordered cost, average days to arrive, worst first.
+
+### Sales reports from other booking apps
+For booking apps Bintro can't connect to (Fresha, GlossGenius, Mangomint, Booksy, and any app before its API connection exists), the Scan tab's "Sold retail in another booking app? Upload the sales report" button opens `SalesReportSheet` (Plus, feature `import`). Staff pick the app (remembered per device in `bintro.salesReportApp`) and upload the app's product sales export: CSV (columns found by `salesColumns` — name/barcode plus a "sold"/qty column — with AI column mapping as the fallback, so CSVs work without AI), or a PDF / photo (AI, `extractImportDocument`). `parseSalesReportFile` drops totals/tax/tip rows, matches lines with `findMatch` and adds up lines for the same product; unmatched lines (often services) start unticked with a "Which product is this?" picker. Confirming asks "Who's scanning?" and `applySalesReport` logs one `out` movement per product with the note `Sales report: <app> · <period>` (`salesReportNote`); the same note already in movements is refused as a duplicate unless staff tap "Log it again anyway". Square sales are not uploaded here (they sync on their own).
 
 ### Keeping the data trustworthy
 - **Smart par** (Restock → Below par → Smart par): par = units used per day (30 days, else 90) × (the vendor's measured delivery days from Deliveries, else 7, + 7 buffer days); items unused for 90 days and older than 30 days get par 0 so they stop alerting. Suggestions only; staff tick and apply.
