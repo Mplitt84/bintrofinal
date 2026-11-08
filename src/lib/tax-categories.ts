@@ -33,15 +33,15 @@ export type TaxGroup = {
 export const TAX_GROUPS: TaxGroup[] = [
   {
     id: 'resale',
-    label: 'Retail for resale',
-    why: 'Products clients buy and take home. Held as inventory and expensed when sold.',
+    label: 'Retail & merchandise for resale',
+    why: 'Products and merch clients buy and take home, including backstock waiting on the shelf. Held as inventory and expensed when sold.',
     taxLine: 'Cost of goods sold · Sch. C Part III, line 36 (Purchases)',
     qbAccount: 'Cost of Goods Sold',
     cogs: true,
   },
   {
     id: 'service',
-    label: 'Professional & backbar',
+    label: 'Professional & backbar supplies',
     why: 'Used up while doing the service, like color, gel, wax, ink or massage oil.',
     taxLine: 'Cost of goods sold · Sch. C line 38 (Materials & supplies), or Supplies line 22',
     qbAccount: 'Supplies & Materials – COGS',
@@ -97,7 +97,7 @@ export const TAX_GROUPS: TaxGroup[] = [
   },
   {
     id: 'office',
-    label: 'Office & front desk',
+    label: 'Office supplies & front desk',
     why: 'Receipt paper, gift-card stock, pens and front-desk supplies.',
     taxLine: 'Office expense · Sch. C line 18',
     qbAccount: 'Office Supplies & Software',
@@ -106,6 +106,11 @@ export const TAX_GROUPS: TaxGroup[] = [
 ]
 
 export const DEFAULT_TAX_GROUP: TaxGroupId = 'service'
+
+/** Short tag an accountant recognises at a glance: cost of goods sold vs an operating expense. */
+export function taxKind(group: TaxGroup) {
+  return group.cogs ? 'COGS' : 'Expense'
+}
 
 export function taxGroupById(id: string | undefined | null): TaxGroup {
   return TAX_GROUPS.find((g) => g.id === id) ?? TAX_GROUPS.find((g) => g.id === DEFAULT_TAX_GROUP)!

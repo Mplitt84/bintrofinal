@@ -21,6 +21,8 @@ import { readReceipt, suggestProductDetails } from "./product-lookup.server.js";
 import {
   disconnectIntegration,
   importSquareCatalog,
+  saveSquareRetailCategories,
+  squareRetailCategories,
   sendAllCountsToSquare,
   integrationStatus,
   pushMonthToQuickBooks,
@@ -219,6 +221,22 @@ export const squareImportCatalog = createServerFn({ method: "POST" }).handler(as
     return importSquareCatalog();
   });
 });
+
+export const getSquareRetailCategories = createServerFn({ method: "GET" }).handler(async () => {
+  return attempt(async () => {
+    await assertFeature("square");
+    return squareRetailCategories();
+  });
+});
+
+export const setSquareRetailCategories = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ ids: z.array(z.string().max(64)).max(500) }))
+  .handler(async ({ data }) => {
+    return attempt(async () => {
+      await assertFeature("square");
+      return saveSquareRetailCategories(data.ids);
+    });
+  });
 
 export const squareSendCounts = createServerFn({ method: "POST" }).handler(async () => {
   return attempt(async () => {

@@ -14,7 +14,7 @@ import { PriceInput } from '@/components/ui/PriceInput'
 import { Thumb, centsToDollars } from '@/components/ui/bits'
 import { useBusiness } from '@/components/business/BusinessContext'
 import { CategorySetupSheet } from '@/components/business/CategorySetupSheet'
-import { categorySuggestionsFor, findCategory, guessTaxGroup, taxGroupById, type ProductCategory } from '@/lib/tax-categories'
+import { TAX_GROUPS, categorySuggestionsFor, findCategory, guessTaxGroup, taxGroupById, taxKind, type ProductCategory, type TaxGroupId } from '@/lib/tax-categories'
 import { COPY_PROMPT_OFF_KEY, CopyPreviousSheet } from './CopyPreviousSheet'
 import { MicButton, SpeakDetails } from './VoiceInput'
 
@@ -170,10 +170,16 @@ export function ProductForm({
     setCategoryOpen(true)
   }
 
+  // Staff choose how a new category is booked (pre-picked with the best guess) so the accountant's list stays right.
+  const [newCategoryGroup, setNewCategoryGroup] = useState<TaxGroupId | ''>('')
+  const guessedGroup = guessTaxGroup(category, categorySuggestionsFor(type.id), savedCategories)
+  const chosenGroup = newCategoryGroup || guessedGroup
+
   async function saveTypedCategory() {
     const name = category.trim()
     if (!name) return
-    const taxGroup = guessTaxGroup(name, categorySuggestionsFor(type.id), savedCategories)
+    const taxGroup = chosenGroup
+    setNewCategoryGroup('')
     try {
       onCategories((await saveProductCategories({ data: { items: [{ name, taxGroup }] } })) as ProductCategory[])
     } catch {
@@ -658,17 +664,34 @@ export function ProductForm({
         <p className="text-[12px] text-ink-2 m-0 mb-3">
           {savedCategory ? (
             <>
-              Booked as <b className="text-ink">{taxGroupById(savedCategory.taxGroup).label}</b> ·{' '}
+              Booked as <b className="text-ink">{taxGroupById(savedCategory.taxGroup).label}</b>{' '}
+              <span className="font-semibold">({taxKind(taxGroupById(savedCategory.taxGroup))})</span> ·{' '}
               {taxGroupById(savedCategory.taxGroup).taxLine}
             </>
           ) : (
-            <>
-              Not in your categories yet.{' '}
-              <button type="button" className="border-0 bg-transparent p-0 text-action font-semibold cursor-pointer underline-offset-2 hover:underline" onClick={saveTypedCategory}>
-                Add “{category.trim()}” as{' '}
-                {taxGroupById(guessTaxGroup(category, categorySuggestionsFor(type.id), savedCategories)).label}
-              </button>
-            </>
+            <span className="flex flex-col gap-1.5">
+              <span>
+                “{category.trim()}” is new. Choose how your accountant should book it:
+              </span>
+              <span className="flex flex-wrap items-center gap-2">
+                <select
+                  aria-label="Tax group for the new category"
+                  className="field-input !w-auto !py-1.5 !text-[13px]"
+                  value={chosenGroup}
+                  onChange={(e) => setNewCategoryGroup(e.target.value as TaxGroupId)}
+                >
+                  {TAX_GROUPS.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.label} ({taxKind(g)})
+                    </option>
+                  ))}
+                </select>
+                <button type="button" className="btn btn-tonal btn-sm" onClick={saveTypedCategory}>
+                  Add category
+                </button>
+              </span>
+              <span>{taxGroupById(chosenGroup).why} {taxGroupById(chosenGroup).taxLine}</span>
+            </span>
           )}
         </p>
       )}

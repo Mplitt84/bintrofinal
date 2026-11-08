@@ -14,7 +14,7 @@ import { asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { expenses, integrations, products, squareOutbox } from "../../db/schema.js";
 import { SQUARE_STAFF_NAME, applyMovement, findProductByBarcode } from "./inventory.server.js";
-import { findExpensesForMonth, findInventorySpend, type MonthWindow } from "./business.server.js";
+import { findExpensesForMonth, findInventorySpend, findProductCategories, upsertProductCategories, type MonthWindow } from "./business.server.js";
 
 export type Provider = "square" | "quickbooks";
 export const PROVIDERS: Provider[] = ["square", "quickbooks"];
@@ -305,7 +305,47 @@ type SquareObject = {
   };
 };
 
-/** Pulls every Square catalog item variation into Bintro's product list. */
+/** Square categories (id + name), for choosing which ones hold retail items. */
+async function listSquareCategoryObjects(token: string) {
+  const out: Array<{ id: string; name: string }> = [];
+  let cursor = "";
+  do {
+    const params = new URLSearchParams({ types: "CATEGORY" });
+    if (cursor) params.set("cursor", cursor);
+    const page = await squareFetch<{ objects?: SquareObject[]; cursor?: string }>(token, `/v2/catalog/list?${params}`);
+    for (const o of page.objects ?? []) if (!o.is_deleted) out.push({ id: o.id, name: o.category_data?.name ?? "" });
+    cursor = page.cursor ?? "";
+  } while (cursor && out.length < 5_000);
+  return out.filter((c) => c.name).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+const RETAIL_NAME = /retail|resale|take.?home|merch/i;
+
+/**
+ * Square's categories with which ones Bintro treats as retail. Only items in these
+ * categories are brought into Bintro and kept in step; everything else in Square
+ * (services, add-ons, gift cards…) is left alone. Until the owner chooses, any
+ * category with "retail" / "merch" in its name counts.
+ */
+export async function squareRetailCategories() {
+  const row = await activeIntegration("square");
+  const categories = await listSquareCategoryObjects(row.accessToken);
+  const saved = (row.meta as { retailCategoryIds?: string[] }).retailCategoryIds;
+  const selected = new Set(saved ?? categories.filter((c) => RETAIL_NAME.test(c.name)).map((c) => c.id));
+  return { chosen: Boolean(saved), categories: categories.map((c) => ({ ...c, retail: selected.has(c.id) })) };
+}
+
+export async function saveSquareRetailCategories(ids: string[]) {
+  const row = await activeIntegration("square");
+  await saveIntegration("square", { meta: { ...(row.meta ?? {}), retailCategoryIds: Array.from(new Set(ids)).slice(0, 500) } });
+  return squareRetailCategories();
+}
+
+/**
+ * Brings Square's retail items into Bintro (never the other way: Bintro doesn't
+ * create or change items in Square). Only items in the retail categories are
+ * imported or linked.
+ */
 export async function importSquareCatalog() {
   const row = await activeIntegration("square");
   const objects: SquareObject[] = [];
@@ -321,6 +361,20 @@ export async function importSquareCatalog() {
   const categoryNames = new Map(
     objects.filter((o) => o.type === "CATEGORY").map((o) => [o.id, o.category_data?.name ?? ""]),
   );
+  const savedRetail = (row.meta as { retailCategoryIds?: string[] }).retailCategoryIds;
+  const retailIds = new Set(
+    savedRetail ?? [...categoryNames].filter(([, name]) => RETAIL_NAME.test(name)).map(([id]) => id),
+  );
+  if (retailIds.size === 0) {
+    throw new Error("Choose which Square categories are retail first, so only those items come into Bintro.");
+  }
+  // Square categories brought in are filed as retail for resale, unless the owner already filed them elsewhere.
+  const known = new Set((await findProductCategories()).map((c) => c.name.toLowerCase()));
+  const newCategories = [...retailIds]
+    .map((id) => categoryNames.get(id) ?? "")
+    .filter((name) => name && !known.has(name.toLowerCase()));
+  if (newCategories.length) await upsertProductCategories(newCategories.map((name) => ({ name, taxGroup: "resale" as const })));
+  let skipped = 0;
   const existing = await db.select().from(products);
   const byVariation = new Map(existing.filter((p) => p.squareVariationId).map((p) => [p.squareVariationId, p]));
 
@@ -331,8 +385,13 @@ export async function importSquareCatalog() {
   for (const item of objects) {
     if (item.type !== "ITEM" || item.is_deleted || !item.item_data) continue;
     const data = item.item_data;
-    const categoryId = data.categories?.[0]?.id ?? data.category_id ?? "";
-    const category = categoryNames.get(categoryId) ?? "";
+    const itemCategoryIds = [...(data.categories ?? []).map((c) => c.id), data.category_id ?? ""].filter(Boolean);
+    const retailCategoryId = itemCategoryIds.find((id) => retailIds.has(id));
+    if (!retailCategoryId) {
+      skipped++;
+      continue;
+    }
+    const category = categoryNames.get(retailCategoryId) ?? "";
     const variations = (data.variations ?? []).filter((v) => !v.is_deleted);
     for (const v of variations) {
       const vd = v.item_variation_data ?? {};
@@ -389,7 +448,7 @@ export async function importSquareCatalog() {
       console.error("Square count alignment failed", error);
     }
   }
-  return { created, updated, countsSent, countsPulled };
+  return { created, updated, skipped, countsSent, countsPulled };
 }
 
 type SquareOrder = {

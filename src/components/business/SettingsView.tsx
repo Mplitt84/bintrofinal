@@ -20,6 +20,8 @@ import {
   removeTeamMember,
   squareImportCatalog,
   squareSendCounts,
+  getSquareRetailCategories,
+  setSquareRetailCategories,
   squareSyncSales,
   updateBusinessProfile,
 } from '@/server/business.functions'
@@ -504,6 +506,94 @@ const PROVIDER_INFO = {
   },
 } as const
 
+type SquareCategory = { id: string; name: string; retail: boolean }
+
+/**
+ * Lets the owner tick which Square categories hold retail. Only items in those
+ * categories come into Bintro and are kept in step; services and everything else
+ * stay in Square untouched.
+ */
+function SquareRetailPicker() {
+  const toast = useToast()
+  const [categories, setCategories] = useState<SquareCategory[] | null>(null)
+  const [chosen, setChosen] = useState(false)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  function apply(r: { chosen: boolean; categories: SquareCategory[] }) {
+    setCategories(r.categories)
+    setChosen(r.chosen)
+    setPicked(new Set(r.categories.filter((c) => c.retail).map((c) => c.id)))
+  }
+
+  useEffect(() => {
+    getSquareRetailCategories()
+      .then((r) => (r.ok ? apply(r.result) : setError(r.message)))
+      .catch(() => setError('Could not load your Square categories.'))
+  }, [])
+
+  const dirty = categories !== null && (!chosen || categories.some((c) => c.retail !== picked.has(c.id)))
+
+  async function save() {
+    setSaving(true)
+    try {
+      const r = await setSquareRetailCategories({ data: { ids: [...picked] } })
+      if (r.ok) {
+        apply(r.result)
+        toast(`${picked.size} retail categor${picked.size === 1 ? 'y' : 'ies'} saved`)
+      } else toast(r.message)
+    } catch {
+      toast('Could not save. Try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (error) return <p className="text-sm text-bad m-0 mb-3">{error}</p>
+  if (categories === null) return <div className="skel w-[50%] mb-3" />
+
+  return (
+    <div className="bg-surface rounded-xl px-3.5 py-3 mb-3">
+      <p className="text-sm font-semibold m-0">Which Square categories are retail?</p>
+      <p className="text-[12px] text-ink-2 m-0 mt-0.5 mb-2">
+        Only items in these categories come into Bintro and stay in step. Services and everything else stay in Square
+        untouched, and Bintro never adds items to Square.
+      </p>
+      {categories.length === 0 ? (
+        <p className="text-[13px] text-ink-2 m-0">No categories in Square yet. Add a Retail category to your items in Square first.</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {categories.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className="chip !px-2.5 !py-1 !text-[13px]"
+              aria-pressed={picked.has(c.id)}
+              onClick={() =>
+                setPicked((prev) => {
+                  const next = new Set(prev)
+                  if (next.has(c.id)) next.delete(c.id)
+                  else next.add(c.id)
+                  return next
+                })
+              }
+            >
+              {picked.has(c.id) && <Check size={13} />}
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {dirty && categories.length > 0 && (
+        <button className="btn btn-primary btn-sm" disabled={saving} onClick={save}>
+          {saving ? 'Saving…' : chosen ? 'Save retail categories' : 'Confirm retail categories'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 function Integrations({ onChanged }: { onChanged: () => void | Promise<void> }) {
   const toast = useToast()
   const { can } = useBusiness()
@@ -603,6 +693,7 @@ function Integrations({ onChanged }: { onChanged: () => void | Promise<void> }) 
                     )}
                   </p>
                 ) : null}
+                {s.provider === 'square' && !s.inventory?.needsReconnect && <SquareRetailPicker />}
                 <div className="flex flex-wrap gap-2">
                   {s.provider === 'square' ? (
                     <>
@@ -611,7 +702,9 @@ function Integrations({ onChanged }: { onChanged: () => void | Promise<void> }) 
                         disabled={!!busy}
                         onClick={() =>
                           run('import', () => squareImportCatalog(), (r) =>
-                            `Imported ${r.created} new item${r.created === 1 ? '' : 's'}, linked ${r.updated}${
+                            `Imported ${r.created} new retail item${r.created === 1 ? '' : 's'}, linked ${r.updated}${
+                              r.skipped ? ` · left ${r.skipped} non-retail item${r.skipped === 1 ? '' : 's'} in Square` : ''
+                            }${
                               r.countsSent ? ` · sent ${r.countsSent} count${r.countsSent === 1 ? '' : 's'} to Square` : ''
                             }`,
                           )
