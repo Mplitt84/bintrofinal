@@ -518,3 +518,28 @@ export async function sendInsightReportEmail(
     count,
   );
 }
+
+/** Setup check: which email provider this site has, without revealing keys. */
+export function emailSetup() {
+  const { resendKey, sendGridKey } = providerKeys();
+  return {
+    provider: resendKey ? "Resend" : sendGridKey ? "SendGrid" : "",
+    customSender: Boolean(process.env.RESTOCK_EMAIL_FROM?.trim()),
+  };
+}
+
+/** Sends a short test email to the business's own address (Settings → Setup check). */
+export async function sendTestEmail(profile: BusinessProfile): Promise<SendResult> {
+  const to = profile.email.trim() || profile.orderEmail.trim();
+  const text = `This is a test from Bintro for ${displayBusinessName(profile)}. If you can read this, restock lists, purchase orders and reports will reach you.`;
+  return deliver(
+    {
+      profile,
+      to,
+      subject: "Bintro test email",
+      text,
+      html: `<p style="font-family:system-ui,sans-serif">${text}</p>`,
+    },
+    0,
+  );
+}

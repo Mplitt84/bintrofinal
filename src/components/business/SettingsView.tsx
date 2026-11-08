@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ArrowUpFromLine, Check, ExternalLink, Mail, Plug, RefreshCw, Trash2, UserPlus, X } from 'lucide-react'
 import type { IntegrationStatus, Product, TeamMember } from '@/components/inventory/types'
 import { ImportView } from '@/components/business/ImportView'
+import { SetupCheck } from '@/components/business/SetupCheck'
 import { LEGAL_LINKS } from '@/components/legal/LegalPage'
 import { AppearanceSettings } from '@/components/business/AppearanceSettings'
 import { ScannerSettings } from '@/components/business/ScannerSettings'
@@ -38,6 +39,7 @@ export type SettingsSection =
   | 'scanner'
   | 'import'
   | 'integrations'
+  | 'setup'
 
 const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: 'profile', label: 'Business profile' },
@@ -48,6 +50,7 @@ const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: 'scanner', label: 'Scanner & Bluetooth' },
   { id: 'import', label: 'Import inventory' },
   { id: 'integrations', label: 'Connections' },
+  { id: 'setup', label: 'Setup check' },
 ]
 
 /** Settings tab: who the business is, who works there, and which outside systems are connected. */
@@ -117,6 +120,7 @@ export function SettingsView({
       )}
       {section === 'appearance' && <AppearanceSettings profile={profile} onProfile={onProfile} />}
       {section === 'scanner' && <ScannerSettings />}
+      {section === 'setup' && <SetupCheck />}
       {section === 'account' && <AccountView panel={accountPanel} onPanel={onAccountPanel} />}
       {section === 'categories' && (
         <>

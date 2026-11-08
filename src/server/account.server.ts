@@ -631,3 +631,72 @@ export async function handleStripeWebhook(payload: string, signature: string) {
     await syncSubscription(event.data.object.subscription);
   else if (event.type === "invoice.payment_failed") await logEvent("charge", "A payment failed. Update your card in Billing");
 }
+
+export type StripeCheck = {
+  secretKey: "missing" | "test" | "live" | "restricted" | "invalid";
+  account: string;
+  webhookSecret: boolean;
+  prices: { env: string; plan: string; interval: BillingInterval; expectedCents: number; status: "missing" | "ok" | "mismatch" | "error"; detail: string }[];
+};
+
+/** Setup check: is Stripe ready to charge? Reads only (account, prices); never changes anything. */
+export async function stripeCheck(): Promise<StripeCheck> {
+  const key = env("STRIPE_SECRET_KEY");
+  const secretKey: StripeCheck["secretKey"] = !key
+    ? "missing"
+    : key.startsWith("sk_test_")
+      ? "test"
+      : key.startsWith("sk_live_")
+        ? "live"
+        : key.startsWith("rk_")
+          ? "restricted"
+          : "invalid";
+  let account = "";
+  if (key && secretKey !== "invalid") {
+    try {
+      const acct = await stripe<{ settings?: { dashboard?: { display_name?: string } }; email?: string }>("/v1/account", undefined, "GET");
+      account = acct.settings?.dashboard?.display_name || acct.email || "connected";
+    } catch (error) {
+      account = "";
+      console.error("Stripe setup check failed", error);
+    }
+  }
+  const prices: StripeCheck["prices"] = [];
+  for (const plan of ["plus", "premium"] as const) {
+    for (const interval of ["month", "year"] as const) {
+      const name = PRICE_ENV[plan][interval];
+      const id = env(name);
+      const p = planById(plan);
+      const expectedCents = interval === "year" ? p.yearlyCents : p.monthlyCents;
+      const row = { env: name, plan: p.name, interval, expectedCents, status: "missing" as StripeCheck["prices"][number]["status"], detail: "" };
+      if (id && key && account) {
+        try {
+          const price = await stripe<{ active: boolean; unit_amount: number | null; currency: string; recurring?: { interval: string } }>(
+            `/v1/prices/${encodeURIComponent(id)}`,
+            undefined,
+            "GET",
+          );
+          const okInterval = price.recurring?.interval === interval;
+          const okAmount = price.unit_amount === expectedCents && price.currency === "usd";
+          row.status = price.active && okInterval && okAmount ? "ok" : "mismatch";
+          row.detail = !price.active
+            ? "This price is archived in Stripe."
+            : !okInterval
+              ? `Stripe bills it every ${price.recurring?.interval ?? "one time"}, not every ${interval}.`
+              : !okAmount
+                ? `Stripe has $${((price.unit_amount ?? 0) / 100).toFixed(2)} ${price.currency.toUpperCase()}; the app shows $${(expectedCents / 100).toFixed(2)}.`
+                : "";
+        } catch (error) {
+          row.status = "error";
+          row.detail = error instanceof Error ? error.message : "Stripe couldn't find this price.";
+        }
+      } else if (id) {
+        row.status = "error";
+        row.detail = "Set a working STRIPE_SECRET_KEY first.";
+      }
+      prices.push(row);
+    }
+  }
+  if (key && !account && secretKey !== "invalid") return { secretKey: "invalid", account, webhookSecret: Boolean(env("STRIPE_WEBHOOK_SECRET")), prices };
+  return { secretKey, account, webhookSecret: Boolean(env("STRIPE_WEBHOOK_SECRET")), prices };
+}

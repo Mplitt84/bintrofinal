@@ -1070,3 +1070,25 @@ export async function writeInsightSummary(kind: "weekly" | "monthly" | "fast", f
   );
   return r.ok ? clean(r.input.summary, 900) : "";
 }
+
+/** Setup check: one tiny Claude call through the same routes every AI feature uses. */
+export async function pingAI(): Promise<{ ok: boolean; route: string; detail: string }> {
+  const routes = anthropicEndpoints().map((e) => e.label);
+  if (routes.length === 0) return { ok: false, route: "", detail: "No AI key on this site (add BINTRO_ANTHROPIC_KEY)." };
+  const res = await postToClaude(
+    { model: SUGGEST_MODEL, max_tokens: 5, messages: [{ role: "user", content: "Reply with OK." }] },
+    20_000,
+    "setup-check",
+  );
+  if (res?.ok) return { ok: true, route: routes[0], detail: "" };
+  const text = res ? (await res.text().catch(() => "")).slice(0, 200) : "";
+  const hint =
+    res?.status === 401
+      ? "The key was rejected. Check it was pasted in full."
+      : res?.status === 400 && /credit/i.test(text)
+        ? "The Anthropic account needs credit. Add some under Billing at console.anthropic.com."
+        : res
+          ? `AI answered ${res.status}.`
+          : "Couldn't reach the AI service.";
+  return { ok: false, route: routes.join(", "), detail: hint };
+}

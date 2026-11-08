@@ -47,6 +47,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   │   ├── AppearanceSettings.tsx # Settings → Look & feel: color palette picker (warm / cool / earthy / black & grey) + business tips on/off
 │   │   │   ├── ScannerSettings.tsx  # Settings → Scanner & Bluetooth: Web Bluetooth pairing, OS pairing steps, scanner test, ask-who's-scanning mode
 │   │   │   ├── AccountView.tsx      # Settings → Account & billing: plan summary, usage, plan picker, account details; Billing: card, pause, cancel, history
+│   │   │   ├── SetupCheck.tsx       # Settings → Setup check: AI ping, Stripe key/prices (read-only), email provider + test email, Square/QuickBooks keys, pilot flag
 │   │   │   ├── PlanGate.tsx         # PlanGate / UpgradeCard: locks a view or control behind the plan that includes a feature
 │   │   │   └── ImportView.tsx       # Settings → Import: upload CSV/PDF/photo of stock list or vendor invoice, review lines, AI prices, apply
 │   │   └── inventory
@@ -104,6 +105,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   ├── business.functions.ts   # createServerFn wrappers for profile/team/categories/budget/expenses/AI/integrations
 │   │   ├── insights.server.ts      # computeInsights, runInsightReport (weekly | monthly | fast), price check records (server-only)
 │   │   ├── insights.functions.ts   # getInsights, getInsightSummary, sendInsightReportNow, checkWebPrice, applyWebPrice, confirmPrices
+│   │   ├── setup.functions.ts      # runSetupCheck (never returns key values), sendSetupTestEmail (to the business's own address)
 │   │   ├── calendar.server.ts      # Calendar event CRUD + secret feed token (server-only)
 │   │   └── calendar.functions.ts   # createServerFn wrappers: list/add/edit/remove events, getCalendarFeedPath
 │   ├── routes
@@ -199,6 +201,9 @@ Business events (reorders, deliveries, counts, bills, tax dates, tasks) live in 
 Tiers live in `src/lib/plans.ts` (prices, product/team limits, `Feature` ids). Free: scanning, products (≤150), 2 team members, below par, activity. Plus: unlimited products, 10 team, vendor orders, calendar, bulk import, AI (label photo, price checks), sales reports, Square. Premium: + Budget & expenses, receipt AI, QuickBooks, CRM (coming soon), unlimited team. `effectivePlan` is Free while paused. Client: `useBusiness().can(feature)` and `<PlanGate feature>`; server: `assertFeature` / `hasFeature` / `assertProductRoom` / `assertTeamRoom` in `account.server.ts` (also checked by scheduled functions and the integration connect route). Payments use Stripe over REST when `STRIPE_SECRET_KEY` and `STRIPE_PRICE_{PLUS,PREMIUM}_{MONTHLY,YEARLY}` are set (webhook at `/api/billing/webhook`, secret `STRIPE_WEBHOOK_SECRET`); without them the app is in pilot mode and plan changes apply with no charge. Pause = 1–3 months (Stripe `pause_collection`); cancel = at period end (trials end immediately).
 
 **Pilot Premium.** `pilotPremium()` in `account.server.ts` marks a pilot site: builds of the `PILOT` branch (Netlify's build-time `BRANCH`, baked in as `__BINTRO_BUILD_BRANCH__` in `vite.config.ts`; scheduled functions fall back to the runtime `BRANCH` env) or wherever `BINTRO_PILOT_PREMIUM=true` (`false` forces it off). Pilot testers get Premium free for `PILOT_MONTHS` (18) from their first Scan In: `settle` stores the first `in` movement's time in `account.pilotStartedAt` (so undo/delete can't reset it); before that the clock hasn't started and Premium stays on. While `pilotActive`, `effectivePlanOf` returns premium, plan change / pause / resume / cancel return a "nothing to change" message, and `AccountView` shows "Pilot · included" (with days left in the last 30) and hides the plan picker and billing tab. When the 18 months run out the account moves to Free once (`pilotEndedAt`) and normal plans apply.
+
+### Setup check
+Settings → Setup check (`?settings=setup`) runs `runSetupCheck`: `pingAI` (a 5-token Claude call through `postToClaude`, with hints for a rejected key or no credit), `stripeCheck` (key mode test/live from its prefix, `/v1/account`, each `STRIPE_PRICE_*` fetched and compared with the plan's price and interval in `plans.ts` — GET only), `emailSetup` (Resend / SendGrid / none, custom sender) with a "Send me a test email" button to the profile email, Square/QuickBooks app keys present, and whether the site is a pilot. It never returns a key's value.
 
 ### Legal pages
 `/terms`, `/privacy` and `/eula` are public pages (needed for Intuit's QuickBooks production review and app marketplaces), linked at the bottom of Settings. All text lives in `src/lib/legal.ts`; company name, email, address, venue and effective date are in `LEGAL`, and any value still in [brackets] shows a "Draft" banner. The Privacy Policy lists the real processors (Netlify, Anthropic, Stripe, Resend/SendGrid, barcode lookups, Square/QuickBooks when connected) — update it when a new service gets data. The 30-day post-closure deletion and export-on-request promises are policy, carried out by hand today.
