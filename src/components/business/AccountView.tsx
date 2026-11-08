@@ -148,10 +148,19 @@ type RunFn = (key: string, call: () => Promise<BillingCall>) => Promise<boolean>
 function statusLine(account: AccountSummary): { tone: 'good' | 'warn' | 'bad' | 'plain'; label: string; detail: string } {
   const plan = planById(account.plan)
   if (account.pilotPremium) {
+    if (!account.pilotEndsAt) {
+      return {
+        tone: 'good',
+        label: 'Pilot · included',
+        detail:
+          'Thanks for testing Bintro. Every Premium feature, including everything in Plus, is free for 18 months. Your clock starts with your first Scan In.',
+      }
+    }
+    const left = daysUntil(account.pilotEndsAt)
     return {
-      tone: 'good',
-      label: 'Pilot · included',
-      detail: 'Thanks for testing Bintro. Every Premium feature, including everything in Plus, is yours free for the life of the pilot.',
+      tone: left <= 30 ? 'warn' : 'good',
+      label: left <= 30 ? `Pilot · ${left} day${left === 1 ? '' : 's'} left` : 'Pilot · included',
+      detail: `Thanks for testing Bintro. Every Premium feature, including everything in Plus, is free until ${fmtDate(account.pilotEndsAt)}, 18 months after your first Scan In. After that, pick a plan to keep them, or you'll move to Free.`,
     }
   }
   if (account.status === 'trialing') {
