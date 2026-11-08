@@ -493,7 +493,7 @@ export function ScanView({
         </p>
         <button type="button" className="btn btn-tonal mt-3" onClick={startPhoto}>
           <Camera size={18} />
-          In a hurry? Snap the SKU or label
+          Snap & log: photo the SKU or label
         </button>
         <input
           ref={photoInput}

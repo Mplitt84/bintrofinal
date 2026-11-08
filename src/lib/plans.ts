@@ -72,6 +72,7 @@ export const PLANS: Plan[] = [
       'Vendor purchase orders to email, print or download',
       'Business calendar with Google / Outlook sync',
       'Bulk import from CSV, PDF or photo',
+      'Snap & log: photo the SKU or full label to add stock or scan it out',
       'AI label reading and price checks',
       'Weekly, monthly and fast-mover reports',
       'Square POS item and sales sync',
@@ -100,7 +101,11 @@ export const FEATURE_INFO: Record<Feature, { label: string; blurb: string }> = {
   orders: { label: 'Vendor orders', blurb: 'Turn the below-par list into a vendor-grouped order you can email, print or download.' },
   calendar: { label: 'Business calendar', blurb: 'Plan reorders, deliveries, counts, bills and tax dates, synced to Google or Outlook.' },
   import: { label: 'Bulk import', blurb: 'Load a whole stock list or vendor invoice from a CSV, PDF or photo.' },
-  ai: { label: 'AI help', blurb: 'Read product labels and receipts from a photo and check prices with AI.' },
+  ai: {
+    label: 'AI help',
+    blurb:
+      'Snap & log: in a hurry, photograph the SKU or full label and Bintro finds the product so you can add it to stock or scan it out. Plus AI label reading for new products and price checks.',
+  },
   insights: { label: 'Sales reports', blurb: 'Best sellers, slow movers and fast-mover alerts, in the app and by email.' },
   square: { label: 'Square POS', blurb: 'Import your Square item library and count sales out of stock automatically.' },
   budget: { label: 'Budget & expenses', blurb: 'Track monthly spend against a budget, log expenses and read receipts with AI.' },

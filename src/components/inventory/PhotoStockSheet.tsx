@@ -125,7 +125,7 @@ export function PhotoStockSheet({
         setStage({
           kind: 'retake',
           message: /plan|upgrade|feature/i.test(message)
-            ? 'Reading labels from photos is on the Plus plan. A photo of the barcode still works when the phone can read it.'
+            ? 'Snap & log is on the Plus plan. A clear photo of the barcode still works when the phone can read it.'
             : "Couldn't read that photo. Check your connection and try again.",
         })
       }
