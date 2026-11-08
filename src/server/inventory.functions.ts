@@ -14,6 +14,7 @@ import {
   findMovementsSince,
   reverseAndDeleteMovement,
   deleteProductById,
+  mergeProductsInto,
   computeStats,
   findBelowParProducts,
   buildPurchaseOrderLines,
@@ -150,6 +151,13 @@ export const deleteProduct = createServerFn({ method: "POST" })
   .inputValidator(z.object({ productId: z.number().int().positive() }))
   .handler(async ({ data }) => {
     return deleteProductById(data.productId);
+  });
+
+/** Folds a duplicate into the real product (barcode, Square link, history) and removes the duplicate. */
+export const mergeProducts = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ sourceId: z.number().int().positive(), targetId: z.number().int().positive() }))
+  .handler(async ({ data }) => {
+    return mergeProductsInto(data.sourceId, data.targetId);
   });
 
 const ScanSchema = z.object({

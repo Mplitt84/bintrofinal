@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Pencil, Search } from 'lucide-react'
 import type { Product, Stats } from './types'
-import { createProduct, deleteProduct, linkBarcodeToProduct, updateProduct } from '@/server/inventory.functions'
+import { createProduct, deleteProduct, linkBarcodeToProduct, mergeProducts, updateProduct } from '@/server/inventory.functions'
 import { Sheet } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
 import { EmptyState, PageHead, StatGrid, StatTile, Thumb, centsToDollars, dollarsShort } from '@/components/ui/bits'
@@ -190,6 +190,13 @@ export function InventoryView({
               setEditing(null)
               await onChanged()
               toast(`Deleted ${editing.name}`)
+            }}
+            onMerge={async (target) => {
+              const r = (await mergeProducts({ data: { sourceId: editing.id, targetId: target.id } })) as { product: Product }
+              if (r?.product) onProduct?.(r.product)
+              setEditing(null)
+              await onChanged()
+              toast(`Merged ${editing.name} into ${target.name}`)
             }}
           />
         )}

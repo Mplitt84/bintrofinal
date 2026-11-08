@@ -313,6 +313,66 @@ async function undoSquareChange(movement: Movement, product: Product | undefined
 }
 
 /**
+ * Folds a duplicate product into the real one. The kept product keeps its own
+ * count and details, picks up anything it's missing (barcode as an extra code,
+ * Square link, brand, size, prices, photo), and takes over the duplicate's scan
+ * and sales history. Starting counts copied in from Square are dropped rather
+ * than added, so stock isn't counted twice. If the kept product is linked to
+ * Square, its count is then sent to Square so both agree.
+ */
+export async function mergeProductsInto(sourceId: number, targetId: number) {
+  if (sourceId === targetId) throw new Error("Pick a different product to merge into.");
+  const [source, target] = await Promise.all([findProductById(sourceId), findProductById(targetId)]);
+  if (!source || !target) throw new Error("One of those products no longer exists.");
+  if (source.squareVariationId && target.squareVariationId && source.squareVariationId !== target.squareVariationId) {
+    throw new Error("Both products are linked to different Square items. Merge or fix them in Square first.");
+  }
+
+  // Drop starting counts copied from Square; keep real scans and sales and move them over.
+  const sourceMoves = await db.select().from(movements).where(eq(movements.productId, sourceId));
+  const seeded = sourceMoves.filter((m) => m.staffName === SQUARE_STAFF_NAME && m.type === "adjust");
+  const carried = sourceMoves.filter((m) => !seeded.includes(m));
+  const carriedDelta = carried.reduce((sum, m) => sum + m.delta, 0);
+  if (seeded.length) await db.delete(movements).where(inArray(movements.id, seeded.map((m) => m.id)));
+  if (carried.length) {
+    await db.update(movements).set({ productId: targetId }).where(inArray(movements.id, carried.map((m) => m.id)));
+  }
+  await db.delete(squareOutbox).where(and(eq(squareOutbox.productId, sourceId), eq(squareOutbox.status, "pending")));
+  await db.delete(products).where(eq(products.id, sourceId));
+
+  const codes = [source.barcode, ...source.extraBarcodes].filter((c) => c && !c.startsWith("SQ-") && c !== target.barcode);
+  const extraBarcodes = Array.from(new Set([...target.extraBarcodes, ...codes]));
+  const [merged] = await db
+    .update(products)
+    .set({
+      qty: sql`${products.qty} + ${carriedDelta}`,
+      extraBarcodes,
+      squareVariationId: target.squareVariationId || source.squareVariationId,
+      brand: target.brand || source.brand,
+      size: target.size || source.size,
+      vendor: target.vendor || source.vendor,
+      category: target.category || source.category,
+      imageUrl: target.imageUrl || source.imageUrl,
+      unitCostCents: target.unitCostCents || source.unitCostCents,
+      retailPriceCents: target.retailPriceCents || source.retailPriceCents,
+      updatedAt: new Date(),
+    })
+    .where(eq(products.id, targetId))
+    .returning();
+
+  if (merged?.squareVariationId && (await squareConnected())) {
+    await db.insert(squareOutbox).values({
+      productId: merged.id,
+      variationId: merged.squareVariationId,
+      kind: "count",
+      quantity: Math.max(0, merged.qty),
+    });
+    await flushSquareSoon();
+  }
+  return { product: merged, moved: carried.length };
+}
+
+/**
  * Removes a product for good. Its movement history goes with it (movements
  * reference the product), so past spend for it drops out of Activity and Budget.
  */
