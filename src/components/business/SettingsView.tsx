@@ -8,6 +8,7 @@ import { AccountView, type AccountPanel } from '@/components/business/AccountVie
 import { PlanGate, UpgradeCard } from '@/components/business/PlanGate'
 import { businessTypeById, selectableBusinessTypes, type BusinessProfile } from '@/lib/business-types'
 import { CategoryManager, CategorySetupSheet } from '@/components/business/CategorySetupSheet'
+import { CategoryCleanup } from '@/components/inventory/TidyTools'
 import { useBusiness } from '@/components/business/BusinessContext'
 import { deriveInitials } from '@/lib/inventory-defaults'
 import { Field } from '@/components/ui/Sheet'
@@ -116,7 +117,12 @@ export function SettingsView({
       {section === 'appearance' && <AppearanceSettings profile={profile} onProfile={onProfile} />}
       {section === 'scanner' && <ScannerSettings />}
       {section === 'account' && <AccountView panel={accountPanel} onPanel={onAccountPanel} />}
-      {section === 'categories' && <CategoryManager productCategories={products.map((p) => p.category)} />}
+      {section === 'categories' && (
+        <>
+          <CategoryCleanup onChanged={onChanged} />
+          <CategoryManager productCategories={products.map((p) => p.category)} />
+        </>
+      )}
       {section === 'team' && (
         <TeamManager team={team} onTeam={onTeam} staffName={staffName} onStaffName={onStaffName} />
       )}

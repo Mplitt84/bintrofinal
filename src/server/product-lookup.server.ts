@@ -145,6 +145,9 @@ type AIEndpoint = { url: string; headers: Record<string, string>; label: string 
  */
 function anthropicEndpoints(): AIEndpoint[] {
   const list: AIEndpoint[] = [];
+  // The owner's own Anthropic key always goes straight to Anthropic, bypassing Netlify's gateway.
+  const own = process.env.BINTRO_ANTHROPIC_KEY?.trim();
+  if (own) list.push({ url: "https://api.anthropic.com/v1/messages", headers: { "x-api-key": own }, label: "anthropic-own-key" });
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   const base = process.env.ANTHROPIC_BASE_URL?.trim();
   if (key) {
