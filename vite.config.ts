@@ -6,6 +6,10 @@ import tailwindcss from '@tailwindcss/vite'
 import netlify from '@netlify/vite-plugin-tanstack-start'
 
 const config = defineConfig({
+  // Netlify sets BRANCH at build time; the PILOT branch builds the pilot site.
+  define: {
+    __BINTRO_BUILD_BRANCH__: JSON.stringify(process.env.BRANCH ?? ''),
+  },
   plugins: [
     viteTsConfigPaths({
       projects: ['./tsconfig.json'],

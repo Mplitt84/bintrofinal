@@ -29,6 +29,24 @@ function env(name: string) {
   return process.env[name]?.trim() ?? "";
 }
 
+declare const __BINTRO_BUILD_BRANCH__: string;
+
+/**
+ * Pilot testers get Premium (every Plus feature and more) for the life of the
+ * pilot: no trial clock, no charges, no plan changes. On for builds of the PILOT
+ * branch, or anywhere BINTRO_PILOT_PREMIUM=true (BINTRO_PILOT_PREMIUM=false turns it off).
+ */
+export function pilotPremium() {
+  const flag = env("BINTRO_PILOT_PREMIUM").toLowerCase();
+  if (flag === "true") return true;
+  if (flag === "false") return false;
+  // Scheduled functions are bundled separately, without the build-time constant.
+  const branch = typeof __BINTRO_BUILD_BRANCH__ === "string" && __BINTRO_BUILD_BRANCH__ ? __BINTRO_BUILD_BRANCH__ : env("BRANCH");
+  return branch.toUpperCase() === "PILOT";
+}
+
+const PILOT_MESSAGE = "Premium is included for the life of the pilot, so there's nothing to change or pay.";
+
 /** Stripe is on once the secret key is set. Until then plan changes apply right away with no charge. */
 export function billingLive() {
   return Boolean(env("STRIPE_SECRET_KEY"));
@@ -65,7 +83,7 @@ async function loadAccount(): Promise<AccountRow> {
     .onConflictDoNothing();
   await logEvent("trial", `Started a ${TRIAL_DAYS}-day Premium trial`);
   const [row] = await db.select().from(account).where(eq(account.id, ACCOUNT_ID));
-  return row;
+  return settle(row);
 }
 
 /**
@@ -74,6 +92,19 @@ async function loadAccount(): Promise<AccountRow> {
  */
 async function settle(row: AccountRow): Promise<AccountRow> {
   const now = new Date();
+  if (pilotPremium()) {
+    if (row.plan === "premium" && row.status === "active" && !row.trialEndsAt && !row.pausedUntil && !row.cancelAtPeriodEnd) return row;
+    await logEvent("upgrade", "Pilot: Premium included for the life of the pilot");
+    return saveAccount({
+      plan: "premium",
+      status: "active",
+      trialEndsAt: null,
+      currentPeriodEnd: null,
+      pausedUntil: null,
+      cancelAtPeriodEnd: false,
+      cancelReason: "",
+    });
+  }
   if (row.status === "trialing" && row.trialEndsAt && row.trialEndsAt <= now && !row.stripeSubscriptionId) {
     await logEvent("downgrade", "Premium trial ended. Moved to Free");
     return saveAccount({ plan: "free", status: "active", trialEndsAt: null, currentPeriodEnd: null, cancelAtPeriodEnd: false });
@@ -106,6 +137,7 @@ async function settle(row: AccountRow): Promise<AccountRow> {
 }
 
 function effectivePlanOf(row: AccountRow): PlanId {
+  if (pilotPremium()) return "premium";
   if (row.status === "paused") return "free";
   return isPlanId(row.plan) ? row.plan : "free";
 }
@@ -126,6 +158,7 @@ function summarize(row: AccountRow, usage: AccountSummary["usage"]): AccountSumm
       ? { brand: row.cardBrand, last4: row.cardLast4, expMonth: row.cardExpMonth, expYear: row.cardExpYear }
       : null,
     billingLive: billingLive(),
+    pilotPremium: pilotPremium(),
     memberSince: row.createdAt.toISOString(),
     usage,
   };
@@ -199,6 +232,7 @@ export async function updateAccountDetails(data: { ownerName?: string; billingEm
 export type BillingResult = { account: AccountSummary; redirect?: string; message: string };
 
 export async function changePlan(target: PlanId, interval: BillingInterval, origin: string): Promise<BillingResult> {
+  if (pilotPremium()) return { account: await getAccountSummary(), message: PILOT_MESSAGE };
   const row = await loadAccount();
   const plan = planById(target);
   const from = planById(row.plan);
@@ -236,6 +270,7 @@ export async function changePlan(target: PlanId, interval: BillingInterval, orig
 }
 
 export async function pauseBilling(months: number): Promise<BillingResult> {
+  if (pilotPremium()) return { account: await getAccountSummary(), message: PILOT_MESSAGE };
   const row = await loadAccount();
   if (row.plan === "free" || row.status === "trialing") {
     throw new PlanLimitError("Only paid plans can be paused.");
@@ -256,6 +291,7 @@ export async function pauseBilling(months: number): Promise<BillingResult> {
 }
 
 export async function resumeBilling(): Promise<BillingResult> {
+  if (pilotPremium()) return { account: await getAccountSummary(), message: PILOT_MESSAGE };
   const row = await loadAccount();
   if (billingLive() && row.stripeSubscriptionId) {
     await stripe(`/v1/subscriptions/${row.stripeSubscriptionId}`, { pause_collection: "", cancel_at_period_end: "false" });
@@ -275,6 +311,7 @@ export async function resumeBilling(): Promise<BillingResult> {
 }
 
 export async function cancelPlan(reason: string): Promise<BillingResult> {
+  if (pilotPremium()) return { account: await getAccountSummary(), message: PILOT_MESSAGE };
   const row = await loadAccount();
   const name = planById(row.plan).name;
   if (row.plan === "free") throw new PlanLimitError("You're already on the Free plan.");
