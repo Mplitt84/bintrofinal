@@ -92,7 +92,7 @@ export function SetupCheck() {
             {result.ai.ok
               ? `Price checks, Snap & log, invoice, receipt and sales report reading are all available (via ${result.ai.route}).`
               : 'Every AI connection on this site failed:'}
-            {result.ai.routes.length > 1 || !result.ai.ok ? (
+            {!result.ai.ok ? (
               <span className="block mt-1">
                 {result.ai.routes.map((r) => (
                   <span key={r.label} className="block">
