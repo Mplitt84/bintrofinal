@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { applyImportLines, parseImportFile } from "./import.server.js";
+import { applyImportLines, applySalesReport, parseImportFile, parseSalesReportFile } from "./import.server.js";
+import { SALES_REPORT_APPS } from "../lib/sales-report.js";
 import { estimatePricesBatch } from "./product-lookup.server.js";
 import { findBusinessContext } from "./business.server.js";
 import { MAX_IMPORT_LINES, PRICE_BATCH } from "../lib/bulk-import.js";
@@ -101,4 +102,40 @@ export const applyReceiptPrices = createServerFn({ method: "POST" })
       lines: lines.map((l) => ({ ...l, retailPriceCents: 0 })),
     });
     return { updated: lines.length, names: lines.slice(0, 5).map((l) => l.name) };
+  });
+
+const FileSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("csv"), text: z.string().min(1).max(4_000_000) }),
+  z.object({
+    kind: z.literal("document"),
+    data: z.string().min(1).max(5_800_000),
+    mediaType: z.enum(["application/pdf", "image/jpeg", "image/png", "image/webp"]),
+  }),
+]);
+
+/** Reads a product sales report exported from a booking app with no direct connection. */
+export const parseSalesReport = createServerFn({ method: "POST" })
+  .inputValidator(FileSchema)
+  .handler(async ({ data }) => {
+    await assertFeature("import");
+    return parseSalesReportFile(data, await businessContext());
+  });
+
+/** Logs the reviewed units sold as scan-outs, one per product, tagged with the app and period. */
+export const logSalesReport = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      app: z.enum(SALES_REPORT_APPS),
+      period: z.string().max(60),
+      staffName: z.string().max(60),
+      force: z.boolean(),
+      lines: z
+        .array(z.object({ productId: z.number().int(), qty: z.number().int().min(1).max(100_000) }))
+        .min(1)
+        .max(MAX_IMPORT_LINES),
+    }),
+  )
+  .handler(async ({ data }) => {
+    await assertFeature("import");
+    return applySalesReport(data);
   });

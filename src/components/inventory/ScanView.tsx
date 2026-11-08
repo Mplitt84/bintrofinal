@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowDownToLine, ArrowUpFromLine, Camera, Check, PackagePlus, Plus, ScanBarcode, Undo2, X } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpFromLine, Camera, Check, FileSpreadsheet, PackagePlus, Plus, ScanBarcode, Undo2, X } from 'lucide-react'
 import type { ActivityRow, MovementRow, Product } from './types'
 import {
   scanMovement,
@@ -14,6 +14,7 @@ import { useToast } from '@/components/ui/Toast'
 import { EmptyState, StatTile, Thumb, dollarsShort, timeAgo } from '@/components/ui/bits'
 import { CameraScanner } from './CameraScanner'
 import { PhotoStockSheet } from './PhotoStockSheet'
+import { SalesReportSheet } from './SalesReportSheet'
 import { ProductForm } from './ProductForm'
 import { STAFF_IDLE_MINUTES, getStaffAskMode, type StaffPrompt } from './StaffPicker'
 import { onBluetoothCode } from '@/lib/bluetooth-scanner'
@@ -123,6 +124,7 @@ export function ScanView({
   const [bump, setBump] = useState(0)
   const [busy, setBusy] = useState(false)
   const [cameraOpen, setCameraOpen] = useState(false)
+  const [salesOpen, setSalesOpen] = useState(false)
   const [typing, setTyping] = useState(false)
   const [typedCode, setTypedCode] = useState('')
   const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null)
@@ -504,6 +506,10 @@ export function ScanView({
             Got a delivery? Check in the invoice
           </button>
         )}
+        <button type="button" className="btn btn-tonal mt-2" onClick={() => setSalesOpen(true)}>
+          <FileSpreadsheet size={18} />
+          Sold retail in another booking app? Upload the sales report
+        </button>
         <input
           ref={photoInput}
           type="file"
@@ -585,6 +591,14 @@ export function ScanView({
           setTyping(true)
         }}
         onPhotoInstead={startPhoto}
+      />
+
+      <SalesReportSheet
+        open={salesOpen}
+        products={products}
+        askStaff={askStaff}
+        onClose={() => setSalesOpen(false)}
+        onDone={safeRefresh}
       />
 
       <PhotoStockSheet

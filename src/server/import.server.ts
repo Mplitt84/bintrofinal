@@ -4,7 +4,7 @@
  * matches them to existing products, and applies stock counts and price updates.
  * Server-only.
  */
-import { applyMovement, findAllProducts, flushSquareSoon, insertProduct, updateProductFields, type Product } from "./inventory.server.js";
+import { applyMovement, countMovementsWithNote, findAllProducts, flushSquareSoon, insertProduct, updateProductFields, type Product } from "./inventory.server.js";
 import {
   CSV_FIELDS,
   extractImportDocument,
@@ -13,6 +13,7 @@ import {
   type CsvMapping,
   type ExtractedLine,
 } from "./product-lookup.server.js";
+import { salesReportNote, type ParsedSalesReport, type SalesReportLine, type SalesReportResult } from "../lib/sales-report.js";
 import { MAX_IMPORT_LINES, type ImportLine, type ImportMode, type ImportSummary, type ParsedImport } from "../lib/bulk-import.js";
 
 /** RFC 4180-ish CSV parser: quoted fields, escaped quotes, CRLF, and comma / semicolon / tab delimiters. */
@@ -298,4 +299,122 @@ export async function applyImportLines(params: {
   }
   await flushSquareSoon();
   return summary;
+}
+
+/** Units-sold column in a booking app's product sales export ("Qty sold", "Units", "Quantity"…). */
+const SOLD_HINT = /sold|qty|quantity|units|count|^#$|^no\.?$/i;
+/** Rows that are totals or service lines rather than products. */
+const NOT_A_PRODUCT = /^(sub)?total|^tax$|^tips?$|^shipping|^discount|^grand/i;
+
+function salesColumns(rows: string[][]) {
+  for (let r = 0; r < Math.min(rows.length, 10); r++) {
+    const header = rows[r];
+    const name = header.findIndex((h) => HEADER_HINTS.name.test(h));
+    const barcode = header.findIndex((h) => HEADER_HINTS.barcode.test(h));
+    const sold = header.findIndex((h) => /sold/i.test(h));
+    const qty = sold >= 0 ? sold : header.findIndex((h) => SOLD_HINT.test(h));
+    if ((name >= 0 || barcode >= 0) && qty >= 0) {
+      return { headerRow: r, name, barcode, qty, brand: header.findIndex((h) => HEADER_HINTS.brand.test(h)), size: header.findIndex((h) => HEADER_HINTS.size.test(h)) };
+    }
+  }
+  return null;
+}
+
+async function readSalesCsv(text: string): Promise<{ ok: true; raw: RawLine[] } | { ok: false; message: string }> {
+  const rows = parseCsv(text);
+  if (rows.length === 0) return { ok: false, message: "That file is empty." };
+  let cols = salesColumns(rows);
+  if (!cols) {
+    const ai = await mapCsvColumns(rows.slice(0, 12));
+    if (ai.ok && (ai.mapping.columns.name >= 0 || ai.mapping.columns.barcode >= 0) && ai.mapping.columns.qty >= 0) {
+      const c = ai.mapping.columns;
+      cols = { headerRow: ai.mapping.headerRow, name: c.name, barcode: c.barcode, qty: c.qty, brand: c.brand, size: c.size };
+    }
+  }
+  if (!cols) {
+    return { ok: false, message: "Couldn't find a product name and a quantity sold column. Export the product sales report, not the full sales list." };
+  }
+  const { headerRow, ...c } = cols;
+  const cell = (row: string[], i: number) => (i >= 0 ? (row[i] ?? "").trim() : "");
+  const raw = rows.slice(headerRow + 1).map((row) => ({
+    barcode: cell(row, c.barcode).slice(0, 60),
+    name: cell(row, c.name).slice(0, 160),
+    brand: cell(row, c.brand).slice(0, 160),
+    size: cell(row, c.size).slice(0, 40),
+    category: "",
+    vendor: "",
+    qty: toQty(cell(row, c.qty)),
+    unitCostCents: 0,
+    retailPriceCents: 0,
+  }));
+  return { ok: true, raw };
+}
+
+/**
+ * Reads a product sales report exported from any booking app (CSV, PDF or photo)
+ * into units sold per product, matched to Bintro's products. Lines for the same
+ * product are added together; lines Bintro can't place come back unmatched.
+ */
+export async function parseSalesReportFile(
+  file: { kind: "csv"; text: string } | { kind: "document"; data: string; mediaType: string },
+  business: { itemNoun: string; categories: string[] },
+): Promise<ParsedSalesReport> {
+  let raw: RawLine[];
+  let period = "";
+  if (file.kind === "csv") {
+    const r = await readSalesCsv(file.text);
+    if (!r.ok) return r;
+    raw = r.raw;
+  } else {
+    const r = await extractImportDocument(file, business);
+    if (!r.ok) return r;
+    raw = r.lines.map((l) => ({ ...l, vendor: "" }));
+    period = r.date;
+  }
+  raw = raw.filter((l) => (l.name || l.barcode) && (l.qty ?? 0) > 0 && !NOT_A_PRODUCT.test(l.name));
+  if (raw.length === 0) return { ok: false, message: "No products with units sold found in that report." };
+
+  const all = await findAllProducts();
+  const merged = new Map<string, SalesReportLine>();
+  for (const l of raw.slice(0, MAX_IMPORT_LINES)) {
+    const match = findMatch(l, all);
+    const id = match ? `p${match.id}` : `n${norm(`${l.brand} ${l.name} ${l.size}`)}`;
+    const hit = merged.get(id);
+    if (hit) {
+      hit.qty += l.qty ?? 0;
+      continue;
+    }
+    merged.set(id, {
+      key: merged.size,
+      productId: match?.id ?? null,
+      name: match?.name ?? l.name,
+      brand: match?.brand ?? l.brand,
+      size: match?.size ?? l.size,
+      qty: l.qty ?? 0,
+    });
+  }
+  return { ok: true, period, lines: [...merged.values()] };
+}
+
+/** Logs each product's units sold as one scan-out, tagged with the app and period. Refuses a report already logged unless told to. */
+export async function applySalesReport(params: {
+  app: string;
+  period: string;
+  staffName: string;
+  force: boolean;
+  lines: { productId: number; qty: number }[];
+}): Promise<SalesReportResult> {
+  const note = salesReportNote(params.app, params.period);
+  if (!params.force && (await countMovementsWithNote(note)) > 0) {
+    return { ok: false, duplicate: true, message: `A ${params.app} report for ${params.period || "this period"} is already logged.` };
+  }
+  const byProduct = new Map<number, number>();
+  for (const l of params.lines) if (l.qty > 0) byProduct.set(l.productId, (byProduct.get(l.productId) ?? 0) + l.qty);
+  let units = 0;
+  for (const [productId, qty] of byProduct) {
+    await applyMovement({ productId, type: "out", delta: -qty, staffName: params.staffName, note, square: "later" });
+    units += qty;
+  }
+  await flushSquareSoon();
+  return { ok: true, units, products: byProduct.size };
 }
