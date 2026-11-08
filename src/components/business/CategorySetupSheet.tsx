@@ -8,6 +8,7 @@ import {
   categorySuggestionsFor,
   guessTaxGroup,
   taxGroupById,
+  taxKind,
   type ProductCategory,
   type TaxGroupId,
 } from '@/lib/tax-categories'
@@ -187,7 +188,7 @@ export function CategorySetupSheet({
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <h3 className="m-0 text-[15px] font-bold flex items-center gap-2 flex-wrap">
-                    {group.label}
+                    {group.label} ({taxKind(group)})
                     {group.cogs && (
                       <span className="text-[11px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-white text-ink-2">
                         COGS
@@ -247,7 +248,7 @@ export function CategorySetupSheet({
           >
             {TAX_GROUPS.map((g) => (
               <option key={g.id} value={g.id}>
-                {g.label}
+                {g.label} ({taxKind(g)})
               </option>
             ))}
           </select>
@@ -335,7 +336,7 @@ export function CategoryManager({ productCategories }: { productCategories: stri
         <div className="grid gap-3">
           {grouped.map(({ group, items }) => (
             <section key={group.id} className="bg-surface rounded-2xl px-4 pt-3 pb-1">
-              <h3 className="m-0 text-[15px] font-bold">{group.label}</h3>
+              <h3 className="m-0 text-[15px] font-bold">{group.label} ({taxKind(group)})</h3>
               <p className="m-0 text-[12px] text-ink-2 mb-1">
                 {group.taxLine} · QuickBooks “{group.qbAccount}”
               </p>
@@ -361,7 +362,7 @@ export function CategoryManager({ productCategories }: { productCategories: stri
                       >
                         {TAX_GROUPS.map((g) => (
                           <option key={g.id} value={g.id}>
-                            {g.label}
+                            {g.label} ({taxKind(g)})
                           </option>
                         ))}
                       </select>
