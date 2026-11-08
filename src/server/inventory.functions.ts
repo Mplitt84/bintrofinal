@@ -122,7 +122,17 @@ export const updateProduct = createServerFn({ method: "POST" })
       for (const code of extras) await assertBarcodeFree(code, productId);
     }
     if (qty !== undefined) {
-      const current = await findProductById(productId);
+      let current = await findProductById(productId);
+      if (current?.squareVariationId && qty !== current.qty) {
+        // Count any Square sales first, so a hand count isn't later lowered again by sales it already reflects.
+        try {
+          const { syncSquareSalesIfConnected } = await import("./integrations.server.js");
+          await syncSquareSalesIfConnected();
+          current = await findProductById(productId);
+        } catch (error) {
+          console.error("Square sales sync before count failed", error);
+        }
+      }
       if (current && qty !== current.qty) {
         await applyMovement({
           productId,

@@ -108,6 +108,28 @@ export const integrations = pgTable("integrations", {
 });
 
 /**
+ * Stock changes waiting to be sent to Square so Square's inventory follows Bintro.
+ * `kind` 'delta' adds/removes `quantity` units; 'count' sets the on-hand count to
+ * `quantity`. Rows are written next to the movement and sent right away; anything
+ * that fails stays 'pending' and the scheduled sync retries it. 'error' rows were
+ * rejected by Square and are not retried.
+ */
+export const squareOutbox = pgTable("square_outbox", {
+  id: serial().primaryKey(),
+  productId: integer("product_id").notNull(),
+  variationId: text("variation_id").notNull(),
+  kind: text().notNull(), // 'delta' | 'count'
+  quantity: integer().notNull(),
+  /** Movement that caused this change, so undo can cancel or reverse it. Null for bulk count pushes. */
+  movementId: integer("movement_id"),
+  status: text().notNull().default("pending"), // 'pending' | 'sent' | 'error'
+  error: text().notNull().default(""),
+  attempts: integer().notNull().default(0),
+  occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+  sentAt: timestamp("sent_at"),
+});
+
+/**
  * Product categories the business has chosen to use. Each maps to a tax group
  * (see src/lib/tax-categories.ts) so spend rolls up the way an accountant books it.
  */

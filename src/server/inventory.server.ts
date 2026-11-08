@@ -1,6 +1,6 @@
-import { eq, desc, asc, like, or, sql, inArray, gte } from "drizzle-orm";
+import { and, eq, desc, asc, like, or, sql, inArray, gte, ne } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { products, movements } from "../../db/schema.js";
+import { products, movements, integrations, squareOutbox } from "../../db/schema.js";
 import { DEFAULT_REORDER_THRESHOLD, clampOrderQty, deriveInitials, onHandQty, selectBelowPar, stockStats } from "../lib/inventory-defaults.js";
 import type { PurchaseOrderLine } from "../lib/purchase-order.js";
 
@@ -146,12 +146,52 @@ export async function markPricesChecked(productId: number, prices: { unitCostCen
   return row ?? null;
 }
 
+/** Movements recorded under this name came from Square itself and are never sent back. */
+export const SQUARE_STAFF_NAME = "Square POS";
+
+/** True when Square is connected, so stock changes on linked products should follow to Square. */
+async function squareConnected() {
+  const rows = await db
+    .select({ provider: integrations.provider })
+    .from(integrations)
+    .where(and(eq(integrations.provider, "square"), ne(integrations.accessToken, "")));
+  return rows.length > 0;
+}
+
+/**
+ * Queues a stock change for Square when the product is linked to a Square item.
+ * Stock counts ('adjust') set Square's count to Bintro's; everything else is sent
+ * as a +/- change, so a Square sale and a Bintro delivery at the same moment both land.
+ */
+async function queueSquareChange(product: Product | undefined, movement: Movement, type: string) {
+  if (!product?.squareVariationId || movement.staffName === SQUARE_STAFF_NAME) return false;
+  if (!(await squareConnected())) return false;
+  await db.insert(squareOutbox).values(
+    type === "adjust"
+      ? { productId: product.id, variationId: product.squareVariationId, kind: "count", quantity: Math.max(0, product.qty), movementId: movement.id }
+      : { productId: product.id, variationId: product.squareVariationId, kind: "delta", quantity: movement.delta, movementId: movement.id },
+  );
+  return true;
+}
+
+/** Sends queued changes to Square now. Failures stay queued for the scheduled retry. */
+export async function flushSquareSoon() {
+  try {
+    const { flushSquareOutbox } = await import("./integrations.server.js");
+    await flushSquareOutbox();
+  } catch (error) {
+    console.error("Square inventory push failed; will retry", error);
+  }
+}
+
 export async function applyMovement(params: {
   productId: number;
   type: "in" | "out" | "adjust" | "receive";
   delta: number;
   staffName: string;
   note?: string;
+  /** 'now' (default) sends the change to Square right away; 'later' only queues it (bulk imports flush once at the end). */
+  square?: "now" | "later";
 }) {
   const [updated] = await db
     .update(products)
@@ -170,6 +210,12 @@ export async function applyMovement(params: {
       note: params.note ?? "",
     })
     .returning();
+
+  const queued = await queueSquareChange(updated, movement, params.type).catch((error) => {
+    console.error("Could not queue Square change", error);
+    return false;
+  });
+  if (queued && params.square !== "later") await flushSquareSoon();
 
   return { product: updated, movement };
 }
@@ -238,8 +284,32 @@ export async function reverseAndDeleteMovement(id: number) {
     .returning();
 
   await db.delete(movements).where(eq(movements.id, id));
+  await undoSquareChange(movement, product);
 
   return product;
+}
+
+/**
+ * Keeps Square in step with an undo: a change not yet sent is simply dropped;
+ * one already sent is reversed (a -/+ change, or the restored count).
+ */
+async function undoSquareChange(movement: Movement, product: Product | undefined) {
+  try {
+    const queued = await db.select().from(squareOutbox).where(eq(squareOutbox.movementId, movement.id));
+    if (queued.length === 0) return;
+    const pending = queued.filter((r) => r.status === "pending");
+    if (pending.length) await db.delete(squareOutbox).where(inArray(squareOutbox.id, pending.map((r) => r.id)));
+    const sent = queued.find((r) => r.status === "sent");
+    if (!sent || !product) return;
+    await db.insert(squareOutbox).values(
+      sent.kind === "count"
+        ? { productId: product.id, variationId: sent.variationId, kind: "count", quantity: Math.max(0, product.qty) }
+        : { productId: product.id, variationId: sent.variationId, kind: "delta", quantity: -sent.quantity },
+    );
+    await flushSquareSoon();
+  } catch (error) {
+    console.error("Could not undo Square change", error);
+  }
 }
 
 /**
@@ -247,6 +317,7 @@ export async function reverseAndDeleteMovement(id: number) {
  * reference the product), so past spend for it drops out of Activity and Budget.
  */
 export async function deleteProductById(productId: number) {
+  await db.delete(squareOutbox).where(and(eq(squareOutbox.productId, productId), eq(squareOutbox.status, "pending")));
   await db.delete(movements).where(eq(movements.productId, productId));
   const [row] = await db.delete(products).where(eq(products.id, productId)).returning();
   return row ?? null;

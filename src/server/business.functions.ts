@@ -21,6 +21,7 @@ import { readReceipt, suggestProductDetails } from "./product-lookup.server.js";
 import {
   disconnectIntegration,
   importSquareCatalog,
+  sendAllCountsToSquare,
   integrationStatus,
   pushMonthToQuickBooks,
   syncSquareSales,
@@ -216,6 +217,13 @@ export const squareImportCatalog = createServerFn({ method: "POST" }).handler(as
   return attempt(async () => {
     await assertFeature("square");
     return importSquareCatalog();
+  });
+});
+
+export const squareSendCounts = createServerFn({ method: "POST" }).handler(async () => {
+  return attempt(async () => {
+    await assertFeature("square");
+    return sendAllCountsToSquare();
   });
 });
 

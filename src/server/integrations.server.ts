@@ -10,10 +10,10 @@
  * client id/secret env vars; tokens are stored in the integrations table.
  */
 import { randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { expenses, integrations, products } from "../../db/schema.js";
-import { applyMovement, findProductByBarcode } from "./inventory.server.js";
+import { expenses, integrations, products, squareOutbox } from "../../db/schema.js";
+import { SQUARE_STAFF_NAME, applyMovement, findProductByBarcode } from "./inventory.server.js";
 import { findExpensesForMonth, findInventorySpend, type MonthWindow } from "./business.server.js";
 
 export type Provider = "square" | "quickbooks";
@@ -22,8 +22,9 @@ export const PROVIDERS: Provider[] = ["square", "quickbooks"];
 type Integration = typeof integrations.$inferSelect;
 
 const SQUARE_VERSION = "2025-01-23";
+/** INVENTORY_* lets Bintro keep Square's stock counts in step; older connections lack it and must reconnect. */
+const SQUARE_SCOPES = "ITEMS_READ ORDERS_READ MERCHANT_PROFILE_READ INVENTORY_READ INVENTORY_WRITE";
 const QB_MINOR_VERSION = "75";
-const SQUARE_STAFF_NAME = "Square POS";
 
 /** Alternate env var names accepted for backward compatibility with existing Netlify settings. */
 const ENV_ALIASES: Record<string, string[]> = {
@@ -85,9 +86,31 @@ export async function disconnectIntegration(provider: Provider) {
 
 export async function integrationStatus() {
   const rows = await db.select().from(integrations);
+  const outbox = await db
+    .select({ status: squareOutbox.status, n: sql<number>`count(*)::int` })
+    .from(squareOutbox)
+    .where(inArray(squareOutbox.status, ["pending", "error"]))
+    .groupBy(squareOutbox.status);
+  const [lastError] = await db
+    .select({ error: squareOutbox.error })
+    .from(squareOutbox)
+    .where(eq(squareOutbox.status, "error"))
+    .orderBy(sql`${squareOutbox.id} desc`)
+    .limit(1);
   return PROVIDERS.map((provider) => {
     const row = rows.find((r) => r.provider === provider);
+    const scopes = String((row?.meta as { scopes?: string } | undefined)?.scopes ?? "");
+    const inventory =
+      provider === "square"
+        ? {
+            pending: outbox.find((o) => o.status === "pending")?.n ?? 0,
+            failed: outbox.find((o) => o.status === "error")?.n ?? 0,
+            lastError: lastError?.error ?? "",
+            needsReconnect: Boolean(row?.accessToken) && !scopes.includes("INVENTORY_WRITE"),
+          }
+        : null;
     return {
+      inventory,
       provider,
       configured: isConfigured(provider),
       sandbox: isSandbox(provider),
@@ -113,7 +136,7 @@ export async function buildAuthorizeUrl(provider: Provider, origin: string) {
   if (provider === "square") {
     const params = new URLSearchParams({
       client_id: id,
-      scope: "ITEMS_READ ORDERS_READ MERCHANT_PROFILE_READ",
+      scope: SQUARE_SCOPES,
       session: "false",
       state,
       redirect_uri: redirect,
@@ -202,7 +225,7 @@ export async function completeAuthorization(
       connectedAt: new Date(),
       // Only sales from now on; history before connecting was already counted by hand.
       lastSyncAt: new Date(),
-      meta: {},
+      meta: { scopes: SQUARE_SCOPES },
     });
     return;
   }
@@ -303,6 +326,8 @@ export async function importSquareCatalog() {
 
   let created = 0;
   let updated = 0;
+  const newlyCreated: Array<{ id: number; variationId: string }> = [];
+  const linkedExisting: Array<{ id: number; variationId: string; qty: number }> = [];
   for (const item of objects) {
     if (item.type !== "ITEM" || item.is_deleted || !item.item_data) continue;
     const data = item.item_data;
@@ -327,14 +352,44 @@ export async function importSquareCatalog() {
             updatedAt: new Date(),
           })
           .where(eq(products.id, match.id));
+        linkedExisting.push({ id: match.id, variationId: v.id, qty: match.qty });
         updated++;
       } else {
-        await db.insert(products).values({ barcode, name, category, retailPriceCents: price, squareVariationId: v.id });
+        const [row] = await db
+          .insert(products)
+          .values({ barcode, name, category, retailPriceCents: price, squareVariationId: v.id })
+          .returning({ id: products.id });
+        if (row) newlyCreated.push({ id: row.id, variationId: v.id });
         created++;
       }
     }
   }
-  return { created, updated };
+
+  // Line the two systems up. Items Bintro already tracked: Bintro's count wins and is
+  // sent to Square. Items new to Bintro: start from Square's count instead of zero.
+  let countsSent = 0;
+  let countsPulled = 0;
+  const scopes = String((row.meta as { scopes?: string }).scopes ?? "");
+  if (scopes.includes("INVENTORY_WRITE")) {
+    try {
+      const squareCounts = await fetchSquareCounts(row, newlyCreated.map((p) => p.variationId));
+      for (const p of newlyCreated) {
+        const qty = squareCounts.get(p.variationId) ?? 0;
+        if (qty === 0) continue;
+        await applyMovement({ productId: p.id, type: "adjust", delta: qty, staffName: SQUARE_STAFF_NAME, note: "Starting count from Square" });
+        countsPulled++;
+      }
+      if (linkedExisting.length) {
+        await db.insert(squareOutbox).values(
+          linkedExisting.map((p) => ({ productId: p.id, variationId: p.variationId, kind: "count", quantity: Math.max(0, p.qty) })),
+        );
+        countsSent = (await flushSquareOutbox()).sent;
+      }
+    } catch (error) {
+      console.error("Square count alignment failed", error);
+    }
+  }
+  return { created, updated, countsSent, countsPulled };
 }
 
 type SquareOrder = {
@@ -415,7 +470,176 @@ export async function syncSquareSales() {
 export async function syncSquareSalesIfConnected() {
   const row = await findIntegration("square");
   if (!row?.accessToken || !isConfigured("square")) return null;
-  return syncSquareSales();
+  const sales = await syncSquareSales();
+  const pushed = await flushSquareOutbox().catch((error) => {
+    console.error("Square inventory push failed", error);
+    return null;
+  });
+  return { ...sales, pushed };
+}
+
+// ---------------------------------------------------------------------------
+// Square inventory: Bintro → Square
+// ---------------------------------------------------------------------------
+
+/** The Square location whose stock Bintro keeps in step (the first active one), cached in meta. */
+async function squareLocationId(row: Integration) {
+  const cached = (row.meta as { locationId?: string }).locationId;
+  if (cached) return cached;
+  const { locations = [] } = await squareFetch<{ locations?: Array<{ id: string; status?: string }> }>(
+    row.accessToken,
+    "/v2/locations",
+  );
+  const id = locations.find((l) => l.status !== "INACTIVE")?.id ?? "";
+  if (!id) throw new Error("Square has no active location to keep stock for.");
+  await saveIntegration("square", { meta: { ...(row.meta ?? {}), locationId: id } });
+  return id;
+}
+
+type OutboxRow = typeof squareOutbox.$inferSelect;
+
+function toSquareChange(r: OutboxRow, locationId: string) {
+  const occurred_at = r.occurredAt.toISOString();
+  if (r.kind === "count") {
+    return {
+      type: "PHYSICAL_COUNT",
+      physical_count: {
+        catalog_object_id: r.variationId,
+        location_id: locationId,
+        state: "IN_STOCK",
+        quantity: String(Math.max(0, r.quantity)),
+        occurred_at,
+      },
+    };
+  }
+  const adding = r.quantity > 0;
+  return {
+    type: "ADJUSTMENT",
+    adjustment: {
+      catalog_object_id: r.variationId,
+      location_id: locationId,
+      // Added stock comes from nowhere into stock; stock used up in Bintro leaves as waste (not a sale).
+      from_state: adding ? "NONE" : "IN_STOCK",
+      to_state: adding ? "IN_STOCK" : "WASTE",
+      quantity: String(Math.abs(r.quantity)),
+      occurred_at,
+    },
+  };
+}
+
+async function sendSquareChanges(token: string, rows: OutboxRow[], locationId: string) {
+  // Same rows → same key, so a retry after a timeout can't apply a change twice.
+  const idempotency_key = `bintro-${rows.map((r) => r.id).join("-")}`.slice(0, 128);
+  const res = await fetch(`${squareBase()}/v2/inventory/changes/batch-create`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Square-Version": SQUARE_VERSION, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      idempotency_key,
+      ignore_unchanged_counts: true,
+      changes: rows.map((r) => toSquareChange(r, locationId)),
+    }),
+  });
+  const data = (await res.json().catch(() => ({}))) as { errors?: Array<{ detail?: string; code?: string }> };
+  return { ok: res.ok, status: res.status, message: data.errors?.[0]?.detail || data.errors?.[0]?.code || `Square returned ${res.status}.` };
+}
+
+/**
+ * Sends queued Bintro stock changes to Square, oldest first, 100 per request.
+ * If Square rejects a batch outright (bad item, tracking off) the rows are retried
+ * one by one so a single bad item can't hold up the rest; rejected rows are marked
+ * 'error'. Network or permission problems leave rows pending for the next run.
+ */
+export async function flushSquareOutbox() {
+  const pending = await db
+    .select()
+    .from(squareOutbox)
+    .where(eq(squareOutbox.status, "pending"))
+    .orderBy(asc(squareOutbox.id))
+    .limit(500);
+  if (pending.length === 0) return { sent: 0, failed: 0 };
+  const row = await findIntegration("square");
+  if (!row?.accessToken || !isConfigured("square")) return { sent: 0, failed: 0 };
+  const active = await activeIntegration("square");
+  const locationId = await squareLocationId(active);
+
+  let sent = 0;
+  let failed = 0;
+  const markSent = async (ids: number[]) => {
+    await db.update(squareOutbox).set({ status: "sent", error: "", sentAt: new Date() }).where(inArray(squareOutbox.id, ids));
+    sent += ids.length;
+  };
+  const markFailed = async (ids: number[], message: string, final: boolean) => {
+    await db
+      .update(squareOutbox)
+      .set({ status: final ? "error" : "pending", error: message.slice(0, 500), attempts: sql`${squareOutbox.attempts} + 1` })
+      .where(inArray(squareOutbox.id, ids));
+    if (final) failed += ids.length;
+  };
+
+  for (let i = 0; i < pending.length; i += 100) {
+    const batch = pending.slice(i, i + 100);
+    const result = await sendSquareChanges(active.accessToken, batch, locationId);
+    if (result.ok) {
+      await markSent(batch.map((r) => r.id));
+      continue;
+    }
+    const rejected = result.status === 400 || result.status === 404;
+    if (!rejected) {
+      // Auth, permission, rate limit or outage: keep everything queued and stop for now.
+      await markFailed(pending.slice(i).map((r) => r.id), result.message, false);
+      break;
+    }
+    for (const r of batch) {
+      const single = batch.length === 1 ? result : await sendSquareChanges(active.accessToken, [r], locationId);
+      if (single.ok) await markSent([r.id]);
+      else await markFailed([r.id], single.message, single.status === 400 || single.status === 404);
+    }
+  }
+  return { sent, failed };
+}
+
+/** Sets every linked product's Square count to Bintro's on-hand count (Bintro is the source of truth). */
+export async function sendAllCountsToSquare() {
+  await activeIntegration("square");
+  // Count any Square sales first so the counts sent already reflect them.
+  await syncSquareSales();
+  const linked = await db.select().from(products).where(sql`${products.squareVariationId} is not null and ${products.squareVariationId} <> ''`);
+  if (linked.length === 0) return { queued: 0, sent: 0, failed: 0 };
+  // Older queued changes are superseded by the full count.
+  await db.delete(squareOutbox).where(eq(squareOutbox.status, "pending"));
+  await db.insert(squareOutbox).values(
+    linked.map((p) => ({ productId: p.id, variationId: p.squareVariationId!, kind: "count", quantity: Math.max(0, p.qty) })),
+  );
+  const result = await flushSquareOutbox();
+  return { queued: linked.length, ...result };
+}
+
+/** Square's current in-stock count for each variation id at the kept location. */
+async function fetchSquareCounts(row: Integration, variationIds: string[]) {
+  const counts = new Map<string, number>();
+  if (variationIds.length === 0) return counts;
+  const locationId = await squareLocationId(row);
+  for (let i = 0; i < variationIds.length; i += 500) {
+    let cursor = "";
+    do {
+      const page = await squareFetch<{ counts?: Array<{ catalog_object_id: string; state?: string; quantity?: string }>; cursor?: string }>(
+        row.accessToken,
+        "/v2/inventory/counts/batch-retrieve",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            catalog_object_ids: variationIds.slice(i, i + 500),
+            location_ids: [locationId],
+            states: ["IN_STOCK"],
+            cursor: cursor || undefined,
+          }),
+        },
+      );
+      for (const c of page.counts ?? []) counts.set(c.catalog_object_id, Math.round(Number(c.quantity ?? 0)));
+      cursor = page.cursor ?? "";
+    } while (cursor);
+  }
+  return counts;
 }
 
 // ---------------------------------------------------------------------------
