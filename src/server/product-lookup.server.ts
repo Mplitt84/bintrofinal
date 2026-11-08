@@ -1071,24 +1071,52 @@ export async function writeInsightSummary(kind: "weekly" | "monthly" | "fast", f
   return r.ok ? clean(r.input.summary, 900) : "";
 }
 
-/** Setup check: one tiny Claude call through the same routes every AI feature uses. */
-export async function pingAI(): Promise<{ ok: boolean; route: string; detail: string }> {
-  const routes = anthropicEndpoints().map((e) => e.label);
-  if (routes.length === 0) return { ok: false, route: "", detail: "No AI key on this site (add BINTRO_ANTHROPIC_KEY)." };
-  const res = await postToClaude(
-    { model: SUGGEST_MODEL, max_tokens: 5, messages: [{ role: "user", content: "Reply with OK." }] },
-    20_000,
-    "setup-check",
-  );
-  if (res?.ok) return { ok: true, route: routes[0], detail: "" };
-  const text = res ? (await res.text().catch(() => "")).slice(0, 200) : "";
-  const hint =
-    res?.status === 401
-      ? "The key was rejected. Check it was pasted in full."
-      : res?.status === 400 && /credit/i.test(text)
-        ? "The Anthropic account needs credit. Add some under Billing at console.anthropic.com."
-        : res
-          ? `AI answered ${res.status}.`
-          : "Couldn't reach the AI service.";
-  return { ok: false, route: routes.join(", "), detail: hint };
+/** Setup check: one tiny Claude call per route, so a failing key and a failing gateway show separately. */
+export async function pingAI(): Promise<{ ok: boolean; route: string; detail: string; routes: { label: string; status: number; note: string }[] }> {
+  const endpoints = anthropicEndpoints();
+  if (endpoints.length === 0) return { ok: false, route: "", detail: "No AI key on this site (add BINTRO_ANTHROPIC_KEY).", routes: [] };
+  const names: Record<string, string> = {
+    "anthropic-own-key": "Your Anthropic key (BINTRO_ANTHROPIC_KEY)",
+    "anthropic-direct": "ANTHROPIC_API_KEY",
+    "anthropic-env": "Netlify AI (ANTHROPIC_*)",
+    "netlify-gateway": "Netlify AI Gateway",
+  };
+  const routes: { label: string; status: number; note: string }[] = [];
+  for (const endpoint of endpoints) {
+    let status = 0;
+    let text = "";
+    try {
+      const res = await fetch(endpoint.url, {
+        method: "POST",
+        signal: AbortSignal.timeout(20_000),
+        headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", ...endpoint.headers },
+        body: JSON.stringify({ model: SUGGEST_MODEL, max_tokens: 5, messages: [{ role: "user", content: "Reply with OK." }] }),
+      });
+      status = res.status;
+      text = res.ok ? "" : (await res.text().catch(() => "")).slice(0, 300);
+    } catch (error) {
+      text = error instanceof Error ? error.message : "no response";
+    }
+    const note =
+      status >= 200 && status < 300
+        ? "Working"
+        : status === 401
+          ? "Key rejected. Check it was pasted in full, with no spaces."
+          : status === 400 && /credit/i.test(text)
+            ? "No credit left. Add some under Billing at console.anthropic.com."
+            : status === 404 && /model/i.test(text)
+              ? "Model not available on this key."
+              : status
+                ? `Answered ${status}${text ? `: ${text.replace(/\s+/g, " ").slice(0, 140)}` : ""}`
+                : `No answer (${text})`;
+    console.log(`AI setup check ${endpoint.label}: ${status} ${text.slice(0, 200)}`);
+    routes.push({ label: names[endpoint.label] ?? endpoint.label, status, note });
+  }
+  const working = routes.find((r) => r.status >= 200 && r.status < 300);
+  return {
+    ok: Boolean(working),
+    route: working?.label ?? "",
+    detail: working ? "" : routes.map((r) => `${r.label}: ${r.note}`).join(" · "),
+    routes,
+  };
 }
