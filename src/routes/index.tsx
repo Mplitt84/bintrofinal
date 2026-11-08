@@ -133,7 +133,8 @@ function Home() {
           section === 'import' ||
           section === 'account' ||
           section === 'appearance' ||
-          section === 'scanner'
+          section === 'scanner' ||
+          section === 'setup'
           ? section
           : 'profile',
       )
