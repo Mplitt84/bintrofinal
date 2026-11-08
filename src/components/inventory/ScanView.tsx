@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowDownToLine, ArrowUpFromLine, Check, Plus, ScanBarcode, Undo2, X } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpFromLine, Camera, Check, Plus, ScanBarcode, Undo2, X } from 'lucide-react'
 import type { ActivityRow, MovementRow, Product } from './types'
 import {
   scanMovement,
@@ -13,6 +13,7 @@ import { Sheet, Field, SheetActions } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
 import { EmptyState, StatTile, Thumb, dollarsShort, timeAgo } from '@/components/ui/bits'
 import { CameraScanner } from './CameraScanner'
+import { PhotoStockSheet } from './PhotoStockSheet'
 import { ProductForm } from './ProductForm'
 import { STAFF_IDLE_MINUTES, getStaffAskMode, type StaffPrompt } from './StaffPicker'
 import { onBluetoothCode } from '@/lib/bluetooth-scanner'
@@ -129,6 +130,10 @@ export function ScanView({
   const orbTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   // A partial / mis-read scan, kept so staff can still use it if it really is the full code.
   const [partialCode, setPartialCode] = useState<string | null>(null)
+  // Quick stock photo (SKU or full label) for staff in a hurry.
+  const photoInput = useRef<HTMLInputElement>(null)
+  const [photo, setPhoto] = useState<File | null>(null)
+  const [photoWho, setPhotoWho] = useState('')
   // Who the scan in progress belongs to (also used after saving a new barcode).
   const scanWho = useRef(staffName)
 
@@ -290,6 +295,28 @@ export function ScanView({
     if (!who) return
     scanWho.current = who
     setCameraOpen(true)
+  }
+
+  /** Opens the phone camera right away (iPhones only allow it straight from the tap). */
+  function startPhoto() {
+    setCameraOpen(false)
+    if (photoInput.current) {
+      photoInput.current.value = ''
+      photoInput.current.click()
+    }
+  }
+
+  async function onPhotoPicked(file: File | undefined) {
+    if (!file) return
+    // A retake keeps the same person; only a fresh photo asks who's logging it.
+    if (photo && photoWho) {
+      setPhoto(file)
+      return
+    }
+    const who = await confirmStaff(mode)
+    if (!who) return
+    setPhotoWho(who)
+    setPhoto(file)
   }
 
   async function startTyping() {
@@ -464,6 +491,20 @@ export function ScanView({
             "You'll pick your name before each scan"
           )}
         </p>
+        <button type="button" className="btn btn-tonal mt-3" onClick={startPhoto}>
+          <Camera size={18} />
+          In a hurry? Snap the SKU or label
+        </button>
+        <input
+          ref={photoInput}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          aria-hidden="true"
+          tabIndex={-1}
+          onChange={(e) => onPhotoPicked(e.target.files?.[0])}
+        />
         <button
           className="btn btn-text"
           onClick={startTyping}
@@ -533,6 +574,35 @@ export function ScanView({
           setCameraOpen(false)
           setTypedCode('')
           setTyping(true)
+        }}
+        onPhotoInstead={startPhoto}
+      />
+
+      <PhotoStockSheet
+        file={photo}
+        initialMode={mode}
+        staffName={photoWho}
+        products={products}
+        onClose={() => setPhoto(null)}
+        onRetake={startPhoto}
+        onLogged={async (p, movementId, direction, n) => {
+          setPhoto(null)
+          onProduct?.(p)
+          staffConfirmedAt = Date.now()
+          const low = p.qty <= p.reorderThreshold
+          beep(true)
+          showOrb({
+            kind: direction,
+            title: direction === 'in' ? `Received ${n}` : `Taken ${n}`,
+            sub: `${p.name} · ${p.qty} on hand${low ? ' · below par' : ''}`,
+          })
+          toast(`${direction === 'in' ? 'Added' : 'Took'} ${n} × ${p.name}`, async () => {
+            const reverted = await undoMovement({ data: { movementId } })
+            if (reverted) onProduct?.(reverted as Product)
+            await safeRefresh()
+            toast('Photo log undone')
+          })
+          await safeRefresh()
         }}
       />
 

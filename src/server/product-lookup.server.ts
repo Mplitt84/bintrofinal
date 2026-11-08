@@ -241,6 +241,74 @@ export async function readProductLabel(
   return { ok: true, ...result };
 }
 
+export type StockPhotoResult =
+  | { ok: true; captured: "sku" | "label"; barcode: string; brand: string; name: string; size: string; category: string }
+  | { ok: false; message: string };
+
+const STOCK_PHOTO_TOOL: ToolSpec = {
+  name: "read_stock_photo",
+  description: "Record the product code and label details visible in a quick stock photo.",
+  input_schema: {
+    type: "object",
+    properties: {
+      barcode: {
+        type: "string",
+        description:
+          "The barcode number printed under the bars (UPC/EAN digits), or the SKU / item code printed on the product or shelf tag. Copy it exactly, digits and letters only. Empty if no code is fully readable.",
+      },
+      code_complete: {
+        type: "boolean",
+        description: "True only if every character of the code is clearly readable (not cut off, blurred or covered).",
+      },
+      brand: { type: "string", description: "Brand as printed. Empty if not visible." },
+      name: { type: "string", description: "Product name with line, variant or shade as printed. Empty if not visible." },
+      size: { type: "string", description: "Net size as printed, e.g. 8 fl oz. Empty if not visible." },
+      category: { type: "string", description: "Short category." },
+      label_complete: {
+        type: "boolean",
+        description: "True only if the brand AND the full product name are both clearly readable on the label.",
+      },
+    },
+    required: ["barcode", "code_complete", "brand", "name", "size", "category", "label_complete"],
+  },
+};
+
+/**
+ * Quick stock photo: staff in a hurry snap the SKU / barcode or the full front
+ * label. The photo must show one of the two completely, or staff are asked to
+ * retake it, so a blurry half-label never gets logged against the wrong product.
+ */
+export async function readStockPhoto(
+  imageBase64: string,
+  mediaType: string,
+  business: { itemNoun: string; categories: string[] },
+): Promise<StockPhotoResult> {
+  const r = await callTool(STOCK_PHOTO_TOOL, [
+    { type: "image", source: { type: "base64", media_type: mediaType, data: imageBase64 } },
+    {
+      type: "text",
+      text: `A staff member photographed a ${business.itemNoun} to log it in or out of inventory. Read the barcode number or SKU if one is fully visible, and the brand, product name and size from the label. Prefer one of these categories: ${business.categories.join(", ")}. Never guess a digit or a word: leave it empty and mark it incomplete instead.`,
+    },
+  ], { maxTokens: 400 });
+  if (!r.ok) {
+    return { ok: false, message: r.message.replace("The AI couldn't answer just now.", "Couldn't read that photo.") };
+  }
+  const code = clean(r.input.barcode, 40).replace(/[^0-9A-Za-z-]/g, "");
+  const brand = clean(r.input.brand);
+  const name = clean(r.input.name);
+  const base = { brand, name, size: clean(r.input.size, 40), category: clean(r.input.category, 60) };
+  if (code.length >= 4 && r.input.code_complete === true) {
+    return { ok: true, captured: "sku", barcode: code, ...base };
+  }
+  if (brand && name && r.input.label_complete === true) {
+    return { ok: true, captured: "label", barcode: "", ...base };
+  }
+  return {
+    ok: false,
+    message: "Retake the photo so the whole SKU or barcode number, or the full front label (brand and product name), is clear.",
+  };
+}
+
 export type SuggestResult =
   | {
       ok: true;

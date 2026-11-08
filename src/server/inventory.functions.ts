@@ -20,10 +20,10 @@ import {
   buildPurchaseOrderLines,
 } from "./inventory.server.js";
 import { sendPurchaseOrderEmail, sendRestockEmail } from "./email.server.js";
-import { lookupBarcodeOnline, parseSpokenProduct, readProductLabel } from "./product-lookup.server.js";
+import { lookupBarcodeOnline, parseSpokenProduct, readProductLabel, readStockPhoto } from "./product-lookup.server.js";
 import { findBusinessContext, findBusinessProfile } from "./business.server.js";
 import { MAX_ORDER_QTY } from "../lib/inventory-defaults.js";
-import { assertFeature, assertProductRoom } from "./account.server.js";
+import { assertFeature, assertProductRoom, hasFeature } from "./account.server.js";
 
 export const listProducts = createServerFn({ method: "GET" }).handler(async () => {
   return findAllProducts();
@@ -251,4 +251,86 @@ export const readSpokenProduct = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     await assertFeature("ai");
     return parseSpokenProduct(data.transcript, await findBusinessContext());
+  });
+
+const STOP_WORDS = new Set(["the", "and", "for", "with", "fl", "oz", "ml", "of", "a"]);
+function words(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, " ")
+    .split(" ")
+    .filter((w) => w.length > 1 && !STOP_WORDS.has(w));
+}
+function sizeKey(size: string) {
+  return size.toLowerCase().replace(/[^0-9.]/g, "");
+}
+
+/**
+ * Quick stock photo: reads the SKU / barcode or the full label off a photo, then
+ * finds the product. `deviceBarcode` is a code the phone already decoded from the
+ * photo; it wins over the AI's reading. Returns the exact match (by code) or the
+ * closest products by brand + name + size for staff to confirm.
+ */
+export const readStockPhotoFn = createServerFn({ method: "POST" })
+  .inputValidator(LabelSchema.extend({ deviceBarcode: z.string().trim().max(64).optional() }))
+  .handler(async ({ data }) => {
+    const device = data.deviceBarcode?.trim() ?? "";
+    let read: Awaited<ReturnType<typeof readStockPhoto>>;
+    if (device) {
+      // The code itself is enough; the label is only a bonus for new products.
+      const ai = (await hasFeature("ai"))
+        ? await readStockPhoto(data.image, data.mediaType, await findBusinessContext()).catch(() => null)
+        : null;
+      const extra = ai && ai.ok ? ai : { brand: "", name: "", size: "", category: "" };
+      read = { ok: true, captured: "sku", barcode: device, brand: extra.brand, name: extra.name, size: extra.size, category: extra.category };
+    } else {
+      await assertFeature("ai");
+      read = await readStockPhoto(data.image, data.mediaType, await findBusinessContext());
+    }
+    if (!read.ok) return read;
+
+    if (read.barcode) {
+      const product = await findProductByBarcode(read.barcode);
+      if (product) return { ...read, product, candidates: [product] };
+    }
+
+    const wanted = words(`${read.brand} ${read.name}`);
+    const wantedSize = sizeKey(read.size);
+    if (wanted.length === 0) return { ...read, product: null, candidates: [] };
+    const scored = (await findAllProducts())
+      .map((p) => {
+        const have = new Set(words(`${p.brand} ${p.name}`));
+        const hits = wanted.filter((w) => have.has(w)).length;
+        let score = hits / Math.max(wanted.length, have.size);
+        if (wantedSize && sizeKey(p.size) === wantedSize) score += 0.25;
+        return { p, score, hits };
+      })
+      .filter((x) => x.hits >= Math.min(2, wanted.length))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+    return { ...read, product: null, candidates: scored.map((x) => x.p) };
+  });
+
+/** Logs a scan in or out for a product picked by id (photo flow, where there may be no barcode). */
+export const recordProductMovement = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      productId: z.number().int().positive(),
+      type: z.enum(["in", "out"]),
+      qty: z.number().int().positive().max(MAX_ORDER_QTY),
+      staffName: z.string().optional(),
+      /** What the photo showed, for the activity log. */
+      captured: z.enum(["sku", "label"]).optional(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const product = await findProductById(data.productId);
+    if (!product) throw new Error("That product no longer exists.");
+    return applyMovement({
+      productId: product.id,
+      type: data.type,
+      delta: data.type === "in" ? data.qty : -data.qty,
+      staffName: data.staffName ?? "",
+      note: data.captured ? `Photo: ${data.captured === "sku" ? "SKU / barcode" : "full label"}` : undefined,
+    });
   });
