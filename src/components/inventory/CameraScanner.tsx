@@ -14,14 +14,19 @@ export function CameraScanner({
   onClose,
   onScan,
   onTypeInstead,
+  onPhotoInstead,
 }: {
   open: boolean
   onClose: () => void
   onScan: (code: string) => void
   /** Offered when the camera can't start, so staff are never stuck. */
   onTypeInstead?: () => void
+  /** Snap a still photo of the SKU or label instead of live scanning. */
+  onPhotoInstead?: () => void
 }) {
   const [message, setMessage] = useState('')
+  // Shown while the browser waits for the camera permission tap, so a black screen isn't a mystery.
+  const [waiting, setWaiting] = useState(false)
   const scannerRef = useRef<ScannerHandle | null>(null)
   const onScanRef = useRef(onScan)
   onScanRef.current = onScan
@@ -30,6 +35,10 @@ export function CameraScanner({
     if (!open) return
     let cancelled = false
     setMessage('')
+    setWaiting(false)
+    const waitTimer = setTimeout(() => {
+      if (!cancelled && !document.querySelector(`#${READER_ID} video`)) setWaiting(true)
+    }, 2500)
 
     async function start() {
       let lib: typeof import('html5-qrcode')
@@ -75,6 +84,7 @@ export function CameraScanner({
         scannerRef.current = scanner
         try {
           await scanner.start({ facingMode: 'environment' }, config, onDecoded, () => {})
+          setWaiting(false)
           // Closed while the camera was starting: stop this scanner, not whatever the ref holds now.
           if (cancelled) await stopScanner(scanner)
           return
@@ -99,6 +109,7 @@ export function CameraScanner({
     start()
     return () => {
       cancelled = true
+      clearTimeout(waitTimer)
       stopScanner()
     }
   }, [open])
@@ -141,21 +152,50 @@ export function CameraScanner({
         </button>
       </div>
       <div className="flex-1 relative overflow-hidden">
-        {/* html5-qrcode owns this node's children, so React never renders into it. */}
-        <div id={READER_ID} className="absolute inset-0" />
+        {/*
+          html5-qrcode owns the reader node's children and forces its inline style to
+          position: relative, which used to collapse it to zero height (a black screen).
+          This wrapper holds the full-screen size; the reader just fills its width.
+        */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div id={READER_ID} className="bintro-reader w-full max-h-full" />
+        </div>
+        {waiting && !message && (
+          <div className="absolute inset-0 m-auto h-fit text-white text-center px-6 py-10 max-w-[420px]">
+            <p className="m-0">
+              Starting the camera… If your browser asks to use the camera, tap <b>Allow</b>.
+            </p>
+          </div>
+        )}
         {message && (
           <div className="absolute inset-0 m-auto h-fit text-white text-center px-6 py-10 max-w-[420px]">
             <p className="m-0 mb-4">{message}</p>
-            {onTypeInstead && (
-              <button className="btn btn-primary" onClick={onTypeInstead}>
-                Type the barcode
-              </button>
-            )}
+            <div className="flex flex-wrap gap-2 justify-center">
+              {onPhotoInstead && (
+                <button className="btn btn-primary" onClick={onPhotoInstead}>
+                  Snap a photo instead
+                </button>
+              )}
+              {onTypeInstead && (
+                <button className="btn btn-tonal" onClick={onTypeInstead}>
+                  Type the barcode
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
       <div className="text-white text-center px-5 pt-4 pb-[calc(24px+env(safe-area-inset-bottom,0px))] text-[15px]">
         Hold steady about 6 inches from the barcode
+        {onPhotoInstead && !message && (
+          <button
+            type="button"
+            onClick={onPhotoInstead}
+            className="block mx-auto mt-3 border-0 bg-white/15 text-white rounded-full px-4 py-2.5 font-semibold cursor-pointer"
+          >
+            Won't scan? Snap a photo of the SKU or label
+          </button>
+        )}
       </div>
     </div>,
     document.body,

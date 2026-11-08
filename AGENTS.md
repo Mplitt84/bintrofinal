@@ -53,7 +53,8 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │       ├── types.ts            # Shared Product / MovementRow / ActivityRow / Stats types
 │   │       ├── ScanView.tsx        # Scan tab: in/out switch, scan orb, wand + BLE capture, unknown-barcode sheet, today stats
 │   │       ├── StaffPicker.tsx     # Centered "Who's scanning?" name-tile pop-up + per-device ask mode (every scan | after idle)
-│   │       ├── CameraScanner.tsx   # Full-screen html5-qrcode camera scanner (dynamically imported)
+│   │       ├── CameraScanner.tsx   # Full-screen html5-qrcode camera scanner (dynamically imported); reader sits in a sized wrapper because the library forces position: relative on it
+│   │       ├── PhotoStockSheet.tsx # "In a hurry? Snap the SKU or label": photo → device barcode decode + AI read → confirm product, in/out, qty → logged
 │   │       ├── ProductForm.tsx     # Shared add/edit form: word prediction, quick chips, barcode lookup, AI label photo, AI price check, talk-to-text
 │   │       ├── MergePanel.tsx      # Edit sheet "Duplicate? Merge into another product": closest name matches first, then mergeProducts
 │   │       ├── VoiceInput.tsx      # SpeakDetails ("Speak product details" → AI fills the form) + per-field MicButton
@@ -127,6 +128,9 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 
 ### Scanning flow
 `scanMovement` (in `inventory.functions.ts`) looks up the product by barcode. If found, it applies the delta and logs a movement. If not found, the client opens a sheet to either link the barcode to an existing product or create a new one; the new-product form auto-runs `lookupBarcodeDetails` and can prefill from a label photo via `readLabelPhoto` (Claude through the Netlify AI Gateway, only available on deployed sites). Scans come from the camera (`CameraScanner`), a hardware wand (global keydown capture in `ScanView`), or typed entry. Camera, wand and Bluetooth codes that match no product and fail `checkUnknownScan` (all-digit codes under 8 digits, part of a stocked barcode, or a bad GS1 check digit) play `errorBuzz()` and show "Scan again" instead of the new-product sheet, with a "That's the full code — use it" escape; 2–3 character wand bursts get the same buzz. Typed codes are never checked.
+
+### Quick stock photo
+For staff in a hurry, the Scan tab's "In a hurry? Snap the SKU or label" button (also offered inside the camera scanner) opens the phone camera via a file input (`capture="environment"`; it must open straight from the tap, so "Who's scanning?" is asked after the photo). `PhotoStockSheet` decodes any barcode on the device first (BarcodeDetector, else html5-qrcode `scanFile`), then `readStockPhotoFn` (AI, Plus) reads the code and label. The photo must show the whole SKU / barcode number or the full front label (brand + product name) — anything less returns a "Retake" message. Matches: exact code first, else up to 5 products by brand + name word overlap (+ same size). Staff confirm Adding to inventory / Scanning out, the quantity and the product (or add it as a new product, pre-filled from the photo, with a `BT-` SKU when there's no code), then `recordProductMovement` logs it with the note `Photo: SKU / barcode` or `Photo: full label`; undo works from the toast. The photo itself isn't stored.
 
 ### Talk-to-text product entry
 `ProductForm` has a "Speak product details" button (`SpeakDetails`): the browser's speech recognition transcribes, then `readSpokenProduct` (AI, Plus) pulls out brand, name, size, category, vendor, count, par, cost and retail — only what was said overrides the form. Without AI the transcript becomes the name. Name, brand, size and supplier also have a per-field mic (`MicButton`, no plan needed). Mics hide on browsers without speech recognition.

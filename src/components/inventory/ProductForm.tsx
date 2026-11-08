@@ -55,6 +55,7 @@ type Prefill = { kind: 'none' } | { kind: 'loading' } | { kind: 'found'; note: s
 export function ProductForm({
   product,
   initialBarcode = '',
+  initialDetails,
   barcodeLocked = false,
   autoLookup = false,
   products,
@@ -67,6 +68,8 @@ export function ProductForm({
 }: {
   product?: Product
   initialBarcode?: string
+  /** Pre-fills a new product, e.g. from what a stock photo showed. */
+  initialDetails?: { brand?: string; name?: string; size?: string; category?: string }
   barcodeLocked?: boolean
   autoLookup?: boolean
   products: Product[]
@@ -83,11 +86,11 @@ export function ProductForm({
   const [extraBarcodes, setExtraBarcodes] = useState<string[]>(product?.extraBarcodes ?? [])
   const [extraDraft, setExtraDraft] = useState('')
   const [extraOpen, setExtraOpen] = useState(false)
-  const [name, setName] = useState(product?.name ?? '')
-  const [brand, setBrand] = useState(product?.brand ?? '')
+  const [name, setName] = useState(product?.name ?? initialDetails?.name ?? '')
+  const [brand, setBrand] = useState(product?.brand ?? initialDetails?.brand ?? '')
   const [vendor, setVendor] = useState(product?.vendor ?? '')
-  const [category, setCategory] = useState(product?.category ?? '')
-  const [size, setSize] = useState(product?.size ?? '')
+  const [category, setCategory] = useState(product?.category ?? initialDetails?.category ?? '')
+  const [size, setSize] = useState(product?.size ?? initialDetails?.size ?? '')
   const [qty, setQty] = useState(String(product?.qty ?? 0))
   const [par, setPar] = useState(String(product?.reorderThreshold ?? DEFAULT_REORDER_THRESHOLD))
   const [cost, setCost] = useState(product?.unitCostCents ? centsToDollars(product.unitCostCents) : '')
@@ -1010,7 +1013,7 @@ function uniq(values: string[]) {
 }
 
 /** Short internal code for items that don't carry a barcode. */
-function makeSku(products: Product[]) {
+export function makeSku(products: Product[]) {
   const taken = new Set(products.flatMap((p) => [p.barcode, ...(p.extraBarcodes ?? [])]))
   let code = ''
   do {

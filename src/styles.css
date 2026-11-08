@@ -390,3 +390,11 @@ body {
     text-align: right;
   }
 }
+
+/* Camera scanner: html5-qrcode sizes its video to the reader's width; keep it on screen. */
+.bintro-reader video {
+  display: block;
+  width: 100% !important;
+  max-height: calc(100vh - 180px);
+  object-fit: cover;
+}
