@@ -17,6 +17,7 @@ import { CategorySetupSheet } from '@/components/business/CategorySetupSheet'
 import { TAX_GROUPS, categorySuggestionsFor, findCategory, guessTaxGroup, taxGroupById, taxKind, type ProductCategory, type TaxGroupId } from '@/lib/tax-categories'
 import { COPY_PROMPT_OFF_KEY, CopyPreviousSheet } from './CopyPreviousSheet'
 import { MicButton, SpeakDetails } from './VoiceInput'
+import { MergePanel } from './MergePanel'
 
 export type ProductFormValues = {
   barcode: string
@@ -62,6 +63,7 @@ export function ProductForm({
   onCancel,
   onSave,
   onDelete,
+  onMerge,
 }: {
   product?: Product
   initialBarcode?: string
@@ -74,6 +76,8 @@ export function ProductForm({
   onSave: (values: ProductFormValues) => Promise<void>
   /** Shown between Cancel and Save when set. The first tap arms it, the second deletes. */
   onDelete?: () => Promise<void>
+  /** Shown on existing products: fold this one into another product it duplicates. */
+  onMerge?: (target: Product) => Promise<void>
 }) {
   const [barcode, setBarcode] = useState(product?.barcode ?? initialBarcode)
   const [extraBarcodes, setExtraBarcodes] = useState<string[]>(product?.extraBarcodes ?? [])
@@ -930,6 +934,8 @@ export function ProductForm({
           )}
         </div>
       )}
+
+      {product && onMerge && <MergePanel product={product} products={products} onMerge={onMerge} />}
 
       {error && <p className="text-bad text-sm mt-3 mb-0">{error}</p>}
       {confirmDelete && !deleting && (
