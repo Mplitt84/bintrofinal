@@ -4,6 +4,7 @@ import type { Product, Stats } from './types'
 import { createProduct, deleteProduct, linkBarcodeToProduct, mergeProducts, updateProduct } from '@/server/inventory.functions'
 import { Sheet } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
+import { CountSheet, DuplicatesSheet, FillCostsSheet } from './TidyTools'
 import { EmptyState, PageHead, StatGrid, StatTile, Thumb, centsToDollars, dollarsShort } from '@/components/ui/bits'
 import { ProductForm } from './ProductForm'
 import { isBelowPar, stockStatus } from '@/lib/inventory-defaults'
@@ -30,6 +31,10 @@ export function InventoryView({
   const [category, setCategory] = useState('all')
   const [editing, setEditing] = useState<Product | null>(null)
   const [adding, setAdding] = useState(false)
+  // Clean-up tools: count a shelf, fix negatives, duplicates, missing costs.
+  const [tool, setTool] = useState<null | 'count' | 'negatives' | 'duplicates' | 'costs'>(null)
+  const negativeIds = useMemo(() => products.filter((p) => p.qty < 0).map((p) => p.id), [products])
+  const missingCosts = useMemo(() => products.filter((p) => !p.unitCostCents).length, [products])
 
   const categories = useMemo(
     () => Array.from(new Set(products.map((p) => p.category).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
@@ -66,6 +71,36 @@ export function InventoryView({
         <StatTile label="Below par" value={stats.belowPar} tone={stats.belowPar > 0 ? 'warn' : 'good'} />
         <StatTile label="Out of stock" value={stats.outOfStock} tone={stats.outOfStock > 0 ? 'bad' : 'good'} />
       </StatGrid>
+
+      <div className="flex gap-2 overflow-x-auto pb-1 mb-3" role="group" aria-label="Keep your stock accurate">
+        <button type="button" className="chip" onClick={() => setTool('count')}>
+          Count stock
+        </button>
+        {negativeIds.length > 0 && (
+          <button type="button" className="chip !bg-bad-tint !text-bad" onClick={() => setTool('negatives')}>
+            Fix {negativeIds.length} negative count{negativeIds.length === 1 ? '' : 's'}
+          </button>
+        )}
+        {missingCosts > 0 && (
+          <button type="button" className="chip !bg-warn-tint !text-warn" onClick={() => setTool('costs')}>
+            Fill {missingCosts} missing cost{missingCosts === 1 ? '' : 's'}
+          </button>
+        )}
+        <button type="button" className="chip" onClick={() => setTool('duplicates')}>
+          Find duplicates
+        </button>
+      </div>
+
+      <CountSheet
+        open={tool === 'count' || tool === 'negatives'}
+        onClose={() => setTool(null)}
+        products={products}
+        staffName={staffName}
+        prefillIds={tool === 'negatives' ? negativeIds : undefined}
+        onDone={onChanged}
+      />
+      <DuplicatesSheet open={tool === 'duplicates'} onClose={() => setTool(null)} onDone={onChanged} />
+      <FillCostsSheet open={tool === 'costs'} onClose={() => setTool(null)} products={products} onDone={onChanged} />
 
       <label className="flex items-center gap-2.5 bg-surface rounded-full px-4 mb-3.5">
         <Search size={20} className="text-ink-2 shrink-0" />

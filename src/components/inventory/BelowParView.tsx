@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { ClipboardList, Mail, RefreshCw } from 'lucide-react'
+import { ClipboardList, Gauge, Mail, RefreshCw } from 'lucide-react'
 import type { Product } from './types'
 import { emailBelowPar } from '@/server/inventory.functions'
 import { STOCK_STATUS_LABEL, onHandQty, stockStatus, unitsToPar, type StockStatus } from '@/lib/inventory-defaults'
+import { SmartParSheet } from './TidyTools'
 import { useBusiness } from '@/components/business/BusinessContext'
 import { mailtoHref, openMailDraft, type MailDraft } from '@/lib/mail-draft'
 import { EmptyState, PageHead, StatGrid, StatTile, Thumb, dollarsShort } from '@/components/ui/bits'
@@ -39,6 +40,7 @@ export function BelowParView({
 }) {
   const [mail, setMail] = useState<MailState>({ kind: 'idle' })
   const [showInStock, setShowInStock] = useState(false)
+  const [smartOpen, setSmartOpen] = useState(false)
   const { profile, name: businessName } = useBusiness()
   const sendTo = profile.orderEmail.trim() || profile.email.trim()
 
@@ -107,6 +109,10 @@ export function BelowParView({
       </StatGrid>
 
       <div className="flex flex-wrap items-center gap-2 mb-2">
+        <button className="btn btn-gold btn-sm" onClick={() => setSmartOpen(true)}>
+          <Gauge size={16} />
+          Smart par
+        </button>
         {onBuildOrder && (
           <button className="btn btn-primary btn-sm" onClick={onBuildOrder} disabled={items.length === 0}>
             <ClipboardList size={16} />
@@ -222,6 +228,7 @@ export function BelowParView({
         Out means none on hand; Low means 1 or more but at or under the product's par level. Products with no par level set only show here once they run out. The email is sent from the server, so
         it goes out even if this device has no mail app set up. Build a vendor order from these items in step 2.
       </p>
+      <SmartParSheet open={smartOpen} onClose={() => setSmartOpen(false)} onDone={onChanged} />
     </div>
   )
 }

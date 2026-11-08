@@ -63,6 +63,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │       ├── RestockView.tsx     # Restock tab: segmented "1 · Below par" / "2 · Build order"
 │   │       ├── BelowParView.tsx    # Restock step 1: below-par list, email button, "Build vendor order"
 │   │       ├── PurchaseOrderView.tsx  # Restock step 2: vendor-grouped PO with CSV/print/email; saves what went out as open orders
+│   │       ├── TidyTools.tsx       # Data clean-up: CountSheet (count stock / fix negatives), DuplicatesSheet, FillCostsSheet, SmartParSheet, CategoryCleanup
 │   │       ├── DeliveriesView.tsx  # Restock step 3: open orders, check-in, vendor accuracy, recently received
 │   │       └── ReceiveDeliverySheet.tsx # Check a delivery in: invoice/packing-slip photo or PDF (AI) or by hand against a saved order
 │   ├── lib
@@ -80,6 +81,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   ├── inventory-defaults.ts  # Shared constants/helpers: DEFAULT_REORDER_THRESHOLD, par math, initials
 │   │   ├── palettes.ts            # Display palettes (theme token sets) + paletteStyle() CSS vars
 │   │   ├── purchase-order.ts      # PO grouping, totals, CSV
+│   │   ├── tidy.ts                # ParSuggestion / CategoryGroup / DuplicateGroup types (client-safe)
 │   │   ├── orders.ts              # Saved order / delivery / vendor score types (client-safe)
 │   │   └── tax-categories.ts      # Tax groups (Schedule C line, QuickBooks account, why), category suggestions per business type, guessTaxGroup
 │   ├── server
@@ -90,6 +92,8 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   ├── integrations.server.ts  # Square + QuickBooks OAuth, catalog import, sales sync, month push (server-only)
 │   │   ├── import.server.ts        # Bulk import: CSV parsing, product matching, applying counts/receipts and price updates (server-only)
 │   │   ├── import.functions.ts     # createServerFn wrappers: parseImport, estimateImportPrices, applyImport
+│   │   ├── tidy.server.ts          # smartPars, categoryGroups/mergeCategoryNames, duplicateGroups, applyCounts (server-only)
+│   │   ├── tidy.functions.ts       # getSmartPars, setPars, getCategoryGroups, mergeCategories, getDuplicateGroups, saveCounts
 │   │   ├── orders.server.ts        # Saved purchase orders, delivery check-in (reuses applyImportLines in receipt mode), vendor scores (server-only)
 │   │   ├── orders.functions.ts     # saveSentOrder, getOrders, cancelSavedOrder, receiveDeliveryFn
 │   │   ├── email.server.ts         # Restock / PO email via Resend/SendGrid, addressed from the business profile (server-only)
@@ -163,11 +167,18 @@ Staff upload a CSV (any column layout — AI maps the columns, keyword guessing 
 ### Orders and deliveries (Restock step 3)
 Build order saves what goes out (`saveSentOrder`, once per distinct set of lines) as open orders. Below par shows "N on order" from `getOrders().onOrder` so nothing is ordered twice. Deliveries lists open orders; "Check in delivery" (or "Receive a delivery" with no order, also reachable from the Scan tab's "Got a delivery?" button, which sets `autoReceive`) opens `ReceiveDeliverySheet`: a photo or PDF of the invoice / packing slip goes through `parseImport` (AI, Plus) and is laid over the order's lines (matches by product id; extras flagged "Not on the order" / "New product"), or staff mark "Everything arrived as ordered" / count by hand. Flags: Short N, N extra, Cost up/down. `receiveDelivery` applies the lines with `applyImportLines` in receipt mode (receive movements → Budget, Square; invoice costs update products; blank cost keeps the current one), then adds to each order line's `qtyReceived`, sets `receivedCostCents`, and marks the order received or partial (shortages stay on order). Vendor accuracy (`scoreVendors`): fill rate of ordered units, short lines, price changes vs ordered cost, average days to arrive, worst first.
 
+### Keeping the data trustworthy
+- **Smart par** (Restock → Below par → Smart par): par = units used per day (30 days, else 90) × (the vendor's measured delivery days from Deliveries, else 7, + 7 buffer days); items unused for 90 days and older than 30 days get par 0 so they stop alerting. Suggestions only; staff tick and apply.
+- **Count stock** (Products chips): scan into the box (repeat scans add one) or search, enter counted, save → `saveCounts` → `applyImportLines` in inventory mode (adjust movements, Square sales pulled first, counts sent to Square). No plan needed. "Fix N negative counts" opens it pre-filled with every product below zero.
+- **Fill missing costs** (Products chips): runs the AI price check two at a time over every product with no cost and saves what it finds; stops early if the AI service isn't answering.
+- **Find duplicates** (Products chips): same name + size + category spelling (`categoryKey`); retail/backbar copies differ in size or category so they're never offered; merging uses `mergeProducts`.
+- **Tidy up categories** (Settings → Categories): spellings with the same `categoryKey` (lower-cased words, sorted, joined: "Floor bar back" = "Floor Back bar") are offered as one; merging renames products and keeps the chosen spelling's tax group.
+
 ### Sales insights, reports and price checks
 `computeInsights()` works live from `out` movements. Each item is tagged `useKind` `sold` or `used` from its category's tax group (`SOLD_TAX_GROUPS`: resale, beverage, food; no category → sold only if it has a retail price), so backbar/service supplies are never called sales. Weekly top items (last 7 days vs the week before) carry expected profit (units × (retail − cost)) for sold items and product cost for used items, with sold/used totals in `insights.week`; slow movers (in stock, ≥30 days old, used ≤1× in 30 days, grouped color / retail / other), fast movers (≥3 a week and out within 14 days or selling 1.5× the usual rate) with a bulk order covering 30 days plus par priced at the current `unitCostCents`, and price reminders (older than 90 days or no cost). Thresholds live in `src/lib/insights.ts`. `runInsightReport(kind)` writes an AI summary, saves it to `insight_reports` and emails it (weekly and monthly once per period; fast alerts skip products alerted in the last 3 days). The recipient is env `INSIGHTS_EMAIL_TO`, else the profile email, else the order email; period keys use env `BUSINESS_TIMEZONE` (default America/New_York). In the app, `InsightPopup` shows each new fast alert, the week's best sellers and the month's slow movers once per device (`bintro-insights-*` localStorage keys), and banners on Activity and Restock open `InsightsSheet`. `findWebPrice` (the product form's single "AI price check" button) uses Claude with the Anthropic web search tool and looks, in order, at the product's own supplier (`vendor`), the professional distributors for the business type (`PRO_DISTRIBUTORS`: e.g. SalonCentric, CosmoProf, Salon Service Group, Armstrong McCall for salons; Kingpin, Painful Pleasures, Worldwide Tattoo Supply for tattoo), then the brand's site. Resale sites (`RESALE_DOMAINS`) are always blocked; consumer marketplaces (`MARKETPLACES`: Amazon, Walmart, Target) are blocked unless the product's vendor is that marketplace. Cost = the pro price; retail = MSRP. Falls back to a labelled AI estimate when nothing is found.
 
 ### AI calls
-Every Claude call goes through `postToClaude` in `product-lookup.server.ts`: it tries each route the deploy has (`ANTHROPIC_API_KEY` + optional `ANTHROPIC_BASE_URL` — a key with no base URL goes straight to api.anthropic.com — then Netlify's universal `NETLIFY_AI_GATEWAY_*`), retries 408/429/5xx/529 once per route, then a backup model (`BACKUP_MODEL`). Failures are logged as `AI <tag> via <route> (<model>) failed`.
+Every Claude call goes through `postToClaude` in `product-lookup.server.ts`: it tries each route the deploy has (`BINTRO_ANTHROPIC_KEY` — the owner's own Anthropic key, always sent straight to api.anthropic.com, the fix when Netlify's gateway answers 503 "AI Gateway service is not available" — then `ANTHROPIC_API_KEY` + optional `ANTHROPIC_BASE_URL` — a key with no base URL goes straight to api.anthropic.com — then Netlify's universal `NETLIFY_AI_GATEWAY_*`), retries 408/429/5xx/529 once per route, then a backup model (`BACKUP_MODEL`). Failures are logged as `AI <tag> via <route> (<model>) failed`.
 
 ### Receipt prices
 Product costs follow receipts and invoices with no typing: delivery check-in and Import (receipt mode) write invoice unit costs to products, and every Budget receipt photo also runs `applyReceiptPrices` (prices-only import of the matched line items, stock untouched).
