@@ -91,20 +91,25 @@ export function CountSheet({
       await onDone()
       toast(`Saved counts for ${counts.length} product${counts.length === 1 ? '' : 's'}`)
       onClose()
-    } catch {
-      toast("Couldn't save the count. Check your connection and try again.")
+    } catch (error) {
+      toast(error instanceof Error && error.message ? `Couldn't save: ${error.message}` : "Couldn't save the count. Check your connection and try again.")
     } finally {
       setSaving(false)
     }
   }
 
   const changed = rows.filter((r) => r.counted.trim() !== '').length
+  const fixing = Boolean(prefillIds?.length)
 
-  return (
-    <Sheet open={open} onClose={onClose} title="Count stock" subtitle="Scan or search each product on the shelf and enter what's there.">
+  function setCount(id: number, counted: string) {
+    setRows((all) => all.map((x) => (x.id === id ? { ...x, counted } : x)))
+  }
+
+  const search = (
+    <>
       <input
         ref={inputRef}
-        autoFocus
+        autoFocus={!fixing}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => {
@@ -113,7 +118,7 @@ export function CountSheet({
             onEnter()
           }
         }}
-        placeholder="Scan a barcode or type a name"
+        placeholder={fixing ? 'Add another product: scan or type a name' : 'Scan a barcode or type a name'}
         aria-label="Scan or search a product to count"
         className="field-input"
       />
@@ -128,47 +133,85 @@ export function CountSheet({
           ))}
         </ul>
       )}
-      <ul className="list-none m-0 mt-3 p-0 max-h-[46vh] overflow-auto">
+    </>
+  )
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title={fixing ? `Fix ${prefillIds!.length} negative count${prefillIds!.length === 1 ? '' : 's'}` : 'Count stock'}
+      subtitle={
+        fixing
+          ? "You can't have less than zero on the shelf. This usually happens when something was used or sold before its delivery was scanned in. Count what's really there and enter it."
+          : "Scan or search each product on the shelf and enter what's there."
+      }
+    >
+      {fixing ? (
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <p className="m-0 text-[13px] text-ink-2">Nothing on the shelf? Tap 0, or set them all at once.</p>
+          <button type="button" className="btn btn-tonal btn-sm shrink-0" onClick={() => setRows((all) => all.map((r) => ({ ...r, counted: '0' })))}>
+            Set all to 0
+          </button>
+        </div>
+      ) : (
+        search
+      )}
+      <ul className="list-none m-0 mt-2 p-0 max-h-[46vh] overflow-auto">
         {rows.map((r) => {
           const p = byId.get(r.id)
           if (!p) return null
-          const diff = r.counted.trim() === '' ? null : Math.trunc(Number(r.counted)) - p.qty
+          const counted = r.counted.trim() === '' ? null : Math.max(0, Math.trunc(Number(r.counted)))
+          const diff = counted === null ? null : counted - p.qty
           return (
-            <li key={r.id} className="flex items-center gap-3 py-2.5 border-b border-line last:border-b-0">
+            <li key={r.id} className="flex items-center gap-2.5 py-2.5 border-b border-line last:border-b-0">
               <div className="flex-1 min-w-0">
-                <div className="font-semibold truncate">{p.name}</div>
-                <div className="text-[12px] text-ink-2">
-                  Bintro says {p.qty}
-                  {diff !== null && diff !== 0 && (
-                    <b className={diff > 0 ? 'text-good' : 'text-bad'}>
+                <div className="font-semibold leading-snug">{p.name}</div>
+                <div className="text-[12px] text-ink-2 truncate">{[p.brand, p.size, p.category].filter(Boolean).join(' · ')}</div>
+                <div className="text-[12px] mt-0.5">
+                  <span className={p.qty < 0 ? 'text-bad font-semibold' : 'text-ink-2'}>Bintro shows {p.qty}</span>
+                  {counted !== null && diff !== 0 && (
+                    <span className="text-ink-2">
                       {' '}
-                      · {diff > 0 ? '+' : ''}
-                      {diff}
-                    </b>
+                      → will be <b className="text-ink">{counted}</b> ({diff! > 0 ? '+' : ''}
+                      {diff})
+                    </span>
                   )}
                 </div>
               </div>
+              {p.qty < 0 && (
+                <button
+                  type="button"
+                  className="btn btn-tonal btn-sm shrink-0"
+                  aria-pressed={r.counted === '0'}
+                  onClick={() => setCount(r.id, '0')}
+                  title="None on the shelf"
+                >
+                  0
+                </button>
+              )}
               <input
                 type="number"
                 min={0}
                 inputMode="numeric"
-                aria-label={`Counted ${p.name}`}
+                aria-label={`How many ${p.name} on the shelf`}
                 value={r.counted}
-                placeholder="count"
-                onChange={(e) => setRows((all) => all.map((x) => (x.id === r.id ? { ...x, counted: e.target.value } : x)))}
-                className="field-input w-20 text-center px-1 py-1.5"
+                placeholder="#"
+                onChange={(e) => setCount(r.id, e.target.value)}
+                className="field-input !w-[72px] shrink-0 text-center !px-1 !py-1.5"
               />
             </li>
           )
         })}
         {rows.length === 0 && <li className="text-ink-2 text-sm py-3">Nothing counted yet.</li>}
       </ul>
+      {fixing && <div className="mt-3">{search}</div>}
       <SheetActions>
         <button type="button" className="btn btn-tonal" onClick={onClose}>
           Cancel
         </button>
         <button type="button" className="btn btn-primary" disabled={changed === 0 || saving} onClick={save}>
-          {saving ? 'Saving…' : `Save ${changed} count${changed === 1 ? '' : 's'}`}
+          {saving ? 'Saving…' : changed === 0 ? 'Enter a count to save' : `Save ${changed} count${changed === 1 ? '' : 's'}`}
         </button>
       </SheetActions>
     </Sheet>
