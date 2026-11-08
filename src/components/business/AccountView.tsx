@@ -98,6 +98,7 @@ export function AccountView({ panel, onPanel }: { panel: AccountPanel; onPanel: 
 
   return (
     <div>
+      {!account.pilotPremium && (
       <div className="inline-flex p-1 rounded-full bg-surface mb-4" role="tablist" aria-label="Account or billing">
         {(
           [
@@ -118,10 +119,17 @@ export function AccountView({ panel, onPanel }: { panel: AccountPanel; onPanel: 
           </button>
         ))}
       </div>
+      )}
 
       <PlanSummary account={account} onBilling={() => onPanel('billing')} busy={busy} run={run} />
 
-      {panel === 'account' ? (
+      {account.pilotPremium ? (
+        <>
+          <Usage account={account} />
+          <IncludedFeatures account={account} />
+          <AccountDetails account={account} />
+        </>
+      ) : panel === 'account' ? (
         <>
           <Usage account={account} />
           <IncludedFeatures account={account} />
@@ -139,6 +147,13 @@ type RunFn = (key: string, call: () => Promise<BillingCall>) => Promise<boolean>
 
 function statusLine(account: AccountSummary): { tone: 'good' | 'warn' | 'bad' | 'plain'; label: string; detail: string } {
   const plan = planById(account.plan)
+  if (account.pilotPremium) {
+    return {
+      tone: 'good',
+      label: 'Pilot · included',
+      detail: 'Thanks for testing Bintro. Every Premium feature, including everything in Plus, is yours free for the life of the pilot.',
+    }
+  }
   if (account.status === 'trialing') {
     const left = daysUntil(account.trialEndsAt)
     return {
@@ -218,10 +233,12 @@ function PlanSummary({
             {busy === 'resume' ? 'Working…' : account.status === 'paused' ? 'Resume now' : `Keep ${plan.name}`}
           </button>
         )}
-        <button className="btn btn-sm bg-white/15 text-white border-0 hover:bg-white/25" onClick={onBilling}>
-          <CreditCard size={16} />
-          Billing, pause & cancel
-        </button>
+        {!account.pilotPremium && (
+          <button className="btn btn-sm bg-white/15 text-white border-0 hover:bg-white/25" onClick={onBilling}>
+            <CreditCard size={16} />
+            Billing, pause & cancel
+          </button>
+        )}
       </div>
     </section>
   )

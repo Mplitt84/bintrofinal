@@ -167,6 +167,8 @@ export type AccountSummary = {
   paymentMethod: PaymentMethod | null
   /** true when Stripe keys are set; otherwise plan changes apply with no charge (pilot mode). */
   billingLive: boolean
+  /** The pilot site: Premium is included for the life of the pilot and plans can't be changed. */
+  pilotPremium: boolean
   memberSince: string
   usage: { products: number; team: number }
 }
