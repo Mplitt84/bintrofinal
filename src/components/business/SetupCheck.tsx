@@ -90,8 +90,18 @@ export function SetupCheck() {
         <ul className="list-none m-0 p-0 bg-white border border-line rounded-2xl px-4">
           <Row tone={result.ai.ok ? 'good' : 'bad'} title={result.ai.ok ? 'AI is working' : 'AI is not working'}>
             {result.ai.ok
-              ? 'Price checks, Snap & log, invoice, receipt and sales report reading are all available.'
-              : result.ai.detail}
+              ? `Price checks, Snap & log, invoice, receipt and sales report reading are all available (via ${result.ai.route}).`
+              : 'Every AI connection on this site failed:'}
+            {result.ai.routes.length > 1 || !result.ai.ok ? (
+              <span className="block mt-1">
+                {result.ai.routes.map((r) => (
+                  <span key={r.label} className="block">
+                    {r.label}: <b className={r.status >= 200 && r.status < 300 ? 'text-good' : 'text-bad'}>{r.note}</b>
+                  </span>
+                ))}
+                {result.ai.routes.length === 0 && result.ai.detail}
+              </span>
+            ) : null}
           </Row>
 
           <Row
