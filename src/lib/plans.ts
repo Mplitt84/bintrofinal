@@ -70,6 +70,7 @@ export const PLANS: Plan[] = [
     highlights: [
       'Unlimited products, up to 10 team members',
       'Vendor purchase orders to email, print or download',
+      'Check deliveries in from an invoice photo, with vendor accuracy scores',
       'Business calendar with Google / Outlook sync',
       'Bulk import from CSV, PDF or photo',
       'Snap & log: photo the SKU or full label to add stock or scan it out',
@@ -98,7 +99,11 @@ export const PLANS: Plan[] = [
 ]
 
 export const FEATURE_INFO: Record<Feature, { label: string; blurb: string }> = {
-  orders: { label: 'Vendor orders', blurb: 'Turn the below-par list into a vendor-grouped order you can email, print or download.' },
+  orders: {
+    label: 'Vendor orders & deliveries',
+    blurb:
+      'Turn the below-par list into vendor orders, then check each delivery in from a photo of the invoice. Shortages stay on order, costs update, and every vendor gets an accuracy score.',
+  },
   calendar: { label: 'Business calendar', blurb: 'Plan reorders, deliveries, counts, bills and tax dates, synced to Google or Outlook.' },
   import: { label: 'Bulk import', blurb: 'Load a whole stock list or vendor invoice from a CSV, PDF or photo.' },
   ai: {

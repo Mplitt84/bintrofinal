@@ -27,12 +27,15 @@ export function BelowParView({
   staffName,
   onChanged,
   onBuildOrder,
+  onOrder = {},
 }: {
   items: Product[]
   products: Product[]
   staffName: string
   onChanged: () => void | Promise<void>
   onBuildOrder?: () => void
+  /** Units already on an open order, per product id, so nobody orders them twice. */
+  onOrder?: Record<number, number>
 }) {
   const [mail, setMail] = useState<MailState>({ kind: 'idle' })
   const [showInStock, setShowInStock] = useState(false)
@@ -165,8 +168,17 @@ export function BelowParView({
                     </div>
                   </div>
                   <div className="text-right min-w-14">
-                    <b className="num block text-lg leading-tight">{unitsToPar(p) || 1}+</b>
-                    <span className="text-[12px] text-ink-2">to order</span>
+                    {onOrder[p.id] ? (
+                      <>
+                        <b className="num block text-lg leading-tight text-good">{onOrder[p.id]}</b>
+                        <span className="text-[12px] text-good">on order</span>
+                      </>
+                    ) : (
+                      <>
+                        <b className="num block text-lg leading-tight">{unitsToPar(p) || 1}+</b>
+                        <span className="text-[12px] text-ink-2">to order</span>
+                      </>
+                    )}
                   </div>
                 </li>
               )

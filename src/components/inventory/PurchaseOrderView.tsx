@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Product } from './types'
 import { emailPurchaseOrder } from '@/server/inventory.functions'
+import { saveSentOrder } from '@/server/orders.functions'
 import { Download, Mail, Printer } from 'lucide-react'
 import { EmptyState, PageHead, StatGrid, StatTile, Thumb, centsToDollars } from '@/components/ui/bits'
 import { MAX_ORDER_QTY, clampOrderQty, onHandQty, stockStatus, suggestedOrderQty } from '@/lib/inventory-defaults'
@@ -85,16 +86,22 @@ export function PurchaseOrderView({
   items,
   staffName,
   onChanged,
+  onOpenDeliveries,
 }: {
   items: Product[]
   staffName: string
   onChanged: () => void | Promise<void>
+  /** Goes to Restock step 3 where saved orders are checked in. */
+  onOpenDeliveries?: () => void
 }) {
   const [draft, setDraft] = useState<Draft>({})
   const [hydrated, setHydrated] = useState(false)
   const [note, setNote] = useState('')
   const [mail, setMail] = useState<MailState>({ kind: 'idle' })
   const business = useBusiness()
+  // The order last saved for check-in, so emailing then printing the same order saves it once.
+  const [savedKey, setSavedKey] = useState('')
+  const [savedNote, setSavedNote] = useState('')
 
   useEffect(() => {
     setDraft(readDraft())
@@ -171,8 +178,25 @@ export function PurchaseOrderView({
     )
   }
 
+  /** Saves what just went out as open orders (one per vendor) to check deliveries in against. */
+  async function saveForDelivery(sentVia: 'email' | 'print' | 'csv') {
+    const lines = selectedLines.map((line) => ({ productId: line.productId, qty: clampOrderQty(line.qty) }))
+    const key = JSON.stringify(lines)
+    if (key === savedKey) return
+    try {
+      const ids = await saveSentOrder({ data: { lines, staffName, note: note.trim(), sentVia } })
+      setSavedKey(key)
+      setSavedNote(
+        `Saved as ${ids.length} open order${ids.length === 1 ? '' : 's'}. When it arrives, check it in under 3 · Deliveries.`,
+      )
+    } catch {
+      // Saving for check-in is a bonus; the order itself already went out.
+    }
+  }
+
   function exportCsv() {
     if (nothingSelected) return
+    saveForDelivery('csv')
     // Excel needs the BOM to read the UTF-8 product names correctly.
     const blob = new Blob(['\ufeff' + buildPurchaseOrderCsv(selectedLines)], {
       type: 'text/csv;charset=utf-8',
@@ -189,6 +213,7 @@ export function PurchaseOrderView({
 
   function printOrder() {
     if (nothingSelected) return
+    saveForDelivery('print')
     window.print()
   }
 
@@ -203,6 +228,7 @@ export function PurchaseOrderView({
           note: note.trim() || undefined,
         },
       })
+      if (result.ok || result.draft) saveForDelivery('email')
       if (result.ok) {
         setMail({
           kind: 'sent',
@@ -313,6 +339,17 @@ export function PurchaseOrderView({
           Refresh list
         </button>
       </div>
+
+      {savedNote && (
+        <p className="text-[13px] bg-good-tint text-good rounded-xl px-3 py-2 mt-0 mb-3 flex flex-wrap items-center gap-2">
+          <span className="flex-1">{savedNote}</span>
+          {onOpenDeliveries && (
+            <button type="button" className="border-0 bg-transparent p-0 font-semibold text-good underline cursor-pointer" onClick={onOpenDeliveries}>
+              Open Deliveries
+            </button>
+          )}
+        </p>
+      )}
 
       <input
         value={note}
