@@ -74,3 +74,31 @@ export const applyImport = createServerFn({ method: "POST" })
     await assertFeature("import");
     return applyImportLines(data);
   });
+
+/**
+ * Any receipt or invoice photo keeps product costs current: reads its line items,
+ * and for lines that match a product and show a unit price, updates that product's
+ * cost (prices only — stock is left alone, so nothing is counted twice).
+ */
+export const applyReceiptPrices = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      data: z.string().min(1).max(5_800_000),
+      mediaType: z.enum(["application/pdf", "image/jpeg", "image/png", "image/webp"]),
+      staffName: z.string().max(60).optional(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    await assertFeature("import");
+    const parsed = await parseImportFile({ kind: "document", data: data.data, mediaType: data.mediaType }, await businessContext());
+    if (!parsed.ok) return { updated: 0, names: [] as string[] };
+    const lines = parsed.lines.filter((l) => l.productId && l.costSource === "document" && l.unitCostCents > 0);
+    if (lines.length === 0) return { updated: 0, names: [] as string[] };
+    await applyImportLines({
+      mode: "prices",
+      staffName: data.staffName ?? "",
+      source: `Receipt: ${parsed.vendor || "photo"}`,
+      lines: lines.map((l) => ({ ...l, retailPriceCents: 0 })),
+    });
+    return { updated: lines.length, names: lines.slice(0, 5).map((l) => l.name) };
+  });

@@ -3,6 +3,7 @@ import { AlertTriangle, Camera, CheckCircle2, ChevronLeft, ChevronRight, Downloa
 import type { Expense, IntegrationStatus, MonthSpend, MovementRow } from '@/components/inventory/types'
 import { dayKey, monthKey, monthLabel, monthRange, recentMonths } from '@/lib/business-types'
 import { shrinkImage } from '@/lib/images'
+import { applyReceiptPrices } from '@/server/import.functions'
 import { Sheet, Field, SheetActions } from '@/components/ui/Sheet'
 import { AutoInput, QuickChips } from '@/components/ui/AutoInput'
 import { EmptyState, PageHead, StatGrid, StatTile, centsToDollars, dollarsShort } from '@/components/ui/bits'
@@ -583,6 +584,16 @@ function ExpenseForm({
       if (r.category) setCategory((v) => v || r.category)
       if (r.note) setNote((v) => v || r.note)
       setInfo('Read from your receipt. Check the total before saving.')
+      // The same photo keeps product costs current (prices only, no stock change).
+      applyReceiptPrices({ data: { data: image, mediaType: 'image/jpeg' } })
+        .then((p) => {
+          if (p.updated > 0) {
+            setInfo(
+              `Read from your receipt. Also updated the cost of ${p.updated} product${p.updated === 1 ? '' : 's'} (${p.names.join(', ')}${p.updated > p.names.length ? '…' : ''}).`,
+            )
+          }
+        })
+        .catch(() => {})
     } catch {
       setError('That photo could not be opened. Try another one.')
     } finally {

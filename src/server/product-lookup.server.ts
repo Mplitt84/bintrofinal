@@ -29,6 +29,8 @@ const LABEL_MODEL = "claude-sonnet-5-5";
 
 /** Text-only smart fill and price estimates: Haiku keeps it quick enough to run as staff type. */
 const SUGGEST_MODEL = "claude-haiku-4-5";
+/** Tried when the main model can't be reached. */
+const BACKUP_MODEL = "claude-sonnet-4-6";
 
 async function fetchJson(url: string): Promise<unknown | null> {
   try {
@@ -133,20 +135,76 @@ export async function lookupBarcodeOnline(barcode: string): Promise<LookupResult
   return lookupUpcItemDb(code);
 }
 
-function anthropicEndpoint(): { url: string; headers: Record<string, string> } | null {
-  if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_BASE_URL) {
-    return {
-      url: `${process.env.ANTHROPIC_BASE_URL.replace(/\/$/, "")}/v1/messages`,
-      headers: { "x-api-key": process.env.ANTHROPIC_API_KEY },
-    };
+type AIEndpoint = { url: string; headers: Record<string, string>; label: string };
+
+/**
+ * Every route to Claude this deploy has, best first. Netlify injects two routes
+ * into the same AI Gateway (ANTHROPIC_* and the universal NETLIFY_AI_GATEWAY_*);
+ * either can be briefly unavailable, so callers fall through to the next one. A
+ * direct Anthropic key (ANTHROPIC_API_KEY without a base URL) goes to api.anthropic.com.
+ */
+function anthropicEndpoints(): AIEndpoint[] {
+  const list: AIEndpoint[] = [];
+  const key = process.env.ANTHROPIC_API_KEY?.trim();
+  const base = process.env.ANTHROPIC_BASE_URL?.trim();
+  if (key) {
+    list.push({
+      url: `${(base || "https://api.anthropic.com").replace(/\/$/, "")}/v1/messages`,
+      headers: { "x-api-key": key },
+      label: base ? "anthropic-env" : "anthropic-direct",
+    });
   }
-  if (process.env.NETLIFY_AI_GATEWAY_KEY && process.env.NETLIFY_AI_GATEWAY_BASE_URL) {
-    return {
-      url: `${process.env.NETLIFY_AI_GATEWAY_BASE_URL.replace(/\/$/, "")}/anthropic/v1/messages`,
-      headers: { Authorization: `Bearer ${process.env.NETLIFY_AI_GATEWAY_KEY}` },
-    };
+  const gwKey = process.env.NETLIFY_AI_GATEWAY_KEY?.trim();
+  const gwBase = process.env.NETLIFY_AI_GATEWAY_BASE_URL?.trim();
+  if (gwKey && gwBase) {
+    list.push({
+      url: `${gwBase.replace(/\/$/, "")}/anthropic/v1/messages`,
+      headers: { Authorization: `Bearer ${gwKey}` },
+      label: "netlify-gateway",
+    });
   }
-  return null;
+  return list;
+}
+
+function anthropicEndpoint(): AIEndpoint | null {
+  return anthropicEndpoints()[0] ?? null;
+}
+
+/** Statuses worth another try: rate limits, overload and gateway outages. */
+const RETRY_STATUS = new Set([408, 429, 500, 502, 503, 504, 529]);
+
+/**
+ * POSTs a Messages API body to Claude, retrying busy/unavailable answers and
+ * falling through every route this deploy has (and, last, a backup model), so one
+ * flaky route doesn't take every AI feature down. Returns the last response.
+ */
+async function postToClaude(body: Record<string, unknown>, timeoutMs: number, tag: string): Promise<Response | null> {
+  const endpoints = anthropicEndpoints();
+  const models = [String(body.model), ...(body.model === LABEL_MODEL ? [BACKUP_MODEL] : body.model === SUGGEST_MODEL ? [LABEL_MODEL] : [])];
+  let last: Response | null = null;
+  for (const model of models) {
+    for (const endpoint of endpoints) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const res = await fetch(endpoint.url, {
+            method: "POST",
+            signal: AbortSignal.timeout(timeoutMs),
+            headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", ...endpoint.headers },
+            body: JSON.stringify({ ...body, model }),
+          });
+          if (res.ok) return res;
+          last = res;
+          const detail = (await res.clone().text().catch(() => "")).slice(0, 300);
+          console.error(`AI ${tag} via ${endpoint.label} (${model}) failed`, res.status, detail);
+          if (!RETRY_STATUS.has(res.status)) break;
+        } catch (error) {
+          console.error(`AI ${tag} via ${endpoint.label} (${model}) error`, error);
+        }
+        await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+      }
+    }
+  }
+  return last;
 }
 
 type ToolSpec = { name: string; description: string; input_schema: Record<string, unknown> };
@@ -164,23 +222,20 @@ async function callTool(
   content: Content[],
   opts: { model?: string; maxTokens?: number; timeoutMs?: number } = {},
 ): Promise<{ ok: true; input: Record<string, unknown> } | { ok: false; message: string }> {
-  const endpoint = anthropicEndpoint();
-  if (!endpoint) return { ok: false, message: "AI help isn't available on this deploy yet." };
+  if (!anthropicEndpoint()) return { ok: false, message: "AI help isn't available on this deploy yet." };
   try {
-    const res = await fetch(endpoint.url, {
-      method: "POST",
-      signal: AbortSignal.timeout(opts.timeoutMs ?? 30_000),
-      headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", ...endpoint.headers },
-      body: JSON.stringify({
+    const res = await postToClaude(
+      {
         model: opts.model ?? LABEL_MODEL,
         max_tokens: opts.maxTokens ?? 500,
         tools: [tool],
         tool_choice: { type: "tool", name: tool.name },
         messages: [{ role: "user", content }],
-      }),
-    });
-    if (!res.ok) {
-      console.error(`AI ${tool.name} failed`, res.status, await res.text().catch(() => ""));
+      },
+      opts.timeoutMs ?? 30_000,
+      tool.name,
+    );
+    if (!res || !res.ok) {
       return { ok: false, message: "The AI couldn't answer just now. Try again in a moment." };
     }
     const data = (await res.json()) as { content?: Array<{ type: string; input?: Record<string, unknown> }> };
@@ -776,6 +831,25 @@ const RESALE_DOMAINS = [
   "thredup.com",
 ];
 
+/**
+ * Professional distributors service providers in each line of work actually buy
+ * from. Prices come from the business's own vendor first, then these, then the
+ * brand's own site, never from resale marketplaces.
+ */
+const PRO_DISTRIBUTORS: Record<string, string> = {
+  salon: "SalonCentric, CosmoProf, Salon Service Group, Armstrong McCall, Beauty Systems Group",
+  barber: "SalonCentric, CosmoProf, Armstrong McCall, Salon Service Group",
+  nails: "CosmoProf, SalonCentric, the brand's professional store",
+  brows: "CosmoProf, SalonCentric, Universal Companies, the brand's professional store",
+  tattoo: "Kingpin Tattoo Supply, Painful Pleasures, Worldwide Tattoo Supply, the ink or needle maker's own store",
+  spa: "Universal Companies, CosmoProf, the brand's professional store",
+  bar: "the business's licensed distributor (for example Southern Glazer's, RNDC, Breakthru Beverage)",
+};
+const DEFAULT_DISTRIBUTORS = "SalonCentric, CosmoProf, Salon Service Group, Armstrong McCall, Kingpin Tattoo Supply, Universal Companies";
+
+/** Consumer marketplaces that are only used when the business really buys that item there. */
+const MARKETPLACES = ["amazon.com", "walmart.com", "target.com"];
+
 function isResaleUrl(url: string) {
   try {
     const host = new URL(url).hostname.replace(/^www\./, "");
@@ -794,13 +868,13 @@ const RECORD_PRICE_TOOL: ToolSpec = {
       found: { type: "boolean", description: "True if a listing for this exact product (same size) was found on an allowed source." },
       retail_price: {
         type: "number",
-        description: "Current per-unit selling price in USD on the manufacturer's site or Amazon (sold by Amazon or the brand's official store). 0 if not found.",
+        description: "Regular per-unit retail price / MSRP in USD from the brand's site or the supplier's listing. 0 if not found.",
       },
       unit_cost: {
         type: "number",
-        description: "Per-unit professional / wholesale price in USD if an authorised distributor shows it publicly. 0 if not shown — do not guess.",
+        description: "Per-unit professional / wholesale price in USD the business would pay its supplier or a pro distributor, if a source shows it. 0 if not shown — do not guess.",
       },
-      source_name: { type: "string", description: "Site the main price came from, e.g. 'Redken.com', 'SalonCentric', 'Amazon (sold by Amazon)'." },
+      source_name: { type: "string", description: "Site the main price came from, e.g. 'SalonCentric', 'Salon Service Group', 'Kingpin Tattoo Supply', 'Redken.com'." },
       source_url: { type: "string", description: "Exact product page URL the price came from." },
       source_type: { type: "string", enum: ["manufacturer", "distributor", "amazon"] },
       note: {
@@ -837,45 +911,50 @@ type Block = { type: string; name?: string; input?: Record<string, unknown> };
  */
 export async function findWebPrice(
   fields: WebPriceFields,
-  business: { itemNoun: string; categories: string[] },
+  business: { id?: string; itemNoun: string; categories: string[] },
 ): Promise<WebPriceLookup> {
   const label = [fields.brand, fields.name, fields.size].filter((v) => v.trim()).join(" ");
   if (!fields.name.trim()) return { ok: false, message: "Add a product name first." };
-  const endpoint = anthropicEndpoint();
-  if (!endpoint) return { ok: false, message: "AI help isn't available on this deploy yet." };
+  if (!anthropicEndpoint()) return { ok: false, message: "AI help isn't available on this deploy yet." };
 
-  const prompt = `Find the most accurate current US price for this ${business.itemNoun}:
-${label}${fields.barcode && /^\d{8,14}$/.test(fields.barcode) ? `\nUPC/EAN: ${fields.barcode}` : ""}${fields.vendor ? `\nUsually bought from: ${fields.vendor}` : ""}
+  const vendor = fields.vendor.trim();
+  const distributors = PRO_DISTRIBUTORS[business.id ?? ""] ?? DEFAULT_DISTRIBUTORS;
+  // Marketplaces stay blocked unless this is where the business actually buys the item.
+  const allowedMarket = MARKETPLACES.filter((d) => vendor && vendor.toLowerCase().includes(d.split(".")[0]));
+  const blocked = [...RESALE_DOMAINS, ...MARKETPLACES.filter((d) => !allowedMarket.includes(d))];
+  const prompt = `Find what a professional ${business.itemNoun.replace(/ product$/, "")} business pays for this ${business.itemNoun}, and its suggested retail price, in the US:
+${label}${fields.barcode && /^\d{8,14}$/.test(fields.barcode) ? `\nUPC/EAN: ${fields.barcode}` : ""}${vendor ? `\nThis business buys it from: ${vendor}` : ""}
 
-Rules:
-- Use ONLY these sources, in this order of preference: (1) the brand/manufacturer's official website, (2) an authorised professional distributor's website (for example SalonCentric, CosmoProf, Sally Beauty Pro, Salon Services, or the distributor named above; for bars, the distributor or brand site), (3) Amazon.com — but only listings sold by Amazon.com or the brand's official Amazon storefront.
-- Never use resale, auction, marketplace or third-party seller listings (eBay, Poshmark, Mercari, Etsy, Walmart Marketplace sellers, Amazon third-party sellers, discount liquidators, price-comparison aggregators).
-- Match the exact product and size. If a price is for a multi-pack or case, divide to a per-unit price and say so in the note.
-- Prefer the regular price; if only a sale price is shown, use it and mention the sale in the note.
-- Wholesale/pro cost: only report it if a distributor shows it publicly; otherwise 0.
+Where to look, in this order — stop at the first that lists this exact product and size:
+1. ${vendor ? `${vendor} (the business's own supplier) — its professional price is the cost.` : "(no supplier on file, skip)"}
+2. Professional distributors that service providers buy from: ${distributors}. Their pro / wholesale price is the cost.
+3. The brand or manufacturer's own website (its professional/wholesale price if shown publicly, and its regular retail price / MSRP).
+${allowedMarket.length ? `4. ${allowedMarket.join(", ")} — only because the business buys this item there; only listings sold by the retailer itself or the brand's official store.` : ""}
+
+Never use resale, auction, marketplace or third-party seller listings (eBay, Poshmark, Mercari, Etsy, Amazon or Walmart third-party sellers, discount liquidators, price-comparison sites).
+- Match the exact product and size. For a multi-pack or case, divide to a per-unit price and say so in the note.
+- unit_cost = what the professional pays per unit (distributor or brand pro price). Only report it if a source shows it; otherwise 0.
+- retail_price = the brand's regular retail price / MSRP per unit (or the supplier's listed retail price).
+- Prefer regular prices; if only a sale price is shown, use it and mention the sale.
 When done, call record_price once.`;
 
   const messages: Array<{ role: "user" | "assistant"; content: unknown }> = [{ role: "user", content: prompt }];
   const call = async (forceRecord: boolean) => {
-    const res = await fetch(endpoint.url, {
-      method: "POST",
-      signal: AbortSignal.timeout(75_000),
-      headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01", ...endpoint.headers },
-      body: JSON.stringify({
+    const res = await postToClaude(
+      {
         model: LABEL_MODEL,
         max_tokens: 1500,
         tools: [
-          { type: "web_search_20250305", name: "web_search", max_uses: 5, blocked_domains: RESALE_DOMAINS },
+          { type: "web_search_20250305", name: "web_search", max_uses: 6, blocked_domains: blocked },
           RECORD_PRICE_TOOL,
         ],
         tool_choice: forceRecord ? { type: "tool", name: RECORD_PRICE_TOOL.name } : { type: "auto" },
         messages,
-      }),
-    });
-    if (!res.ok) {
-      console.error("AI web price failed", res.status, (await res.text().catch(() => "")).slice(0, 500));
-      return null;
-    }
+      },
+      75_000,
+      "web price",
+    );
+    if (!res || !res.ok) return null;
     return (await res.json()) as { content?: Block[]; stop_reason?: string };
   };
 
@@ -900,7 +979,15 @@ When done, call record_price once.`;
       const sourceType = type === "manufacturer" || type === "distributor" || type === "amazon" ? type : "manufacturer";
       const retail = toCents(record.retail_price);
       const cost = toCents(record.unit_cost);
-      if (record.found && (retail || cost) && !isResaleUrl(url)) {
+      const blockedHost = (() => {
+        try {
+          const host = new URL(url).hostname.replace(/^www\./, "");
+          return blocked.some((d) => host === d || host.endsWith(`.${d}`));
+        } catch {
+          return false;
+        }
+      })();
+      if (record.found && (retail || cost) && !isResaleUrl(url) && !blockedHost) {
         return {
           ok: true,
           unitCostCents: cost,
@@ -914,7 +1001,7 @@ When done, call record_price once.`;
       if (!record.found) {
         const estimate = await webPriceFallback(fields, business);
         if (estimate.ok) {
-          return { ...estimate, note: `No listing on the manufacturer, distributor or Amazon sites. ${estimate.note}`.trim() };
+          return { ...estimate, note: `No listing found at your supplier, pro distributors or the brand's site. ${estimate.note}`.trim() };
         }
         return { ok: false, message: clean(record.note, 240) || "No reliable listing found for this product." };
       }

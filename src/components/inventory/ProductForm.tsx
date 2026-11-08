@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Camera, Copy, ExternalLink, Globe, Lock, Plus, Sparkles, Tags, Wand2, X } from 'lucide-react'
+import { Camera, Copy, ExternalLink, Lock, Plus, Sparkles, Tags, Wand2, X } from 'lucide-react'
 import type { Product } from './types'
 import { lookupBarcodeDetails, readLabelPhoto, readSpokenProduct } from '@/server/inventory.functions'
 import { saveProductCategories, suggestProduct } from '@/server/business.functions'
@@ -731,20 +731,14 @@ export function ProductForm({
             className="btn btn-text btn-sm !py-1.5"
             disabled={webPrice.kind === 'loading' || !aiOn}
             onClick={findWebPrice}
-            title="Manufacturer, authorized distributor or Amazon — not third-party resellers"
-          >
-            {aiOn ? <Globe size={16} /> : <Lock size={14} />}
-            {webPrice.kind === 'loading' ? 'Searching…' : 'Find web price'}
-          </button>
-          <button
-            type="button"
-            className="btn btn-text btn-sm !py-1.5"
-            disabled={price.kind === 'loading' || !aiOn}
-            title={aiOn ? undefined : 'AI price checks come with Bintro Plus'}
-            onClick={() => estimatePrice(true)}
+            title={
+              aiOn
+                ? 'Checks your supplier first, then professional distributors, then the brand — never eBay-style resellers'
+                : 'AI price checks come with Bintro Plus'
+            }
           >
             {aiOn ? <Sparkles size={16} /> : <Lock size={14} />}
-            {price.kind === 'loading' ? 'Estimating…' : 'AI price check'}
+            {webPrice.kind === 'loading' ? 'Checking distributors…' : 'AI price check'}
           </button>
         </div>
         {priceStale && webPrice.kind === 'idle' && (
