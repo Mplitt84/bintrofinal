@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, ExternalLink, Mail, Plug, RefreshCw, Trash2, UserPlus, X } from 'lucide-react'
+import { ArrowUpFromLine, Check, ExternalLink, Mail, Plug, RefreshCw, Trash2, UserPlus, X } from 'lucide-react'
 import type { IntegrationStatus, Product, TeamMember } from '@/components/inventory/types'
 import { ImportView } from '@/components/business/ImportView'
 import { AppearanceSettings } from '@/components/business/AppearanceSettings'
@@ -19,6 +19,7 @@ import {
   getIntegrations,
   removeTeamMember,
   squareImportCatalog,
+  squareSendCounts,
   squareSyncSales,
   updateBusinessProfile,
 } from '@/server/business.functions'
@@ -487,7 +488,7 @@ function TeamManager({
 const PROVIDER_INFO = {
   square: {
     name: 'Square POS',
-    blurb: 'Import your Square item library with prices and barcodes, and count Square sales out of stock automatically every 15 minutes.',
+    blurb: 'Do inventory once, in Bintro. Deliveries, counts and products used in services update Square automatically, and Square sales come off Bintro’s counts every 15 minutes.',
     envVars: ['SQUARE_APPLICATION_ID', 'SQUARE_APPLICATION_SECRET'],
     envName: 'SQUARE_ENVIRONMENT',
     dashboard: 'https://developer.squareup.com/apps',
@@ -584,6 +585,24 @@ function Integrations({ onChanged }: { onChanged: () => void | Promise<void> }) 
                   {s.sandbox && <span className="text-warn"> · sandbox</span>}
                   {s.lastSyncAt && <span className="text-ink-2"> · last sync {timeAgo(s.lastSyncAt)}</span>}
                 </p>
+                {s.inventory?.needsReconnect ? (
+                  <div className="bg-warn-tint rounded-xl px-3.5 py-2.5 text-sm mb-3">
+                    <b>Reconnect to keep Square’s stock in step.</b> This connection was made before Bintro could update Square’s
+                    inventory. Tap Disconnect, then Connect again and allow the new permission.
+                  </div>
+                ) : s.inventory ? (
+                  <p className="text-sm m-0 mb-3 text-ink-2">
+                    {s.inventory.pending > 0
+                      ? `${s.inventory.pending} stock change${s.inventory.pending === 1 ? '' : 's'} waiting to reach Square`
+                      : 'Square’s stock is up to date with Bintro'}
+                    {s.inventory.failed > 0 && (
+                      <span className="text-bad">
+                        {' '}
+                        · {s.inventory.failed} rejected by Square{s.inventory.lastError ? `: ${s.inventory.lastError}` : ''}
+                      </span>
+                    )}
+                  </p>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   {s.provider === 'square' ? (
                     <>
@@ -592,7 +611,9 @@ function Integrations({ onChanged }: { onChanged: () => void | Promise<void> }) 
                         disabled={!!busy}
                         onClick={() =>
                           run('import', () => squareImportCatalog(), (r) =>
-                            `Imported ${r.created} new item${r.created === 1 ? '' : 's'}, updated ${r.updated}`,
+                            `Imported ${r.created} new item${r.created === 1 ? '' : 's'}, linked ${r.updated}${
+                              r.countsSent ? ` · sent ${r.countsSent} count${r.countsSent === 1 ? '' : 's'} to Square` : ''
+                            }`,
                           )
                         }
                       >
@@ -611,6 +632,21 @@ function Integrations({ onChanged }: { onChanged: () => void | Promise<void> }) 
                       >
                         <RefreshCw size={15} />
                         {busy === 'sales' ? 'Syncing…' : 'Sync sales now'}
+                      </button>
+                      <button
+                        className="btn btn-tonal btn-sm"
+                        disabled={!!busy || !!s.inventory?.needsReconnect}
+                        onClick={() => {
+                          if (!window.confirm('Set every linked item’s count in Square to match Bintro? Bintro’s counts replace Square’s.')) return
+                          run('counts', () => squareSendCounts(), (r) =>
+                            r.queued === 0
+                              ? 'No linked items yet. Import the item library first.'
+                              : `Sent ${r.sent} count${r.sent === 1 ? '' : 's'} to Square${r.failed ? ` · ${r.failed} rejected` : ''}`,
+                          )
+                        }}
+                      >
+                        <ArrowUpFromLine size={15} />
+                        {busy === 'counts' ? 'Sending…' : 'Send counts to Square'}
                       </button>
                     </>
                   ) : (

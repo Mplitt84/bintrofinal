@@ -4,7 +4,7 @@
  * matches them to existing products, and applies stock counts and price updates.
  * Server-only.
  */
-import { applyMovement, findAllProducts, insertProduct, updateProductFields, type Product } from "./inventory.server.js";
+import { applyMovement, findAllProducts, flushSquareSoon, insertProduct, updateProductFields, type Product } from "./inventory.server.js";
 import {
   CSV_FIELDS,
   extractImportDocument,
@@ -234,6 +234,15 @@ export async function applyImportLines(params: {
   source: string;
   lines: Omit<ImportLine, "key" | "include" | "costSource" | "retailSource">[];
 }): Promise<ImportSummary> {
+  if (params.mode === "inventory") {
+    // Count any Square sales first, so the file's counts aren't later lowered again by sales they already reflect.
+    try {
+      const { syncSquareSalesIfConnected } = await import("./integrations.server.js");
+      await syncSquareSalesIfConnected();
+    } catch (error) {
+      console.error("Square sales sync before import failed", error);
+    }
+  }
   const all = await findAllProducts();
   const byId = new Map(all.map((p) => [p.id, p]));
   const taken = new Set(all.flatMap((p) => [p.barcode, ...p.extraBarcodes]));
@@ -282,9 +291,11 @@ export async function applyImportLines(params: {
       delta,
       staffName: params.staffName,
       note,
+      square: "later",
     });
     if (after) byId.set(after.id, after);
     summary.units += Math.abs(delta);
   }
+  await flushSquareSoon();
   return summary;
 }

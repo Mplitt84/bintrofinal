@@ -48,6 +48,8 @@ export type MonthSpend = {
 
 export type IntegrationStatus = {
   provider: 'square' | 'quickbooks';
+  /** Square only: stock changes waiting for / rejected by Square, and whether the connection predates inventory permission. */
+  inventory: { pending: number; failed: number; lastError: string; needsReconnect: boolean } | null;
   configured: boolean;
   sandbox: boolean;
   connected: boolean;
