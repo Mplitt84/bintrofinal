@@ -89,7 +89,7 @@ export function CountReconcileSheet({
     setUncountedZero(false)
     setOpenCount(null)
     const draft = readDraft()
-    setDraftFound(draft && Object.keys(draft.counts).length > 0 ? draft : null)
+    setDraftFound(draft && Object.values(draft.counts).some((v) => String(v).trim() !== '') ? draft : null)
     if (initialScope) {
       setKind(initialScope)
       setValue('')
@@ -287,7 +287,7 @@ export function CountReconcileSheet({
         <div className="grid gap-3 max-h-[58vh] overflow-auto">
           {draftFound && (
             <div className="rounded-xl bg-gold-tint p-3 text-sm">
-              <b>A count is in progress</b> on this device: {Object.keys(draftFound.counts).length} counted.
+              <b>A count is in progress</b> on this device: {Object.values(draftFound.counts).filter((v) => String(v).trim() !== '').length} counted.
               <div className="flex gap-2 mt-2">
                 <button type="button" className="btn btn-primary btn-sm" onClick={() => resume(draftFound)}>
                   Pick up where you left off
@@ -441,11 +441,11 @@ export function CountReconcileSheet({
               <div className="text-[11px] font-semibold">Match</div>
             </div>
             <div className="rounded-xl bg-surface p-2">
-              <div className="num text-lg font-extrabold">+{unitsOver}</div>
+              <div className="num text-lg font-extrabold">{unitsOver ? `+${unitsOver}` : 0}</div>
               <div className="text-[11px] font-semibold">Over</div>
             </div>
             <div className="rounded-xl bg-bad-tint p-2">
-              <div className="num text-lg font-extrabold text-bad">−{unitsShort}</div>
+              <div className="num text-lg font-extrabold text-bad">{unitsShort ? `−${unitsShort}` : 0}</div>
               <div className="text-[11px] font-semibold">Short</div>
             </div>
             <div className={`rounded-xl p-2 ${netCents < 0 ? 'bg-bad-tint' : 'bg-surface'}`}>
