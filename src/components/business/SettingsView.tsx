@@ -686,7 +686,7 @@ function Integrations({ onChanged }: { onChanged: () => void | Promise<void> }) 
                   s.connected ? 'bg-good-tint text-good' : 'bg-surface text-ink-2'
                 }`}
               >
-                {s.connected ? 'Connected' : s.configured ? 'Not connected' : 'Needs setup'}
+                {s.connected ? 'Connected' : s.expired ? 'Reconnect needed' : s.configured ? 'Not connected' : 'Needs setup'}
               </span>
             </div>
             <p className="text-ink-2 text-sm mt-0 mb-3">{info.blurb}</p>
@@ -776,9 +776,17 @@ function Integrations({ onChanged }: { onChanged: () => void | Promise<void> }) 
                 </div>
               </>
             ) : s.configured ? (
-              <a className="btn btn-primary btn-sm no-underline" href={`/api/integrations/${s.provider}/connect`}>
-                Connect {info.name}
-              </a>
+              <>
+                {s.expired && (
+                  <div className="bg-warn-tint rounded-xl px-3.5 py-2.5 text-sm mb-3">
+                    <b>{info.name} signed Bintro out.</b> The connection expired or was removed on {info.name}’s side. Tap
+                    Reconnect and sign in again; nothing already sent will be sent twice.
+                  </div>
+                )}
+                <a className="btn btn-primary btn-sm no-underline" href={`/api/integrations/${s.provider}/connect`}>
+                  {s.expired ? 'Reconnect' : 'Connect'} {info.name}
+                </a>
+              </>
             ) : (
               <details className="bg-surface rounded-xl px-3.5 py-2.5 text-sm">
                 <summary className="cursor-pointer font-semibold">How to set it up (about 10 minutes, one time)</summary>

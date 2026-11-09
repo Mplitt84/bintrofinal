@@ -151,6 +151,8 @@ function Home() {
       else if (connected) setNotice({ tone: 'good', text: `${label(connected)} is connected.` })
       else if (error?.endsWith('not-configured'))
         setNotice({ tone: 'bad', text: `${label(error)} isn't set up on this site yet. See the steps below.` })
+      else if (error?.endsWith('expired'))
+        setNotice({ tone: 'bad', text: `That ${label(error)} link expired or didn’t come from this page. Tap Connect to start again.` })
       else if (error?.endsWith('declined')) setNotice({ tone: 'bad', text: `${label(error)} connection was cancelled.` })
       else if (error) setNotice({ tone: 'bad', text: `${label(error)} couldn't connect. Try again.` })
       window.history.replaceState(null, '', `${window.location.pathname}#settings`)

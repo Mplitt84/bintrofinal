@@ -62,6 +62,8 @@ export type IntegrationStatus = {
   configured: boolean;
   sandbox: boolean;
   connected: boolean;
+  /** Tokens were rejected (expired or revoked); the owner must sign in again. */
+  expired: boolean;
   accountName: string;
   lastSyncAt: string | null;
   connectedAt: string | null;
