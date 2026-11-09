@@ -199,8 +199,14 @@ async function requestQuickBooksToken(body: Record<string, string>): Promise<Tok
     body: new URLSearchParams(body),
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, string | number>;
-  if (!res.ok || !data.access_token)
-    throw new TokenError(String(data.error_description || data.error || "QuickBooks rejected the request."), String(data.error ?? ""));
+  const tid = res.headers.get("intuit_tid") ?? "";
+  if (!res.ok || !data.access_token) {
+    console.error(`QuickBooks token request failed (${res.status}) intuit_tid=${tid || "none"}`, data.error ?? "");
+    throw new TokenError(
+      `${String(data.error_description || data.error || "QuickBooks rejected the request.")}${tid ? ` (QuickBooks ref ${tid})` : ""}`,
+      String(data.error ?? ""),
+    );
+  }
   return {
     accessToken: String(data.access_token),
     refreshToken: String(data.refresh_token ?? ""),
@@ -774,8 +780,11 @@ async function qbFetch<T>(row: Integration, path: string, init: RequestInit = {}
       ...(init.headers ?? {}),
     },
   });
+  // Intuit's id for this call; their support uses it to trace a request.
+  const tid = res.headers.get("intuit_tid") ?? "";
   // Access token expired or was revoked early: refresh once and try again.
   if (res.status === 401 && !retried) {
+    console.warn(`QuickBooks 401 on ${init.method ?? "GET"} ${path.split("?")[0]} intuit_tid=${tid || "none"}; refreshing`);
     if (!row.refreshToken) throw await markNeedsReconnect(row);
     const fresh = await refreshTokens(row);
     Object.assign(row, { accessToken: fresh.accessToken, refreshToken: fresh.refreshToken, expiresAt: fresh.expiresAt });
@@ -786,8 +795,12 @@ async function qbFetch<T>(row: Integration, path: string, init: RequestInit = {}
     Fault?: { Error?: Array<{ Message?: string; Detail?: string }> };
   };
   if (!res.ok || data.Fault) {
-    const err = data.Fault?.Error?.[0];
-    throw new Error(err?.Detail || err?.Message || `QuickBooks returned ${res.status}.`);
+    const err = data.Fault?.Error?.[0] as { Message?: string; Detail?: string; code?: string } | undefined;
+    console.error(
+      `QuickBooks ${init.method ?? "GET"} ${path.split("?")[0]} failed (${res.status}${err?.code ? `, code ${err.code}` : ""}) intuit_tid=${tid || "none"}`,
+      err?.Detail || err?.Message || "",
+    );
+    throw new Error(`${err?.Detail || err?.Message || `QuickBooks returned ${res.status}.`}${tid ? ` (QuickBooks ref ${tid})` : ""}`);
   }
   return data;
 }
