@@ -4410,7 +4410,7 @@ var RawStream = class {
   }
 };
 async function getStartManifest(matchedRoutes) {
-  const { tsrStartManifest } = await import("./assets/_tanstack-start-manifest_v-BVsu3nsN.js");
+  const { tsrStartManifest } = await import("./assets/_tanstack-start-manifest_v-DSQT3xvV.js");
   const startManifest = tsrStartManifest();
   let routes = startManifest.routes;
   routes[rootRouteId];
@@ -4432,395 +4432,399 @@ async function getStartManifest(matchedRoutes) {
 const manifest = {
   "03296ffa8e7c6513d87844145725c5215c0fad9b462343edb1da327e7019172f": {
     functionName: "readSpokenProduct_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "04a3d82ebea9236975adab4fd578664123a041a305022b75d2336bb795ab8feb": {
     functionName: "logSalesReport_createServerFn_handler",
-    importer: () => import("./assets/import.functions-BvWX1RPP.js")
+    importer: () => import("./assets/import.functions-DpPGpRm9.js")
   },
   "04be2dc3eebc2a4becde65112b9afb13adb203a17735c09bba4c8e90f72e118e": {
     functionName: "linkBarcodeToProduct_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "08ccd14865d516fb455ca8ecc85f1226b605386556c7d4af3e3f54106e04aeb3": {
     functionName: "getInsights_createServerFn_handler",
-    importer: () => import("./assets/insights.functions-CtSt3QfJ.js")
+    importer: () => import("./assets/insights.functions-CjL2vHTw.js")
   },
   "0b508838fc462dd380fc8fc0ca7b8b04751230c28fd33cada81ad988012d63c1": {
     functionName: "openPaymentPortal_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BaOKoHmm.js")
+    importer: () => import("./assets/account.functions-CZULR-Vw.js")
   },
   "0cab1653405c989dbe1a925b0e1a6ca0a0f3152f416a3bb686cb270ded1ac2d1": {
     functionName: "removeProductCategories_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "0d694f5a8da3fad061ec4b881739a2d409b465c25ef86a11befd05d0ec15e2a0": {
     functionName: "undoMovement_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "14a0f7ff335f0a1bc922563407a7e578abcdef957f4a28aac6db963311b18ba0": {
     functionName: "squareImportCatalog_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "1620febdb4067bb98e7d350594ac5c9c4eab48bbbcf9c68b5a33d1dc39131b6c": {
     functionName: "parseImport_createServerFn_handler",
-    importer: () => import("./assets/import.functions-BvWX1RPP.js")
+    importer: () => import("./assets/import.functions-DpPGpRm9.js")
   },
   "1687560e98c420e589f15a5fc2d2cc5d10a436e40b36b3eb6abb8c02197449b8": {
     functionName: "createProduct_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "1925026b1c10db48c12f4e2bc0a90574b72aeb87e7330a3827a67fccd409c630": {
     functionName: "getSmartPars_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
+    importer: () => import("./assets/tidy.functions-d3Dy2zo2.js")
   },
   "194c5168bd712f8f142a6f6ad5cd46cacabf49dfc5921685e597138fadc45421": {
     functionName: "getConnectionRequests_createServerFn_handler",
-    importer: () => import("./assets/connections.functions-BTCep_un.js")
+    importer: () => import("./assets/connections.functions-DX2UyYRn.js")
   },
   "1ad1730f395b5a8a4dc266d462ed91565b3e66792291cdcf5ab21e2547b6aa89": {
     functionName: "pausePlan_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BaOKoHmm.js")
+    importer: () => import("./assets/account.functions-CZULR-Vw.js")
   },
   "1d8a7d052bec8f6919886eeddc29f8b74fc573f2157c30e183394d7b2ff7d310": {
     functionName: "getAccessList_createServerFn_handler",
-    importer: () => import("./assets/auth.functions-d7ALUY8D.js")
+    importer: () => import("./assets/auth.functions-DQSakl7x.js")
   },
   "20025aaed2bc46dd8065664de0ce970c35cdc9ed6fdd8acc5179a688172eafce": {
     functionName: "applyImport_createServerFn_handler",
-    importer: () => import("./assets/import.functions-BvWX1RPP.js")
+    importer: () => import("./assets/import.functions-DpPGpRm9.js")
   },
   "20723f37bc41103cd0144c7d0ce7e18d7b6062cfa212b7e82904cb65ec8c2434": {
     functionName: "squareSendCounts_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "20bf5a75a4edbf48b80a16a026d0cb79a2129e64cd6f72053b979ac9b7e42f31": {
     functionName: "estimateImportPrices_createServerFn_handler",
-    importer: () => import("./assets/import.functions-BvWX1RPP.js")
+    importer: () => import("./assets/import.functions-DpPGpRm9.js")
   },
   "20d79206e108af8af93f7352ca3356dfe4a8a4369025a42b9d95cddb42846a5d": {
     functionName: "setSquareRetailCategories_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "2b4b237bff79856c01bb15351d679549b72f1cb75bc34ff6ae694c5c4ee39a0b": {
     functionName: "getCalendarFeedPath_createServerFn_handler",
-    importer: () => import("./assets/calendar.functions-Dv31SdqJ.js")
+    importer: () => import("./assets/calendar.functions-JIpDFddM.js")
   },
   "3af6d1532c5910dfeaf1944cfd3ea22a6cfe5d6d2cd58a6f7be05c8a845b4581": {
     functionName: "approveStockCount_createServerFn_handler",
-    importer: () => import("./assets/counts.functions-H49tpvMC.js")
+    importer: () => import("./assets/counts.functions-QpMXE8HX.js")
   },
   "3bea34e8c3b0fbfe52545d91d30315224f93624ae4b9e5a4801b9e9893879d01": {
     functionName: "getBillingHistory_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BaOKoHmm.js")
+    importer: () => import("./assets/account.functions-CZULR-Vw.js")
   },
   "3d2ac9b271549c34af9ee5dce1a7ea2b1a3bcbe29eebf79877cd5d28f2f53ae2": {
     functionName: "getStats_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "3d6c39e18a4a9218d6622b186dcc7152b9c7b750c35ece382031bb9b8abbd6e5": {
     functionName: "editCalendarEvent_createServerFn_handler",
-    importer: () => import("./assets/calendar.functions-Dv31SdqJ.js")
+    importer: () => import("./assets/calendar.functions-JIpDFddM.js")
   },
   "43cc7a8edb98bd999075fb69ecbbb34bb9603d834247277daa3e9d5bdad38a20": {
     functionName: "saveAccountDetails_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BaOKoHmm.js")
+    importer: () => import("./assets/account.functions-CZULR-Vw.js")
   },
   "473a0c24e2e34c7b181501451d8fbc96ec6351ec3f1c69ffa77bf41f657e6af8": {
     functionName: "bulkUpdateProducts_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "49853aa174a5c462bef69456eecd66b5c7039e75c14d31a2cee30b492f4762b3": {
     functionName: "createExpense_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "4b1d7b597eabf67b74428f099b57382fd027b27eb2c3e57e1cdd6f8ed9bbd37f": {
     functionName: "editExpense_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "4e453ef218bcaad133228783bdf43d236b2b5149aa3f05827d95d14448ef80ee": {
     functionName: "recordProductMovement_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "59cca0435fb18284b1ca3d80b0a4eb25f62f617a7027a7fce94638dbe403bad2": {
     functionName: "resumePlan_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BaOKoHmm.js")
+    importer: () => import("./assets/account.functions-CZULR-Vw.js")
   },
   "5e9cc7bed4be53338cc819999df27b71a3b7f2e251a871bec2af6e8aacdf1c05": {
     functionName: "undoPars_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
+    importer: () => import("./assets/tidy.functions-d3Dy2zo2.js")
   },
   "5f35fa34e4a2d5a018c585948359b6a403cc4a51937689b89e57232a7e0373b4": {
     functionName: "readStockPhotoFn_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "6067ddb4ac537c8fa1023b6006799e98d4516de28d608cb0a2d2d868ea54c330": {
     functionName: "saveMonthBudget_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "60c53bd292604ab49247ff833410708f26f67d1a410b06ea0fc1e42757d81427": {
     functionName: "getBudgetOverview_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "61950064fb434c615d35ae38d62948d8050d86d3f1eb9fde646f08b2d3c1d55a": {
     functionName: "squareSyncSales_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "6467c210f1ed57f198690a8612b51bcdd7d4197117c6faf1fc3ad1ba62c8ca56": {
     functionName: "mergeProducts_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "6a3e722c6decd120d655deff6e327fd1bb25f2de144af22924707b3586e10156": {
     functionName: "checkWebPrice_createServerFn_handler",
-    importer: () => import("./assets/insights.functions-CtSt3QfJ.js")
+    importer: () => import("./assets/insights.functions-CjL2vHTw.js")
   },
   "6dc7bab5a0f94bd3275b2c76fec2fa343f66b7aadb9fe590a1d9e79cabf926c5": {
     functionName: "emailPurchaseOrder_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "70a49bef360b5fee1216cae4408b5adaa514ef6d444589a51890f9fe5b87f134": {
     functionName: "getCountHistory_createServerFn_handler",
-    importer: () => import("./assets/counts.functions-H49tpvMC.js")
+    importer: () => import("./assets/counts.functions-QpMXE8HX.js")
+  },
+  "712911562ef8c115187d685eb31f0f116a98ff524a03bb8b43fe2abc0c72b2f7": {
+    functionName: "getOverview_createServerFn_handler",
+    importer: () => import("./assets/overview.functions-2JsMQZMj.js")
   },
   "7230639abe8c0164ddf5e85cd8ab6e7ee157f506a9ba2fe42176a6c72ac33fcc": {
     functionName: "mergeCategories_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
+    importer: () => import("./assets/tidy.functions-d3Dy2zo2.js")
   },
   "739f1912b13ae2d1e9d0af1e4adb44800b626440c5bad7fbe3aa6b25465176b4": {
     functionName: "updateProduct_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "7822646cdc4c07d7fe54cfea331ae87fad27976b90595edf54479615467c2220": {
     functionName: "sendSetupTestEmail_createServerFn_handler",
-    importer: () => import("./assets/setup.functions-BI8VA5us.js")
+    importer: () => import("./assets/setup.functions-Caqk9nTY.js")
   },
   "79714bd1315f8ca197b45f48ebcb30c863035c6713c2eaebe0af06fbf3799920": {
     functionName: "saveProductCategories_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "7980b5a64330be14daeb23e8b1773d4ec1917ab5b561f72f7cbba8d03de3017f": {
     functionName: "getAuthState_createServerFn_handler",
-    importer: () => import("./assets/auth.functions-d7ALUY8D.js")
+    importer: () => import("./assets/auth.functions-DQSakl7x.js")
   },
   "7c5f50af97d50b9ab72780ff530d7d3ad36556de9a7937ff5bf96acb584a9d3c": {
     functionName: "bulkDeleteProducts_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "7ce8966b25cd7f0cfcd5b0b9291d73f2a93896642781b7129af2f7d4efe27a0b": {
     functionName: "listProductCategories_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "7ea615c7b8d6e00557d0d359a13f245370ea95ccc774d34cda10fcaa53ba1d50": {
     functionName: "removeExpense_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "7fef2669d1d6f3e9fdccdfbabede084b9e0823ba1f054366dd5ae9501cff565b": {
     functionName: "quickbooksPushMonth_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "8354b80e0ab29cbb323d00a85f10147647b566a9a1f39be7b061b767cd620249": {
     functionName: "listExpenses_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "877e4e27227a92db358a8d6d55b5295a38b2fb78c1b6aa8e3174209fdf9b131e": {
     functionName: "deleteCategory_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
+    importer: () => import("./assets/tidy.functions-d3Dy2zo2.js")
   },
   "8a5cdce2e3594cdbb1763bc5ca5a423c0e06b3456788d6a0864c260d8d214b84": {
     functionName: "sendInsightReportNow_createServerFn_handler",
-    importer: () => import("./assets/insights.functions-CtSt3QfJ.js")
+    importer: () => import("./assets/insights.functions-CjL2vHTw.js")
   },
   "8dd7a7a2cddcfe3bde69e3b6a2141d3a9ad49f42632f598e1f6b54be9a908306": {
     functionName: "confirmPrices_createServerFn_handler",
-    importer: () => import("./assets/insights.functions-CtSt3QfJ.js")
+    importer: () => import("./assets/insights.functions-CjL2vHTw.js")
   },
   "8faec6748de68f1cf8ce6bfd57ca19807095ec135ffc3d4cdb0c2cb0363337c5": {
     functionName: "searchProducts_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "9177352979bdd25707a8e28d888613648e8d2c1f2e94ce02c00f6c99b6afb802": {
     functionName: "applyWebPrice_createServerFn_handler",
-    importer: () => import("./assets/insights.functions-CtSt3QfJ.js")
+    importer: () => import("./assets/insights.functions-CjL2vHTw.js")
   },
   "94dc5d50022411a6f751d02b53efd5d2a75c57a40aaded921d36dec0e85d3213": {
     functionName: "saveCounts_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
+    importer: () => import("./assets/tidy.functions-d3Dy2zo2.js")
   },
   "96f04bf3fed34aecfd38cecaae8c2d98736f6c1e6a67aceefa2043d3f0ab4245": {
     functionName: "getCategoryList_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
+    importer: () => import("./assets/tidy.functions-d3Dy2zo2.js")
   },
   "98e7a6e61ac171aec6645c9a7bce643b01f8d83c6ee3fd69c2e152c87fd47a16": {
     functionName: "addTeamMember_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "9abda59e2c23118e4531199339967f8691a2bedfa4c902dfc686c41c56a83ff9": {
     functionName: "addAccess_createServerFn_handler",
-    importer: () => import("./assets/auth.functions-d7ALUY8D.js")
+    importer: () => import("./assets/auth.functions-DQSakl7x.js")
   },
   "a85d992ef0dd5f80187a82d58000361d4951db8ac255a3fc40c2c2ad1ade692a": {
     functionName: "getSquareRetailCategories_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "a974410b51934831b8bced98077808c30b4018bf4410fda89228573e360ae3d9": {
     functionName: "readReceiptPhoto_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "afea1878bf48c9086830abe85f18bb485adeac1742249bf8e1bfb35363956c8f": {
     functionName: "getAccount_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BaOKoHmm.js")
+    importer: () => import("./assets/account.functions-CZULR-Vw.js")
   },
   "b06120bf660a285feb8c23b17355192686a94b8f95623ceae33570d7526402b4": {
     functionName: "getIntegrations_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "b0755821f285543af9317e907f849527e2025919870fab838916fc903fd55bdc": {
     functionName: "getInsightSummary_createServerFn_handler",
-    importer: () => import("./assets/insights.functions-CtSt3QfJ.js")
+    importer: () => import("./assets/insights.functions-CjL2vHTw.js")
   },
   "b3f497d8a4691d5e1c3d850825e98e6af61a48877512ba288afadd236c6896bb": {
     functionName: "signOut_createServerFn_handler",
-    importer: () => import("./assets/auth.functions-d7ALUY8D.js")
+    importer: () => import("./assets/auth.functions-DQSakl7x.js")
   },
   "b426e6454f76618fb04a0e57c79174475f6d80f701b87711ee5aa288a5097fd1": {
     functionName: "getRecentMovements_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "b4d5d2e66b56601226f6243a8e4301b02f959e74f4f9ef33982245a3a359ce3e": {
     functionName: "getIntegrationErrorLog_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "b51509cfb38ef861d7d9c37a0e23bafbfd2120e92db5cadd0f0564ea6c62aef1": {
     functionName: "cancelSavedOrder_createServerFn_handler",
-    importer: () => import("./assets/orders.functions-CyzL46U9.js")
+    importer: () => import("./assets/orders.functions-9YrsteVf.js")
   },
   "b76fbe18471cd9060d1161ee22d718be183f5851c634a1406326b22726b2ede7": {
     functionName: "selectPlan_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BaOKoHmm.js")
+    importer: () => import("./assets/account.functions-CZULR-Vw.js")
   },
   "b7e30bce2fc5d1eebff98f88a86621160f723f372d28f56a55320b6f5e113e6b": {
     functionName: "requestConnection_createServerFn_handler",
-    importer: () => import("./assets/connections.functions-BTCep_un.js")
+    importer: () => import("./assets/connections.functions-DX2UyYRn.js")
   },
   "be6f8faa1b358b37786ef5ba3aa6ac47e341db0ae1b72c22975b3a3e562abc82": {
     functionName: "lookupBarcodeDetails_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "bf70584d5b142e730fe2deaddb2a3ab4cbe99677bb068fc921318e35c498f523": {
     functionName: "parseSalesReport_createServerFn_handler",
-    importer: () => import("./assets/import.functions-BvWX1RPP.js")
+    importer: () => import("./assets/import.functions-DpPGpRm9.js")
   },
   "c14f2e2425a97dd2b7fe28324db104a92512246cd40a47f2918e9adcd6661d1d": {
     functionName: "receiveDeliveryFn_createServerFn_handler",
-    importer: () => import("./assets/orders.functions-CyzL46U9.js")
+    importer: () => import("./assets/orders.functions-9YrsteVf.js")
   },
   "c25a68e26f74554b1b179308fba30707ad90eeaf434a3e5f00ab8ec420ffbd3e": {
     functionName: "cancelSubscription_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BaOKoHmm.js")
+    importer: () => import("./assets/account.functions-CZULR-Vw.js")
   },
   "c33f3e8f2d91dfc1479d0a17451f929c733f6c5e03e49d9073b2aadc07ae0be4": {
     functionName: "readLabelPhoto_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "c728e1641680bb1e244ecbe094379db36ff732fc76318b2a6e4de1f0f2e82b44": {
     functionName: "getDuplicateGroups_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
+    importer: () => import("./assets/tidy.functions-d3Dy2zo2.js")
   },
   "c99eae04126c4837f668644332b10e45598e6bab6fce5175259446c534e8becc": {
     functionName: "getCategoryGroups_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
+    importer: () => import("./assets/tidy.functions-d3Dy2zo2.js")
   },
   "cee688b920afcb247e533bef8972f2caef04ad0aedf980b312a4aae716be36db": {
     functionName: "disconnect_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "d01f692499371e7e595b4b8de4522fd0640e38219158e89b6abb9e16cf52a436": {
     functionName: "addCalendarEvents_createServerFn_handler",
-    importer: () => import("./assets/calendar.functions-Dv31SdqJ.js")
+    importer: () => import("./assets/calendar.functions-JIpDFddM.js")
   },
   "d2eb947b190bba465fbef4ff0d9f99bd3795e54e602970ea5d986889b4a3d83c": {
     functionName: "setPars_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
+    importer: () => import("./assets/tidy.functions-d3Dy2zo2.js")
   },
   "d3345f638976804fdc783b19b49c2f86e1d5da43eaff075c5e697afcaa808ed1": {
     functionName: "removeAccess_createServerFn_handler",
-    importer: () => import("./assets/auth.functions-d7ALUY8D.js")
+    importer: () => import("./assets/auth.functions-DQSakl7x.js")
   },
   "d5932e99bf7f053e64a594d1fdf362428a631d07022086bdcf6f0a1e038509d3": {
     functionName: "getMovementsSince_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "d8417f701b27e33db653c9f29e66202992c3a531f6ce27af902b7c5611920a07": {
     functionName: "removeCalendarEvent_createServerFn_handler",
-    importer: () => import("./assets/calendar.functions-Dv31SdqJ.js")
+    importer: () => import("./assets/calendar.functions-JIpDFddM.js")
   },
   "d8c3d79a53d1d22a9c01e5728ba1973940ce39c40e8db772763db1acb4541fa3": {
     functionName: "removeTeamMember_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "d970acd5d7af08a73c0ba47640fdc8328ef797f7c17c2c8f8e1b3374967e974f": {
     functionName: "getBusinessProfile_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "dd1d8a58bbc30e8a725bc36307dceba1dd9bf6b9019d1c90affe42d2e63539e3": {
     functionName: "saveSentOrder_createServerFn_handler",
-    importer: () => import("./assets/orders.functions-CyzL46U9.js")
+    importer: () => import("./assets/orders.functions-9YrsteVf.js")
   },
   "de608114b50d09a009d436bb8aea3edac098b1a6367204486c56b9a251a539ee": {
     functionName: "scanMovement_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "e05fc2fa0ed66607af2fc2fccf41b61c3153608b3b0e488870282e4d9929064e": {
     functionName: "suggestProduct_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "e3cddd74ca07b524e465399894018ec004151db4484866ec05390653eea5fbb7": {
     functionName: "deleteProduct_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "e69c8c8b0366f38ebfbd47e7ce0d88323949432c4f643959422c476707ca5071": {
     functionName: "emailBelowPar_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "e85c248ec3b804eb7e73c9e7df38322438247f357e6811aa2511e14b9c0d2d9b": {
     functionName: "applyReceiptPrices_createServerFn_handler",
-    importer: () => import("./assets/import.functions-BvWX1RPP.js")
+    importer: () => import("./assets/import.functions-DpPGpRm9.js")
   },
   "ea3d7bea8c20602600fdb60763c4be2316202d598de73f0a4277d084c37c355f": {
     functionName: "listProducts_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "ea9f790698f1189cb2e2cf233b4ddd8e322b014389ba3ee23a7125e6aaaaf206": {
     functionName: "runSetupCheck_createServerFn_handler",
-    importer: () => import("./assets/setup.functions-BI8VA5us.js")
+    importer: () => import("./assets/setup.functions-Caqk9nTY.js")
   },
   "f07945f68743a5a7d6c010091d42d30bd9a75215321a513ae562b81c0f674590": {
     functionName: "getOrders_createServerFn_handler",
-    importer: () => import("./assets/orders.functions-CyzL46U9.js")
+    importer: () => import("./assets/orders.functions-9YrsteVf.js")
   },
   "f4c024d9a3eed139097ac8eda8cbd4a30e614f60477534a0ab157167c8019fcb": {
     functionName: "lookupBarcode_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
+    importer: () => import("./assets/inventory.functions-C0d3IwwT.js")
   },
   "f58d1793ee2723bf0402eab4bd8f5a7dc554805eb2915147a259f18b58527477": {
     functionName: "updateBusinessProfile_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "f61d34714fb847548ce8ac02dc39c8f7402907e44e82cf47e337f1bcaf53d121": {
     functionName: "getCountLines_createServerFn_handler",
-    importer: () => import("./assets/counts.functions-H49tpvMC.js")
+    importer: () => import("./assets/counts.functions-QpMXE8HX.js")
   },
   "fae8e846587193e222a59fc22c1b526e3a4e748ce7615bc55c083b2922766d02": {
     functionName: "listTeamMembers_createServerFn_handler",
-    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+    importer: () => import("./assets/business.functions-BPqyIX3N.js")
   },
   "fb2642136d6b78e714db8653b5c190b16782fb5dee0febafe5407086cd6baadc": {
     functionName: "listCalendarEvents_createServerFn_handler",
-    importer: () => import("./assets/calendar.functions-Dv31SdqJ.js")
+    importer: () => import("./assets/calendar.functions-JIpDFddM.js")
   },
   "fe93a3ad77c54a209c7c8881b54a5c6ae2b24476e2d00d3d589e925a6176595c": {
     functionName: "lockInFounding_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BaOKoHmm.js")
+    importer: () => import("./assets/account.functions-CZULR-Vw.js")
   }
 };
 async function getServerFnById(id, access) {
@@ -7438,7 +7442,7 @@ var getBaseManifest = getProdBaseManifest;
 var createEarlyHintsForRequest = createEarlyHintsCollector;
 async function loadEntries() {
   const [routerEntry, startEntry, pluginAdapters] = await Promise.all([
-    import("./assets/router-MieB7UN_.js").then((n) => n.ag),
+    import("./assets/router-DMjmOQTO.js").then((n) => n.ag),
     import("./assets/start-HYkvq4Ni.js"),
     import("./assets/empty-plugin-adapters-BFgPZ6_d.js")
   ]);

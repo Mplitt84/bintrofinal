@@ -66,7 +66,7 @@ function money(cents: number) {
  * then the suggestions for its type, then keywords. With no category at all, a
  * retail price is the only hint that the item is sold.
  */
-function useKindFor(p: Product, saved: ProductCategory[], businessType: string): UseKind {
+export function useKindFor(p: Pick<Product, "category" | "retailPriceCents">, saved: ProductCategory[], businessType: string): UseKind {
   if (!p.category.trim()) return p.retailPriceCents > 0 ? "sold" : "used";
   const group = guessTaxGroup(p.category, categorySuggestionsFor(businessType), saved);
   return SOLD_TAX_GROUPS.includes(group) ? "sold" : "used";

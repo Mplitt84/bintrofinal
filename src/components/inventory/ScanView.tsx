@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowDownToLine, ArrowUpFromLine, Camera, Check, FileSpreadsheet, PackagePlus, Plus, ScanBarcode, Undo2, X } from 'lucide-react'
-import type { ActivityRow, MovementRow, Product } from './types'
+import { ArrowDownToLine, ArrowUpFromLine, Camera, Check, FileSpreadsheet, PackagePlus, Plus, ScanBarcode, X } from 'lucide-react'
+import type { MovementRow, Product } from './types'
 import {
   scanMovement,
   createProduct,
-  getMovementsSince,
   linkBarcodeToProduct,
   searchProducts,
   undoMovement,
 } from '@/server/inventory.functions'
 import { Sheet, Field, SheetActions } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
-import { EmptyState, StatTile, Thumb, dollarsShort, timeAgo } from '@/components/ui/bits'
+import { Thumb } from '@/components/ui/bits'
+import { ScanOverview } from '@/components/inventory/ScanOverview'
 import { CameraScanner } from './CameraScanner'
 import { PhotoStockSheet } from './PhotoStockSheet'
 import { SalesReportSheet } from './SalesReportSheet'
@@ -88,11 +88,6 @@ const PARTIAL_SUB: Record<Exclude<ScanCheck, { ok: true }>['reason'], string> = 
 // When this device last confirmed who's scanning; kept across tab changes.
 let staffConfirmedAt = 0
 
-function startOfToday() {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d
-}
 
 export function ScanView({
   staffName,
@@ -132,7 +127,6 @@ export function ScanView({
   const [unknownTab, setUnknownTab] = useState<'new' | 'link'>('new')
   const [linkQuery, setLinkQuery] = useState('')
   const [linkResults, setLinkResults] = useState<Product[]>([])
-  const [today, setToday] = useState<ActivityRow[]>([])
   const orbTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   // A partial / mis-read scan, kept so staff can still use it if it really is the full code.
   const [partialCode, setPartialCode] = useState<string | null>(null)
@@ -142,13 +136,6 @@ export function ScanView({
   const [photoWho, setPhotoWho] = useState('')
   // Who the scan in progress belongs to (also used after saving a new barcode).
   const scanWho = useRef(staffName)
-
-  // Today's totals refresh whenever the recent feed changes (every scan or undo).
-  useEffect(() => {
-    getMovementsSince({ data: { since: startOfToday().toISOString() } })
-      .then((rows) => setToday(rows as ActivityRow[]))
-      .catch(() => {})
-  }, [recent])
 
   useEffect(() => {
     if (!linkQuery.trim()) {
@@ -398,11 +385,6 @@ export function ScanView({
     toast(`Undid ${m.productName}`)
   }
 
-  const outToday = today.filter((m) => m.delta < 0 && m.type === 'out')
-  const unitsOut = outToday.reduce((sum, m) => sum - m.delta, 0)
-  const unitsIn = today.filter((m) => m.delta > 0 && m.type === 'in').reduce((sum, m) => sum + m.delta, 0)
-  const usedCents = outToday.reduce((sum, m) => sum - m.delta * m.unitCostCents, 0)
-
   const orbClass =
     orb.kind === 'idle' ? '' : orb.kind === 'in' ? 'orb-in' : orb.kind === 'out' ? 'orb-out' : `orb-${orb.kind}`
   const OrbIcon =
@@ -525,55 +507,13 @@ export function ScanView({
         </button>
       </div>
 
-      <div>
-        <div className="grid grid-cols-3 gap-2.5 mb-5">
-          <StatTile label="Used today" value={unitsOut} />
-          <StatTile label="Product used" value={dollarsShort(usedCents)} />
-          <StatTile label="Received today" value={unitsIn} tone={unitsIn > 0 ? 'good' : undefined} />
-        </div>
-        {belowParCount > 0 && (
-          <button
-            type="button"
-            onClick={onOpenRestock}
-            className="w-full text-left flex items-center gap-2 bg-warn-tint text-ink rounded-2xl px-3.5 py-3 text-sm -mt-2 mb-5 border-0 cursor-pointer"
-          >
-            <span className="flex-1">
-              <b>{belowParCount}</b> product{belowParCount === 1 ? ' is' : 's are'} at or below par.
-            </span>
-            <span className="font-semibold text-warn whitespace-nowrap">Restock →</span>
-          </button>
-        )}
-        <h2 className="text-lg font-bold mt-0 mb-2.5">Recent</h2>
-        {recent.length === 0 ? (
-          <EmptyState title="Nothing scanned yet">Tap the circle to scan your first product.</EmptyState>
-        ) : (
-          <ul className="list-none m-0 p-0">
-            {recent.slice(0, 12).map((m) => (
-              <li key={m.id} className="flex items-center gap-3 py-3 border-b border-line last:border-b-0">
-                <Thumb imageUrl={m.productImageUrl} label={m.productBrand || m.productName} />
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold truncate">{m.productName}</div>
-                  <div className="text-[13px] text-ink-2 truncate">
-                    {[m.productBrand, m.staffName || m.staffInitials, timeAgo(m.createdAt)].filter(Boolean).join(' · ')}
-                  </div>
-                </div>
-                <b className={`num text-[15px] ${m.delta > 0 ? 'text-good' : 'text-action'}`}>
-                  {m.delta > 0 ? '+' : ''}
-                  {m.delta}
-                </b>
-                <button
-                  onClick={() => undo(m)}
-                  aria-label={`Undo ${m.productName}`}
-                  title="Undo"
-                  className="w-10 h-10 rounded-full border-0 bg-transparent grid place-items-center text-ink-2 cursor-pointer hover:bg-surface"
-                >
-                  <Undo2 size={18} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <ScanOverview
+        recent={recent}
+        products={products}
+        belowParCount={belowParCount}
+        onOpenRestock={onOpenRestock}
+        onUndo={undo}
+      />
 
       <CameraScanner
         open={cameraOpen}
