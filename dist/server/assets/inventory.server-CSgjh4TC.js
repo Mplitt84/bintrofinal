@@ -86,7 +86,7 @@ async function queueSquareChange(product, movement, type) {
 }
 async function flushSquareSoon() {
   try {
-    const { flushSquareOutbox } = await import("./integrations.server-v9usGWZc.js");
+    const { flushSquareOutbox } = await import("./integrations.server-DFcAtpTT.js");
     await flushSquareOutbox();
   } catch (error) {
     console.error("Square inventory push failed; will retry", error);

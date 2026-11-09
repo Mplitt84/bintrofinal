@@ -1,6 +1,6 @@
 import { c as createServerFn } from "../server.js";
 import { z } from "zod";
-import { f as findAllProducts, c as computeStats, a as findRecentMovements, b as findMovementsSince, d as findProductByBarcode, s as searchProductsByText, i as insertProduct, u as updateProductBarcode, e as findBarcodeOwner, g as findProductById, h as applyMovement, j as updateProductFields, k as deleteProductById, m as mergeProductsInto, r as reverseAndDeleteMovement, l as findBelowParProducts, n as buildPurchaseOrderLines } from "./inventory.server-s1_t35IV.js";
+import { f as findAllProducts, c as computeStats, a as findRecentMovements, b as findMovementsSince, d as findProductByBarcode, s as searchProductsByText, i as insertProduct, u as updateProductBarcode, e as findBarcodeOwner, g as findProductById, h as applyMovement, j as updateProductFields, k as deleteProductById, m as mergeProductsInto, r as reverseAndDeleteMovement, l as findBelowParProducts, n as buildPurchaseOrderLines } from "./inventory.server-CSgjh4TC.js";
 import { s as sendRestockEmail, a as sendPurchaseOrderEmail } from "./email.server-2uKsRAsj.js";
 import { l as lookupBarcodeOnline, r as readProductLabel, p as parseSpokenProduct, a as readStockPhoto } from "./product-lookup.server-C6LGgHTN.js";
 import { f as findBusinessProfile, a as findBusinessContext } from "./business.server-CHGYL_45.js";
@@ -186,7 +186,7 @@ const updateProduct = createServerFn({
       try {
         const {
           syncSquareSalesIfConnected
-        } = await import("./integrations.server-v9usGWZc.js");
+        } = await import("./integrations.server-DFcAtpTT.js");
         await syncSquareSalesIfConnected();
         current = await findProductById(productId);
       } catch (error) {

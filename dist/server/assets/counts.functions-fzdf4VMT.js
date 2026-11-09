@@ -2,7 +2,7 @@ import { c as createServerFn } from "../server.js";
 import { z } from "zod";
 import { inArray, desc, eq } from "drizzle-orm";
 import { d as db, a as products, s as stockCounts, h as stockCountLines } from "./index-CaPewqP7.js";
-import { h as applyMovement, p as flushSquareSoon } from "./inventory.server-s1_t35IV.js";
+import { h as applyMovement, p as flushSquareSoon } from "./inventory.server-CSgjh4TC.js";
 import { c as createServerRpc } from "./createServerRpc-D_-6bKnO.js";
 import "node:async_hooks";
 import "node:stream";
@@ -15,7 +15,7 @@ import "drizzle-orm/pg-core";
 import "./inventory-defaults-BnRHgx1T.js";
 async function approveCount(params) {
   try {
-    const { syncSquareSalesIfConnected } = await import("./integrations.server-v9usGWZc.js");
+    const { syncSquareSalesIfConnected } = await import("./integrations.server-DFcAtpTT.js");
     await syncSquareSalesIfConnected();
   } catch (error) {
     console.error("Square sales sync before count failed", error);

@@ -848,21 +848,45 @@ async function qbCreatePurchase(
   return data.Purchase?.Id ?? "";
 }
 
+/** QuickBooks rejected an account we cached (deleted, made inactive, or gone after a plan change). */
+function isStaleAccount(error: unknown) {
+  return error instanceof Error && /invalid reference|inactive|deleted|object not found|does not exist/i.test(error.message);
+}
+
 /**
  * Sends a month to QuickBooks: every expense not yet sent, plus, once the month
  * has ended, one stock purchase per vendor. Safe to press more than once.
+ *
+ * Uses only Purchase + Account (in every QuickBooks Online edition). If a cached
+ * account stops working, the accounts are picked again and the line is retried once.
  */
 export async function pushMonthToQuickBooks(window: MonthWindow) {
   let row = await activeIntegration("quickbooks");
-  const accounts = await qbAccounts(row);
+  let accounts = await qbAccounts(row);
   row = { ...row, meta: accounts };
+
+  const send = async (kind: "expense" | "cogs", p: { date: string; cents: number; description: string; memo: string }) => {
+    const attempt = () =>
+      qbCreatePurchase(row, {
+        ...p,
+        bankAccountId: accounts.bankAccountId!,
+        accountId: kind === "cogs" ? accounts.cogsAccountId! : accounts.expenseAccountId!,
+      });
+    try {
+      return await attempt();
+    } catch (error) {
+      if (!isStaleAccount(error)) throw error;
+      const { bankAccountId: _b, expenseAccountId: _e, cogsAccountId: _c, ...rest } = accounts;
+      accounts = await qbAccounts({ ...row, meta: rest });
+      row = { ...row, meta: accounts };
+      return attempt();
+    }
+  };
 
   let sentExpenses = 0;
   for (const e of await findExpensesForMonth(window.key)) {
     if (e.quickbooksId || e.amountCents <= 0) continue;
-    const id = await qbCreatePurchase(row, {
-      bankAccountId: accounts.bankAccountId!,
-      accountId: /inventory|stock/i.test(e.category) ? accounts.cogsAccountId! : accounts.expenseAccountId!,
+    const id = await send(/inventory|stock/i.test(e.category) ? "cogs" : "expense", {
       date: e.spentOn,
       cents: e.amountCents,
       description: [e.category, e.vendor, e.note].filter(Boolean).join(" · ") || "Expense",
@@ -882,17 +906,16 @@ export async function pushMonthToQuickBooks(window: MonthWindow) {
       const key = `${window.key}|${v.vendor}`;
       const cents = Number(v.cents);
       if (pushed[key] || cents <= 0) continue;
-      pushed[key] = await qbCreatePurchase(row, {
-        bankAccountId: accounts.bankAccountId!,
-        accountId: accounts.cogsAccountId!,
+      pushed[key] = await send("cogs", {
         date,
         cents,
         description: `Inventory received from ${v.vendor} (${Number(v.units)} units)`,
         memo: `Stock scanned in with Bintro during ${window.key}`,
       });
+      // Saved after each vendor so a failure partway never sends one twice.
+      await saveIntegration("quickbooks", { meta: { ...accounts, pushedInventory: pushed } });
       sentVendors++;
     }
-    await saveIntegration("quickbooks", { meta: { ...accounts, pushedInventory: pushed } });
   }
 
   await saveIntegration("quickbooks", { lastSyncAt: new Date() });
