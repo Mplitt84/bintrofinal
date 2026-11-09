@@ -133,6 +133,7 @@ export const PRIVACY: LegalSection[] = [
       'Business details: business name, type, email, phone, address, website and ordering email.',
       'Inventory and money data: products, barcodes, counts, costs and prices, vendors, purchase orders, deliveries, expenses, budgets and calendar events.',
       'Staff names: the names your team picks before scanning, used to show who logged each change.',
+      'Sign-in: the name, email address and Google account ID of each person you allow to sign in, when they last signed in, and a sign-in session record for each browser. We never see Google passwords.',
       'Account and billing: plan, billing email and owner name. Card details are handled by our payment processor (Stripe); we only see the card brand and last 4 digits.',
       'Files you upload: invoices, receipts, sales reports, stock lists and product photos, used to read the information you asked for.',
       'Connected services: if you connect Square or QuickBooks, the access tokens they issue and the data needed for the connection (catalog items, inventory counts, sales, expenses).',
@@ -157,7 +158,7 @@ export const PRIVACY: LegalSection[] = [
     heading: 'Who processes data for us',
     paragraphs: [
       'We use service providers who process data only to provide their service to us:',
-      'Netlify (hosting and database) · Anthropic (AI reading of photos and documents, and price checks) · Stripe (payments) · Resend or SendGrid (email sending) · barcode lookup services such as Open Beauty Facts, Open Food Facts, UPCitemdb and Open Library (only the barcode is sent).',
+      'Netlify (hosting and database) · Google (sign-in) · Anthropic (AI reading of photos and documents, and price checks) · Stripe (payments) · Resend or SendGrid (email sending) · barcode lookup services such as Open Beauty Facts, Open Food Facts, UPCitemdb and Open Library (only the barcode is sent).',
       'Square and QuickBooks receive data only when you connect them, and only what the connection needs.',
       'We may also share information if required by law, to protect our rights or users, or as part of a merger or sale of the business, in which case this policy continues to apply.',
     ],

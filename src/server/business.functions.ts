@@ -1,3 +1,4 @@
+import { requireUser } from "./auth.middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import {
@@ -36,7 +37,7 @@ const MONTH = z.string().regex(/^\d{4}-\d{2}$/);
 const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const MonthWindowSchema = z.object({ key: MONTH, start: z.string(), end: z.string() });
 
-export const getBusinessProfile = createServerFn({ method: "GET" }).handler(async () => {
+export const getBusinessProfile = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => {
   return findBusinessProfile();
 });
 
@@ -56,7 +57,7 @@ const ProfileSchema = z.object({
   orderEveryDays: z.number().int().min(1).max(90).optional(),
 });
 
-export const updateBusinessProfile = createServerFn({ method: "POST" })
+export const updateBusinessProfile = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(ProfileSchema)
   .handler(async ({ data }) => {
     const trimmed = Object.fromEntries(
@@ -65,18 +66,18 @@ export const updateBusinessProfile = createServerFn({ method: "POST" })
     return saveBusinessProfile(trimmed);
   });
 
-export const listTeamMembers = createServerFn({ method: "GET" }).handler(async () => {
+export const listTeamMembers = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => {
   return findTeamMembers();
 });
 
-export const addTeamMember = createServerFn({ method: "POST" })
+export const addTeamMember = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ name: z.string().trim().min(1).max(60) }))
   .handler(async ({ data }) => {
     await assertTeamRoom();
     return insertTeamMember(data.name);
   });
 
-export const removeTeamMember = createServerFn({ method: "POST" })
+export const removeTeamMember = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ id: z.number().int() }))
   .handler(async ({ data }) => {
     return deleteTeamMember(data.id);
@@ -86,12 +87,12 @@ export const removeTeamMember = createServerFn({ method: "POST" })
 
 const TaxGroupSchema = z.enum(TAX_GROUPS.map((g) => g.id) as [TaxGroupId, ...TaxGroupId[]]);
 
-export const listProductCategories = createServerFn({ method: "GET" }).handler(async () => {
+export const listProductCategories = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => {
   return findProductCategories();
 });
 
 /** Adds categories, or moves existing ones to a different tax group. */
-export const saveProductCategories = createServerFn({ method: "POST" })
+export const saveProductCategories = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(
     z.object({
       items: z.array(z.object({ name: z.string().trim().min(1).max(60), taxGroup: TaxGroupSchema })).max(100),
@@ -102,7 +103,7 @@ export const saveProductCategories = createServerFn({ method: "POST" })
   });
 
 /** Removes categories from the list. Products keep their category text. */
-export const removeProductCategories = createServerFn({ method: "POST" })
+export const removeProductCategories = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ ids: z.array(z.number().int()).max(200) }))
   .handler(async ({ data }) => {
     return deleteProductCategories(data.ids);
@@ -110,13 +111,13 @@ export const removeProductCategories = createServerFn({ method: "POST" })
 
 // --- Budget & expenses ------------------------------------------------------
 
-export const getBudgetOverview = createServerFn({ method: "POST" })
+export const getBudgetOverview = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ months: z.array(MonthWindowSchema).min(1).max(24) }))
   .handler(async ({ data }) => {
     return computeBudgetOverview(data.months);
   });
 
-export const listExpenses = createServerFn({ method: "GET" })
+export const listExpenses = createServerFn({ method: "GET" }).middleware([requireUser])
   .inputValidator(z.object({ month: MONTH }))
   .handler(async ({ data }) => {
     return findExpensesForMonth(data.month);
@@ -131,28 +132,28 @@ const ExpenseSchema = z.object({
   staffName: z.string().max(60).optional(),
 });
 
-export const createExpense = createServerFn({ method: "POST" })
+export const createExpense = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(ExpenseSchema)
   .handler(async ({ data }) => {
     await assertFeature("budget");
     return insertExpense(data);
   });
 
-export const editExpense = createServerFn({ method: "POST" })
+export const editExpense = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(ExpenseSchema.partial().extend({ id: z.number().int() }))
   .handler(async ({ data }) => {
     const { id, ...rest } = data;
     return updateExpense(id, rest);
   });
 
-export const removeExpense = createServerFn({ method: "POST" })
+export const removeExpense = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ id: z.number().int() }))
   .handler(async ({ data }) => {
     await deleteExpense(data.id);
     return { ok: true };
   });
 
-export const saveMonthBudget = createServerFn({ method: "POST" })
+export const saveMonthBudget = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ month: MONTH, amountCents: z.number().int().min(0).max(1_000_000_000).nullable() }))
   .handler(async ({ data }) => {
     await setMonthBudget(data.month, data.amountCents);
@@ -164,7 +165,7 @@ export const saveMonthBudget = createServerFn({ method: "POST" })
 const businessContext = findBusinessContext;
 
 /** AI price detection + smart fill for the product form. */
-export const suggestProduct = createServerFn({ method: "POST" })
+export const suggestProduct = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(
     z.object({
       brand: z.string().max(160),
@@ -179,7 +180,7 @@ export const suggestProduct = createServerFn({ method: "POST" })
     return suggestProductDetails(data, await businessContext());
   });
 
-export const readReceiptPhoto = createServerFn({ method: "POST" })
+export const readReceiptPhoto = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(
     z.object({
       image: z.string().min(1).max(6_000_000),
@@ -194,18 +195,18 @@ export const readReceiptPhoto = createServerFn({ method: "POST" })
 
 // --- Integrations ------------------------------------------------------------
 
-export const getIntegrations = createServerFn({ method: "GET" }).handler(async () => {
+export const getIntegrations = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => {
   return integrationStatus();
 });
 
 const ProviderSchema = z.object({ provider: z.enum(["square", "quickbooks"]) });
 
 /** Last year of failed Square / QuickBooks calls, for sharing with their support. */
-export const getIntegrationErrorLog = createServerFn({ method: "GET" })
+export const getIntegrationErrorLog = createServerFn({ method: "GET" }).middleware([requireUser])
   .inputValidator(ProviderSchema)
   .handler(async ({ data }) => integrationErrorLog(data.provider));
 
-export const disconnect = createServerFn({ method: "POST" })
+export const disconnect = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(ProviderSchema)
   .handler(async ({ data }) => {
     await disconnectIntegration(data.provider);
@@ -222,21 +223,21 @@ async function attempt<T>(fn: () => Promise<T>): Promise<{ ok: true; result: T }
   }
 }
 
-export const squareImportCatalog = createServerFn({ method: "POST" }).handler(async () => {
+export const squareImportCatalog = createServerFn({ method: "POST" }).middleware([requireUser]).handler(async () => {
   return attempt(async () => {
     await assertFeature("square");
     return importSquareCatalog();
   });
 });
 
-export const getSquareRetailCategories = createServerFn({ method: "GET" }).handler(async () => {
+export const getSquareRetailCategories = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => {
   return attempt(async () => {
     await assertFeature("square");
     return squareRetailCategories();
   });
 });
 
-export const setSquareRetailCategories = createServerFn({ method: "POST" })
+export const setSquareRetailCategories = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ ids: z.array(z.string().max(64)).max(500) }))
   .handler(async ({ data }) => {
     return attempt(async () => {
@@ -245,21 +246,21 @@ export const setSquareRetailCategories = createServerFn({ method: "POST" })
     });
   });
 
-export const squareSendCounts = createServerFn({ method: "POST" }).handler(async () => {
+export const squareSendCounts = createServerFn({ method: "POST" }).middleware([requireUser]).handler(async () => {
   return attempt(async () => {
     await assertFeature("square");
     return sendAllCountsToSquare();
   });
 });
 
-export const squareSyncSales = createServerFn({ method: "POST" }).handler(async () => {
+export const squareSyncSales = createServerFn({ method: "POST" }).middleware([requireUser]).handler(async () => {
   return attempt(async () => {
     await assertFeature("square");
     return syncSquareSales();
   });
 });
 
-export const quickbooksPushMonth = createServerFn({ method: "POST" })
+export const quickbooksPushMonth = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(MonthWindowSchema)
   .handler(async ({ data }) => {
     return attempt(async () => {

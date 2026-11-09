@@ -541,6 +541,289 @@ function errorResponse(error, debug, errHeaders) {
     headers
   });
 }
+const COOKIE_MAX_AGE_LIMIT = 3456e4;
+function endIndex(str, min, len) {
+  const index = str.indexOf(";", min);
+  return index === -1 ? len : index;
+}
+function eqIndex(str, min, max) {
+  const index = str.indexOf("=", min);
+  return index < max ? index : -1;
+}
+function valueSlice(str, min, max) {
+  if (min === max) return "";
+  let start = min;
+  let end = max;
+  do {
+    const code = str.charCodeAt(start);
+    if (code !== 32 && code !== 9) break;
+  } while (++start < end);
+  while (end > start) {
+    const code = str.charCodeAt(end - 1);
+    if (code !== 32 && code !== 9) break;
+    end--;
+  }
+  return str.slice(start, end);
+}
+const NullObject = /* @__PURE__ */ (() => {
+  const C = function() {
+  };
+  C.prototype = /* @__PURE__ */ Object.create(null);
+  return C;
+})();
+function parse(str, options) {
+  const obj = new NullObject();
+  const len = str.length;
+  if (len < 2) return obj;
+  const dec = decode;
+  let index = 0;
+  do {
+    const eqIdx = eqIndex(str, index, len);
+    if (eqIdx === -1) break;
+    const endIdx = endIndex(str, index, len);
+    if (eqIdx > endIdx) {
+      index = str.lastIndexOf(";", eqIdx - 1) + 1;
+      continue;
+    }
+    const key = valueSlice(str, index, eqIdx);
+    const val = dec(valueSlice(str, eqIdx + 1, endIdx));
+    if (obj[key] === void 0) obj[key] = val;
+    index = endIdx + 1;
+  } while (index < len);
+  return obj;
+}
+function decode(str) {
+  if (!str.includes("%")) return str;
+  try {
+    return decodeURIComponent(str);
+  } catch {
+    return str;
+  }
+}
+const cookieNameRegExp = /^[\u0021-\u003A\u003C\u003E-\u007E]+$/;
+const cookieValueRegExp = /^[\u0021-\u003A\u003C-\u007E]*$/;
+const domainValueRegExp = /^([.]?[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)([.][a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
+const pathValueRegExp = /^[\u0020-\u003A\u003C-\u007E]*$/;
+const __toString = Object.prototype.toString;
+function serialize(_a0, _a1, _a2) {
+  const isObj = typeof _a0 === "object" && _a0 !== null;
+  const cookie = isObj ? _a0 : {
+    ..._a2,
+    name: _a0,
+    value: ""
+  };
+  const enc = encodeURIComponent;
+  if (!cookieNameRegExp.test(cookie.name)) throw new TypeError(`argument name is invalid: ${cookie.name}`);
+  const value = cookie.value ? enc(cookie.value) : "";
+  if (!cookieValueRegExp.test(value)) throw new TypeError(`argument val is invalid: ${cookie.value}`);
+  if (!cookie.secure) {
+    if (cookie.partitioned) throw new TypeError(`Partitioned cookies must have the Secure attribute`);
+    if (cookie.sameSite && String(cookie.sameSite).toLowerCase() === "none") throw new TypeError(`SameSite=None cookies must have the Secure attribute`);
+    if (cookie.name.length > 9 && cookie.name.charCodeAt(0) === 95 && cookie.name.charCodeAt(1) === 95) {
+      const nameLower = cookie.name.toLowerCase();
+      if (nameLower.startsWith("__secure-") || nameLower.startsWith("__host-")) throw new TypeError(`${cookie.name} cookies must have the Secure attribute`);
+    }
+  }
+  if (cookie.name.length > 7 && cookie.name.charCodeAt(0) === 95 && cookie.name.charCodeAt(1) === 95 && cookie.name.toLowerCase().startsWith("__host-")) {
+    if (cookie.path !== "/") throw new TypeError(`__Host- cookies must have Path=/`);
+    if (cookie.domain) throw new TypeError(`__Host- cookies must not have a Domain attribute`);
+  }
+  let str = cookie.name + "=" + value;
+  if (cookie.maxAge !== void 0) {
+    if (!Number.isInteger(cookie.maxAge)) throw new TypeError(`option maxAge is invalid: ${cookie.maxAge}`);
+    str += "; Max-Age=" + Math.max(0, Math.min(cookie.maxAge, COOKIE_MAX_AGE_LIMIT));
+  }
+  if (cookie.domain) {
+    if (!domainValueRegExp.test(cookie.domain)) throw new TypeError(`option domain is invalid: ${cookie.domain}`);
+    str += "; Domain=" + cookie.domain;
+  }
+  if (cookie.path) {
+    if (!pathValueRegExp.test(cookie.path)) throw new TypeError(`option path is invalid: ${cookie.path}`);
+    str += "; Path=" + cookie.path;
+  }
+  if (cookie.expires) {
+    if (!isDate(cookie.expires) || !Number.isFinite(cookie.expires.valueOf())) throw new TypeError(`option expires is invalid: ${cookie.expires}`);
+    str += "; Expires=" + cookie.expires.toUTCString();
+  }
+  if (cookie.httpOnly) str += "; HttpOnly";
+  if (cookie.secure) str += "; Secure";
+  if (cookie.partitioned) str += "; Partitioned";
+  if (cookie.priority) switch (typeof cookie.priority === "string" ? cookie.priority.toLowerCase() : void 0) {
+    case "low":
+      str += "; Priority=Low";
+      break;
+    case "medium":
+      str += "; Priority=Medium";
+      break;
+    case "high":
+      str += "; Priority=High";
+      break;
+    default:
+      throw new TypeError(`option priority is invalid: ${cookie.priority}`);
+  }
+  if (cookie.sameSite) switch (typeof cookie.sameSite === "string" ? cookie.sameSite.toLowerCase() : cookie.sameSite) {
+    case true:
+    case "strict":
+      str += "; SameSite=Strict";
+      break;
+    case "lax":
+      str += "; SameSite=Lax";
+      break;
+    case "none":
+      str += "; SameSite=None";
+      break;
+    default:
+      throw new TypeError(`option sameSite is invalid: ${cookie.sameSite}`);
+  }
+  return str;
+}
+function isDate(val) {
+  return __toString.call(val) === "[object Date]";
+}
+const maxAgeRegExp = /^-?\d+$/;
+const _nullProto = /* @__PURE__ */ Object.getPrototypeOf({});
+function parseSetCookie(str, options) {
+  const len = str.length;
+  let _endIdx = len;
+  let eqIdx = -1;
+  for (let i = 0; i < len; i++) {
+    const c = str.charCodeAt(i);
+    if (c === 59) {
+      _endIdx = i;
+      break;
+    }
+    if (c === 61 && eqIdx === -1) eqIdx = i;
+  }
+  if (eqIdx >= _endIdx) eqIdx = -1;
+  const name = eqIdx === -1 ? "" : _trim(str, 0, eqIdx);
+  if (name && name in _nullProto) return void 0;
+  let value = eqIdx === -1 ? _trim(str, 0, _endIdx) : _trim(str, eqIdx + 1, _endIdx);
+  if (!name && !value) return void 0;
+  if (name.length + value.length > 4096) return void 0;
+  value = _decode(value, options?.decode);
+  const setCookie2 = {
+    name,
+    value
+  };
+  let index = _endIdx + 1;
+  while (index < len) {
+    let endIdx = len;
+    let attrEqIdx = -1;
+    for (let i = index; i < len; i++) {
+      const c = str.charCodeAt(i);
+      if (c === 59) {
+        endIdx = i;
+        break;
+      }
+      if (c === 61 && attrEqIdx === -1) attrEqIdx = i;
+    }
+    if (attrEqIdx >= endIdx) attrEqIdx = -1;
+    const attr = attrEqIdx === -1 ? _trim(str, index, endIdx) : _trim(str, index, attrEqIdx);
+    const val = attrEqIdx === -1 ? void 0 : _trim(str, attrEqIdx + 1, endIdx);
+    if (val === void 0 || val.length <= 1024) switch (attr.toLowerCase()) {
+      case "httponly":
+        setCookie2.httpOnly = true;
+        break;
+      case "secure":
+        setCookie2.secure = true;
+        break;
+      case "partitioned":
+        setCookie2.partitioned = true;
+        break;
+      case "domain":
+        if (val) setCookie2.domain = (val.charCodeAt(0) === 46 ? val.slice(1) : val).toLowerCase();
+        break;
+      case "path":
+        setCookie2.path = val;
+        break;
+      case "max-age":
+        if (val && maxAgeRegExp.test(val)) setCookie2.maxAge = Math.min(Number(val), COOKIE_MAX_AGE_LIMIT);
+        break;
+      case "expires": {
+        if (!val) break;
+        const date = new Date(val);
+        if (Number.isFinite(date.valueOf())) {
+          const maxDate = new Date(Date.now() + COOKIE_MAX_AGE_LIMIT * 1e3);
+          setCookie2.expires = date > maxDate ? maxDate : date;
+        }
+        break;
+      }
+      case "priority": {
+        if (!val) break;
+        const priority = val.toLowerCase();
+        if (priority === "low" || priority === "medium" || priority === "high") setCookie2.priority = priority;
+        break;
+      }
+      case "samesite": {
+        if (!val) break;
+        const sameSite = val.toLowerCase();
+        if (sameSite === "lax" || sameSite === "strict" || sameSite === "none") setCookie2.sameSite = sameSite;
+        else setCookie2.sameSite = "lax";
+        break;
+      }
+      default: {
+        const attrLower = attr.toLowerCase();
+        if (attrLower && !(attrLower in _nullProto)) setCookie2[attrLower] = val;
+      }
+    }
+    index = endIdx + 1;
+  }
+  return setCookie2;
+}
+function _trim(str, start, end) {
+  if (start === end) return "";
+  let s = start;
+  let e = end;
+  while (s < e && (str.charCodeAt(s) === 32 || str.charCodeAt(s) === 9)) s++;
+  while (e > s && (str.charCodeAt(e - 1) === 32 || str.charCodeAt(e - 1) === 9)) e--;
+  return str.slice(s, e);
+}
+function _decode(value, decode2) {
+  if (!value.includes("%")) return value;
+  try {
+    return (decode2 || decodeURIComponent)(value);
+  } catch {
+    return value;
+  }
+}
+function parseCookies(event) {
+  return parse(event.req.headers.get("cookie") || "");
+}
+function setCookie(event, name, value, options) {
+  const newCookie = serialize({
+    name,
+    value,
+    path: "/",
+    ...options
+  });
+  const currentCookies = event.res.headers.getSetCookie();
+  if (currentCookies.length === 0) {
+    event.res.headers.set("set-cookie", newCookie);
+    return;
+  }
+  const newCookieKey = _getDistinctCookieKey(name, options || {});
+  event.res.headers.delete("set-cookie");
+  for (const cookie of currentCookies) {
+    const parsed = parseSetCookie(cookie);
+    if (!parsed) continue;
+    if (_getDistinctCookieKey(cookie.split("=")?.[0], parsed) === newCookieKey) continue;
+    event.res.headers.append("set-cookie", cookie);
+  }
+  event.res.headers.append("set-cookie", newCookie);
+}
+function deleteCookie$1(event, name, serializeOptions) {
+  setCookie(event, name, "", {
+    ...serializeOptions,
+    maxAge: 0
+  });
+}
+function _getDistinctCookieKey(name, options) {
+  return [
+    name,
+    options.domain || "",
+    options.path || "/"
+  ].join(";");
+}
 var GLOBAL_EVENT_STORAGE_KEY = /* @__PURE__ */ Symbol.for("tanstack-start:event-storage");
 var globalObj$1 = globalThis;
 if (!globalObj$1[GLOBAL_EVENT_STORAGE_KEY]) globalObj$1[GLOBAL_EVENT_STORAGE_KEY] = new AsyncLocalStorage();
@@ -609,6 +892,20 @@ function getH3Event() {
 }
 function getRequest() {
   return getH3Event().req;
+}
+function getCookies() {
+  const event = getH3Event();
+  const cookies = parseCookies(event);
+  const definedCookies = /* @__PURE__ */ Object.create(null);
+  for (const [name, value] of Object.entries(cookies)) if (value !== void 0) definedCookies[name] = value;
+  return definedCookies;
+}
+function getCookie(name) {
+  return getCookies()[name];
+}
+function deleteCookie(name, options) {
+  const event = getH3Event();
+  deleteCookie$1(event, name, options);
 }
 function getResponse() {
   return getH3Event().res;
@@ -3595,7 +3892,7 @@ function parseSOS(ctx, depth, current) {
 }
 function createStreamParsePluginContext(ctx, depth) {
   const state = ctx.state;
-  function parse(current) {
+  function parse2(current) {
     state.parsing++;
     try {
       return parseSOS(ctx, depth, current);
@@ -3605,7 +3902,7 @@ function createStreamParsePluginContext(ctx, depth) {
     }
   }
   return {
-    parse,
+    parse: parse2,
     parseStreamSource(current) {
       state.parsing++;
       try {
@@ -3621,7 +3918,7 @@ function createStreamParsePluginContext(ctx, depth) {
     },
     parseWithError(current) {
       try {
-        return parse(current);
+        return parse2(current);
       } catch (error) {
         stopStreamParse(ctx, 1, error);
         return;
@@ -4113,7 +4410,7 @@ var RawStream = class {
   }
 };
 async function getStartManifest(matchedRoutes) {
-  const { tsrStartManifest } = await import("./assets/_tanstack-start-manifest_v-CZmDR4wI.js");
+  const { tsrStartManifest } = await import("./assets/_tanstack-start-manifest_v-DoREqJM6.js");
   const startManifest = tsrStartManifest();
   let routes = startManifest.routes;
   routes[rootRouteId];
@@ -4135,375 +4432,395 @@ async function getStartManifest(matchedRoutes) {
 const manifest = {
   "03296ffa8e7c6513d87844145725c5215c0fad9b462343edb1da327e7019172f": {
     functionName: "readSpokenProduct_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "04a3d82ebea9236975adab4fd578664123a041a305022b75d2336bb795ab8feb": {
     functionName: "logSalesReport_createServerFn_handler",
-    importer: () => import("./assets/import.functions-DwWmLK_F.js")
+    importer: () => import("./assets/import.functions-BvWX1RPP.js")
   },
   "04be2dc3eebc2a4becde65112b9afb13adb203a17735c09bba4c8e90f72e118e": {
     functionName: "linkBarcodeToProduct_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "08ccd14865d516fb455ca8ecc85f1226b605386556c7d4af3e3f54106e04aeb3": {
     functionName: "getInsights_createServerFn_handler",
-    importer: () => import("./assets/insights.functions-DDz3jaXE.js")
+    importer: () => import("./assets/insights.functions-CtSt3QfJ.js")
   },
   "0b508838fc462dd380fc8fc0ca7b8b04751230c28fd33cada81ad988012d63c1": {
     functionName: "openPaymentPortal_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BlWwYYZR.js")
+    importer: () => import("./assets/account.functions-BaOKoHmm.js")
   },
   "0cab1653405c989dbe1a925b0e1a6ca0a0f3152f416a3bb686cb270ded1ac2d1": {
     functionName: "removeProductCategories_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "0d694f5a8da3fad061ec4b881739a2d409b465c25ef86a11befd05d0ec15e2a0": {
     functionName: "undoMovement_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "14a0f7ff335f0a1bc922563407a7e578abcdef957f4a28aac6db963311b18ba0": {
     functionName: "squareImportCatalog_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "1620febdb4067bb98e7d350594ac5c9c4eab48bbbcf9c68b5a33d1dc39131b6c": {
     functionName: "parseImport_createServerFn_handler",
-    importer: () => import("./assets/import.functions-DwWmLK_F.js")
+    importer: () => import("./assets/import.functions-BvWX1RPP.js")
   },
   "1687560e98c420e589f15a5fc2d2cc5d10a436e40b36b3eb6abb8c02197449b8": {
     functionName: "createProduct_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "1925026b1c10db48c12f4e2bc0a90574b72aeb87e7330a3827a67fccd409c630": {
     functionName: "getSmartPars_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-7Ynfg8_-.js")
+    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
   },
   "194c5168bd712f8f142a6f6ad5cd46cacabf49dfc5921685e597138fadc45421": {
     functionName: "getConnectionRequests_createServerFn_handler",
-    importer: () => import("./assets/connections.functions-BHW1eBxl.js")
+    importer: () => import("./assets/connections.functions-BTCep_un.js")
   },
   "1ad1730f395b5a8a4dc266d462ed91565b3e66792291cdcf5ab21e2547b6aa89": {
     functionName: "pausePlan_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BlWwYYZR.js")
+    importer: () => import("./assets/account.functions-BaOKoHmm.js")
+  },
+  "1d8a7d052bec8f6919886eeddc29f8b74fc573f2157c30e183394d7b2ff7d310": {
+    functionName: "getAccessList_createServerFn_handler",
+    importer: () => import("./assets/auth.functions-d7ALUY8D.js")
   },
   "20025aaed2bc46dd8065664de0ce970c35cdc9ed6fdd8acc5179a688172eafce": {
     functionName: "applyImport_createServerFn_handler",
-    importer: () => import("./assets/import.functions-DwWmLK_F.js")
+    importer: () => import("./assets/import.functions-BvWX1RPP.js")
   },
   "20723f37bc41103cd0144c7d0ce7e18d7b6062cfa212b7e82904cb65ec8c2434": {
     functionName: "squareSendCounts_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "20bf5a75a4edbf48b80a16a026d0cb79a2129e64cd6f72053b979ac9b7e42f31": {
     functionName: "estimateImportPrices_createServerFn_handler",
-    importer: () => import("./assets/import.functions-DwWmLK_F.js")
+    importer: () => import("./assets/import.functions-BvWX1RPP.js")
   },
   "20d79206e108af8af93f7352ca3356dfe4a8a4369025a42b9d95cddb42846a5d": {
     functionName: "setSquareRetailCategories_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "2b4b237bff79856c01bb15351d679549b72f1cb75bc34ff6ae694c5c4ee39a0b": {
     functionName: "getCalendarFeedPath_createServerFn_handler",
-    importer: () => import("./assets/calendar.functions-B6Y2Hmd3.js")
+    importer: () => import("./assets/calendar.functions-Dv31SdqJ.js")
   },
   "3af6d1532c5910dfeaf1944cfd3ea22a6cfe5d6d2cd58a6f7be05c8a845b4581": {
     functionName: "approveStockCount_createServerFn_handler",
-    importer: () => import("./assets/counts.functions-CZtqs_K_.js")
+    importer: () => import("./assets/counts.functions-H49tpvMC.js")
   },
   "3bea34e8c3b0fbfe52545d91d30315224f93624ae4b9e5a4801b9e9893879d01": {
     functionName: "getBillingHistory_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BlWwYYZR.js")
+    importer: () => import("./assets/account.functions-BaOKoHmm.js")
   },
   "3d2ac9b271549c34af9ee5dce1a7ea2b1a3bcbe29eebf79877cd5d28f2f53ae2": {
     functionName: "getStats_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "3d6c39e18a4a9218d6622b186dcc7152b9c7b750c35ece382031bb9b8abbd6e5": {
     functionName: "editCalendarEvent_createServerFn_handler",
-    importer: () => import("./assets/calendar.functions-B6Y2Hmd3.js")
+    importer: () => import("./assets/calendar.functions-Dv31SdqJ.js")
   },
   "43cc7a8edb98bd999075fb69ecbbb34bb9603d834247277daa3e9d5bdad38a20": {
     functionName: "saveAccountDetails_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BlWwYYZR.js")
+    importer: () => import("./assets/account.functions-BaOKoHmm.js")
   },
   "473a0c24e2e34c7b181501451d8fbc96ec6351ec3f1c69ffa77bf41f657e6af8": {
     functionName: "bulkUpdateProducts_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "49853aa174a5c462bef69456eecd66b5c7039e75c14d31a2cee30b492f4762b3": {
     functionName: "createExpense_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "4b1d7b597eabf67b74428f099b57382fd027b27eb2c3e57e1cdd6f8ed9bbd37f": {
     functionName: "editExpense_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "4e453ef218bcaad133228783bdf43d236b2b5149aa3f05827d95d14448ef80ee": {
     functionName: "recordProductMovement_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "59cca0435fb18284b1ca3d80b0a4eb25f62f617a7027a7fce94638dbe403bad2": {
     functionName: "resumePlan_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BlWwYYZR.js")
+    importer: () => import("./assets/account.functions-BaOKoHmm.js")
   },
   "5e9cc7bed4be53338cc819999df27b71a3b7f2e251a871bec2af6e8aacdf1c05": {
     functionName: "undoPars_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-7Ynfg8_-.js")
+    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
   },
   "5f35fa34e4a2d5a018c585948359b6a403cc4a51937689b89e57232a7e0373b4": {
     functionName: "readStockPhotoFn_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "6067ddb4ac537c8fa1023b6006799e98d4516de28d608cb0a2d2d868ea54c330": {
     functionName: "saveMonthBudget_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "60c53bd292604ab49247ff833410708f26f67d1a410b06ea0fc1e42757d81427": {
     functionName: "getBudgetOverview_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "61950064fb434c615d35ae38d62948d8050d86d3f1eb9fde646f08b2d3c1d55a": {
     functionName: "squareSyncSales_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "6467c210f1ed57f198690a8612b51bcdd7d4197117c6faf1fc3ad1ba62c8ca56": {
     functionName: "mergeProducts_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "6a3e722c6decd120d655deff6e327fd1bb25f2de144af22924707b3586e10156": {
     functionName: "checkWebPrice_createServerFn_handler",
-    importer: () => import("./assets/insights.functions-DDz3jaXE.js")
+    importer: () => import("./assets/insights.functions-CtSt3QfJ.js")
   },
   "6dc7bab5a0f94bd3275b2c76fec2fa343f66b7aadb9fe590a1d9e79cabf926c5": {
     functionName: "emailPurchaseOrder_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "70a49bef360b5fee1216cae4408b5adaa514ef6d444589a51890f9fe5b87f134": {
     functionName: "getCountHistory_createServerFn_handler",
-    importer: () => import("./assets/counts.functions-CZtqs_K_.js")
+    importer: () => import("./assets/counts.functions-H49tpvMC.js")
   },
   "7230639abe8c0164ddf5e85cd8ab6e7ee157f506a9ba2fe42176a6c72ac33fcc": {
     functionName: "mergeCategories_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-7Ynfg8_-.js")
+    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
   },
   "739f1912b13ae2d1e9d0af1e4adb44800b626440c5bad7fbe3aa6b25465176b4": {
     functionName: "updateProduct_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "7822646cdc4c07d7fe54cfea331ae87fad27976b90595edf54479615467c2220": {
     functionName: "sendSetupTestEmail_createServerFn_handler",
-    importer: () => import("./assets/setup.functions-Dhg3skA_.js")
+    importer: () => import("./assets/setup.functions-BI8VA5us.js")
   },
   "79714bd1315f8ca197b45f48ebcb30c863035c6713c2eaebe0af06fbf3799920": {
     functionName: "saveProductCategories_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+  },
+  "7980b5a64330be14daeb23e8b1773d4ec1917ab5b561f72f7cbba8d03de3017f": {
+    functionName: "getAuthState_createServerFn_handler",
+    importer: () => import("./assets/auth.functions-d7ALUY8D.js")
   },
   "7c5f50af97d50b9ab72780ff530d7d3ad36556de9a7937ff5bf96acb584a9d3c": {
     functionName: "bulkDeleteProducts_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "7ce8966b25cd7f0cfcd5b0b9291d73f2a93896642781b7129af2f7d4efe27a0b": {
     functionName: "listProductCategories_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "7ea615c7b8d6e00557d0d359a13f245370ea95ccc774d34cda10fcaa53ba1d50": {
     functionName: "removeExpense_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "7fef2669d1d6f3e9fdccdfbabede084b9e0823ba1f054366dd5ae9501cff565b": {
     functionName: "quickbooksPushMonth_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "8354b80e0ab29cbb323d00a85f10147647b566a9a1f39be7b061b767cd620249": {
     functionName: "listExpenses_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "877e4e27227a92db358a8d6d55b5295a38b2fb78c1b6aa8e3174209fdf9b131e": {
     functionName: "deleteCategory_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-7Ynfg8_-.js")
+    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
   },
   "8a5cdce2e3594cdbb1763bc5ca5a423c0e06b3456788d6a0864c260d8d214b84": {
     functionName: "sendInsightReportNow_createServerFn_handler",
-    importer: () => import("./assets/insights.functions-DDz3jaXE.js")
+    importer: () => import("./assets/insights.functions-CtSt3QfJ.js")
   },
   "8dd7a7a2cddcfe3bde69e3b6a2141d3a9ad49f42632f598e1f6b54be9a908306": {
     functionName: "confirmPrices_createServerFn_handler",
-    importer: () => import("./assets/insights.functions-DDz3jaXE.js")
+    importer: () => import("./assets/insights.functions-CtSt3QfJ.js")
   },
   "8faec6748de68f1cf8ce6bfd57ca19807095ec135ffc3d4cdb0c2cb0363337c5": {
     functionName: "searchProducts_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "9177352979bdd25707a8e28d888613648e8d2c1f2e94ce02c00f6c99b6afb802": {
     functionName: "applyWebPrice_createServerFn_handler",
-    importer: () => import("./assets/insights.functions-DDz3jaXE.js")
+    importer: () => import("./assets/insights.functions-CtSt3QfJ.js")
   },
   "94dc5d50022411a6f751d02b53efd5d2a75c57a40aaded921d36dec0e85d3213": {
     functionName: "saveCounts_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-7Ynfg8_-.js")
+    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
   },
   "96f04bf3fed34aecfd38cecaae8c2d98736f6c1e6a67aceefa2043d3f0ab4245": {
     functionName: "getCategoryList_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-7Ynfg8_-.js")
+    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
   },
   "98e7a6e61ac171aec6645c9a7bce643b01f8d83c6ee3fd69c2e152c87fd47a16": {
     functionName: "addTeamMember_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
+  },
+  "9abda59e2c23118e4531199339967f8691a2bedfa4c902dfc686c41c56a83ff9": {
+    functionName: "addAccess_createServerFn_handler",
+    importer: () => import("./assets/auth.functions-d7ALUY8D.js")
   },
   "a85d992ef0dd5f80187a82d58000361d4951db8ac255a3fc40c2c2ad1ade692a": {
     functionName: "getSquareRetailCategories_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "a974410b51934831b8bced98077808c30b4018bf4410fda89228573e360ae3d9": {
     functionName: "readReceiptPhoto_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "afea1878bf48c9086830abe85f18bb485adeac1742249bf8e1bfb35363956c8f": {
     functionName: "getAccount_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BlWwYYZR.js")
+    importer: () => import("./assets/account.functions-BaOKoHmm.js")
   },
   "b06120bf660a285feb8c23b17355192686a94b8f95623ceae33570d7526402b4": {
     functionName: "getIntegrations_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "b0755821f285543af9317e907f849527e2025919870fab838916fc903fd55bdc": {
     functionName: "getInsightSummary_createServerFn_handler",
-    importer: () => import("./assets/insights.functions-DDz3jaXE.js")
+    importer: () => import("./assets/insights.functions-CtSt3QfJ.js")
+  },
+  "b3f497d8a4691d5e1c3d850825e98e6af61a48877512ba288afadd236c6896bb": {
+    functionName: "signOut_createServerFn_handler",
+    importer: () => import("./assets/auth.functions-d7ALUY8D.js")
   },
   "b426e6454f76618fb04a0e57c79174475f6d80f701b87711ee5aa288a5097fd1": {
     functionName: "getRecentMovements_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "b4d5d2e66b56601226f6243a8e4301b02f959e74f4f9ef33982245a3a359ce3e": {
     functionName: "getIntegrationErrorLog_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "b51509cfb38ef861d7d9c37a0e23bafbfd2120e92db5cadd0f0564ea6c62aef1": {
     functionName: "cancelSavedOrder_createServerFn_handler",
-    importer: () => import("./assets/orders.functions-Dr5FzWwV.js")
+    importer: () => import("./assets/orders.functions-CyzL46U9.js")
   },
   "b76fbe18471cd9060d1161ee22d718be183f5851c634a1406326b22726b2ede7": {
     functionName: "selectPlan_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BlWwYYZR.js")
+    importer: () => import("./assets/account.functions-BaOKoHmm.js")
   },
   "b7e30bce2fc5d1eebff98f88a86621160f723f372d28f56a55320b6f5e113e6b": {
     functionName: "requestConnection_createServerFn_handler",
-    importer: () => import("./assets/connections.functions-BHW1eBxl.js")
+    importer: () => import("./assets/connections.functions-BTCep_un.js")
   },
   "be6f8faa1b358b37786ef5ba3aa6ac47e341db0ae1b72c22975b3a3e562abc82": {
     functionName: "lookupBarcodeDetails_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "bf70584d5b142e730fe2deaddb2a3ab4cbe99677bb068fc921318e35c498f523": {
     functionName: "parseSalesReport_createServerFn_handler",
-    importer: () => import("./assets/import.functions-DwWmLK_F.js")
+    importer: () => import("./assets/import.functions-BvWX1RPP.js")
   },
   "c14f2e2425a97dd2b7fe28324db104a92512246cd40a47f2918e9adcd6661d1d": {
     functionName: "receiveDeliveryFn_createServerFn_handler",
-    importer: () => import("./assets/orders.functions-Dr5FzWwV.js")
+    importer: () => import("./assets/orders.functions-CyzL46U9.js")
   },
   "c25a68e26f74554b1b179308fba30707ad90eeaf434a3e5f00ab8ec420ffbd3e": {
     functionName: "cancelSubscription_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BlWwYYZR.js")
+    importer: () => import("./assets/account.functions-BaOKoHmm.js")
   },
   "c33f3e8f2d91dfc1479d0a17451f929c733f6c5e03e49d9073b2aadc07ae0be4": {
     functionName: "readLabelPhoto_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "c728e1641680bb1e244ecbe094379db36ff732fc76318b2a6e4de1f0f2e82b44": {
     functionName: "getDuplicateGroups_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-7Ynfg8_-.js")
+    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
   },
   "c99eae04126c4837f668644332b10e45598e6bab6fce5175259446c534e8becc": {
     functionName: "getCategoryGroups_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-7Ynfg8_-.js")
+    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
   },
   "cee688b920afcb247e533bef8972f2caef04ad0aedf980b312a4aae716be36db": {
     functionName: "disconnect_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "d01f692499371e7e595b4b8de4522fd0640e38219158e89b6abb9e16cf52a436": {
     functionName: "addCalendarEvents_createServerFn_handler",
-    importer: () => import("./assets/calendar.functions-B6Y2Hmd3.js")
+    importer: () => import("./assets/calendar.functions-Dv31SdqJ.js")
   },
   "d2eb947b190bba465fbef4ff0d9f99bd3795e54e602970ea5d986889b4a3d83c": {
     functionName: "setPars_createServerFn_handler",
-    importer: () => import("./assets/tidy.functions-7Ynfg8_-.js")
+    importer: () => import("./assets/tidy.functions-CYGcaeF7.js")
+  },
+  "d3345f638976804fdc783b19b49c2f86e1d5da43eaff075c5e697afcaa808ed1": {
+    functionName: "removeAccess_createServerFn_handler",
+    importer: () => import("./assets/auth.functions-d7ALUY8D.js")
   },
   "d5932e99bf7f053e64a594d1fdf362428a631d07022086bdcf6f0a1e038509d3": {
     functionName: "getMovementsSince_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "d8417f701b27e33db653c9f29e66202992c3a531f6ce27af902b7c5611920a07": {
     functionName: "removeCalendarEvent_createServerFn_handler",
-    importer: () => import("./assets/calendar.functions-B6Y2Hmd3.js")
+    importer: () => import("./assets/calendar.functions-Dv31SdqJ.js")
   },
   "d8c3d79a53d1d22a9c01e5728ba1973940ce39c40e8db772763db1acb4541fa3": {
     functionName: "removeTeamMember_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "d970acd5d7af08a73c0ba47640fdc8328ef797f7c17c2c8f8e1b3374967e974f": {
     functionName: "getBusinessProfile_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "dd1d8a58bbc30e8a725bc36307dceba1dd9bf6b9019d1c90affe42d2e63539e3": {
     functionName: "saveSentOrder_createServerFn_handler",
-    importer: () => import("./assets/orders.functions-Dr5FzWwV.js")
+    importer: () => import("./assets/orders.functions-CyzL46U9.js")
   },
   "de608114b50d09a009d436bb8aea3edac098b1a6367204486c56b9a251a539ee": {
     functionName: "scanMovement_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "e05fc2fa0ed66607af2fc2fccf41b61c3153608b3b0e488870282e4d9929064e": {
     functionName: "suggestProduct_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "e3cddd74ca07b524e465399894018ec004151db4484866ec05390653eea5fbb7": {
     functionName: "deleteProduct_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "e69c8c8b0366f38ebfbd47e7ce0d88323949432c4f643959422c476707ca5071": {
     functionName: "emailBelowPar_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "e85c248ec3b804eb7e73c9e7df38322438247f357e6811aa2511e14b9c0d2d9b": {
     functionName: "applyReceiptPrices_createServerFn_handler",
-    importer: () => import("./assets/import.functions-DwWmLK_F.js")
+    importer: () => import("./assets/import.functions-BvWX1RPP.js")
   },
   "ea3d7bea8c20602600fdb60763c4be2316202d598de73f0a4277d084c37c355f": {
     functionName: "listProducts_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "ea9f790698f1189cb2e2cf233b4ddd8e322b014389ba3ee23a7125e6aaaaf206": {
     functionName: "runSetupCheck_createServerFn_handler",
-    importer: () => import("./assets/setup.functions-Dhg3skA_.js")
+    importer: () => import("./assets/setup.functions-BI8VA5us.js")
   },
   "f07945f68743a5a7d6c010091d42d30bd9a75215321a513ae562b81c0f674590": {
     functionName: "getOrders_createServerFn_handler",
-    importer: () => import("./assets/orders.functions-Dr5FzWwV.js")
+    importer: () => import("./assets/orders.functions-CyzL46U9.js")
   },
   "f4c024d9a3eed139097ac8eda8cbd4a30e614f60477534a0ab157167c8019fcb": {
     functionName: "lookupBarcode_createServerFn_handler",
-    importer: () => import("./assets/inventory.functions-B-KibE5k.js")
+    importer: () => import("./assets/inventory.functions-B_7zkB0C.js")
   },
   "f58d1793ee2723bf0402eab4bd8f5a7dc554805eb2915147a259f18b58527477": {
     functionName: "updateBusinessProfile_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "f61d34714fb847548ce8ac02dc39c8f7402907e44e82cf47e337f1bcaf53d121": {
     functionName: "getCountLines_createServerFn_handler",
-    importer: () => import("./assets/counts.functions-CZtqs_K_.js")
+    importer: () => import("./assets/counts.functions-H49tpvMC.js")
   },
   "fae8e846587193e222a59fc22c1b526e3a4e748ce7615bc55c083b2922766d02": {
     functionName: "listTeamMembers_createServerFn_handler",
-    importer: () => import("./assets/business.functions-m9o2cbWh.js")
+    importer: () => import("./assets/business.functions-Bx_DWBKN.js")
   },
   "fb2642136d6b78e714db8653b5c190b16782fb5dee0febafe5407086cd6baadc": {
     functionName: "listCalendarEvents_createServerFn_handler",
-    importer: () => import("./assets/calendar.functions-B6Y2Hmd3.js")
+    importer: () => import("./assets/calendar.functions-Dv31SdqJ.js")
   },
   "fe93a3ad77c54a209c7c8881b54a5c6ae2b24476e2d00d3d589e925a6176595c": {
     functionName: "lockInFounding_createServerFn_handler",
-    importer: () => import("./assets/account.functions-BlWwYYZR.js")
+    importer: () => import("./assets/account.functions-BaOKoHmm.js")
   }
 };
 async function getServerFnById(id, access) {
@@ -4687,7 +5004,7 @@ function pumpEncodedStream(readable, encode, signal) {
   })();
   return [stream, stop];
 }
-function fromEncodedStream(source, decode) {
+function fromEncodedStream(source, decode2) {
   let unsubscribe;
   let done = false;
   return new ReadableStream({
@@ -4696,7 +5013,7 @@ function fromEncodedStream(source, decode) {
         next(value) {
           if (done) return;
           try {
-            controller.enqueue(decode(value));
+            controller.enqueue(decode2(value));
           } catch (error) {
             done = true;
             const stop = unsubscribe;
@@ -7121,7 +7438,7 @@ var getBaseManifest = getProdBaseManifest;
 var createEarlyHintsForRequest = createEarlyHintsCollector;
 async function loadEntries() {
   const [routerEntry, startEntry, pluginAdapters] = await Promise.all([
-    import("./assets/router-vcMbWth8.js").then((n) => n.ab),
+    import("./assets/router-UMznUel8.js").then((n) => n.ag),
     import("./assets/start-HYkvq4Ni.js"),
     import("./assets/empty-plugin-adapters-BFgPZ6_d.js")
   ]);
@@ -7515,8 +7832,8 @@ function withParsedParams(handler, matchedRoutes) {
   return (ctx) => {
     const params = Object.assign(/* @__PURE__ */ Object.create(null), ctx.params);
     for (const route of matchedRoutes) {
-      const parse = route.options.params?.parse ?? route.options.parseParams;
-      if (parse) Object.assign(params, parse(params));
+      const parse2 = route.options.params?.parse ?? route.options.parseParams;
+      if (parse2) Object.assign(params, parse2(params));
     }
     return handler({
       ...ctx,
@@ -7583,8 +7900,11 @@ const server = createServerEntry({ fetch: fetch$1 });
 export {
   TSS_SERVER_FUNCTION as T,
   getRequest as a,
+  getCookie as b,
   createServerFn as c,
   createServerEntry,
+  deleteCookie as d,
   server as default,
+  createMiddleware as e,
   getServerFnById as g
 };

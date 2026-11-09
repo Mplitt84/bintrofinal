@@ -1,3 +1,4 @@
+import { requireUser } from "./auth.middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import {
@@ -25,34 +26,34 @@ import { findBusinessContext, findBusinessProfile } from "./business.server.js";
 import { MAX_ORDER_QTY } from "../lib/inventory-defaults.js";
 import { assertFeature, assertProductRoom, hasFeature } from "./account.server.js";
 
-export const listProducts = createServerFn({ method: "GET" }).handler(async () => {
+export const listProducts = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => {
   return findAllProducts();
 });
 
-export const getStats = createServerFn({ method: "GET" }).handler(async () => {
+export const getStats = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => {
   return computeStats();
 });
 
-export const getRecentMovements = createServerFn({ method: "GET" })
+export const getRecentMovements = createServerFn({ method: "GET" }).middleware([requireUser])
   .inputValidator((data: { limit?: number }) => data)
   .handler(async ({ data }) => {
     return findRecentMovements(data.limit ?? 25);
   });
 
-export const getMovementsSince = createServerFn({ method: "GET" })
+export const getMovementsSince = createServerFn({ method: "GET" }).middleware([requireUser])
   .inputValidator((data: { since: string | null }) => data)
   .handler(async ({ data }) => {
     const since = data.since ? new Date(data.since) : null;
     return findMovementsSince(since && !Number.isNaN(since.getTime()) ? since : null);
   });
 
-export const lookupBarcode = createServerFn({ method: "GET" })
+export const lookupBarcode = createServerFn({ method: "GET" }).middleware([requireUser])
   .inputValidator((data: { barcode: string }) => data)
   .handler(async ({ data }) => {
     return findProductByBarcode(data.barcode.trim());
   });
 
-export const searchProducts = createServerFn({ method: "GET" })
+export const searchProducts = createServerFn({ method: "GET" }).middleware([requireUser])
   .inputValidator((data: { query: string }) => data)
   .handler(async ({ data }) => {
     if (!data.query.trim()) return [];
@@ -76,7 +77,7 @@ const CreateProductSchema = z.object({
   imageUrl: z.string().max(2000).optional(),
 });
 
-export const createProduct = createServerFn({ method: "POST" })
+export const createProduct = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(CreateProductSchema)
   .handler(async ({ data }) => {
     await assertProductRoom();
@@ -84,7 +85,7 @@ export const createProduct = createServerFn({ method: "POST" })
     return insertProduct(data);
   });
 
-export const linkBarcodeToProduct = createServerFn({ method: "POST" })
+export const linkBarcodeToProduct = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator((data: { productId: number; barcode: string }) => data)
   .handler(async ({ data }) => {
     await assertBarcodeFree(data.barcode.trim(), data.productId);
@@ -117,7 +118,7 @@ async function assertBarcodeFree(barcode: string, exceptId?: number) {
   if (owner) throw new Error(`duplicate barcode: ${barcode} already belongs to ${owner.name}`);
 }
 
-export const updateProduct = createServerFn({ method: "POST" })
+export const updateProduct = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(UpdateProductSchema)
   .handler(async ({ data }) => {
     const { productId, qty, staffName, extraBarcodes, ...rest } = data;
@@ -153,14 +154,14 @@ export const updateProduct = createServerFn({ method: "POST" })
     return updateProductFields(productId, extras === undefined ? rest : { ...rest, extraBarcodes: extras });
   });
 
-export const deleteProduct = createServerFn({ method: "POST" })
+export const deleteProduct = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ productId: z.number().int().positive() }))
   .handler(async ({ data }) => {
     return deleteProductById(data.productId);
   });
 
 /** Folds a duplicate into the real product (barcode, Square link, history) and removes the duplicate. */
-export const mergeProducts = createServerFn({ method: "POST" })
+export const mergeProducts = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ sourceId: z.number().int().positive(), targetId: z.number().int().positive() }))
   .handler(async ({ data }) => {
     return mergeProductsInto(data.sourceId, data.targetId);
@@ -173,7 +174,7 @@ const ScanSchema = z.object({
   staffName: z.string().optional(),
 });
 
-export const scanMovement = createServerFn({ method: "POST" })
+export const scanMovement = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(ScanSchema)
   .handler(async ({ data }) => {
     const product = await findProductByBarcode(data.barcode.trim());
@@ -192,13 +193,13 @@ export const scanMovement = createServerFn({ method: "POST" })
     return { status: "ok" as const, product: updated, movement };
   });
 
-export const undoMovement = createServerFn({ method: "POST" })
+export const undoMovement = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator((data: { movementId: number }) => data)
   .handler(async ({ data }) => {
     return reverseAndDeleteMovement(data.movementId);
   });
 
-export const emailBelowPar = createServerFn({ method: "POST" })
+export const emailBelowPar = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator((data: { staffName?: string }) => data)
   .handler(async ({ data }) => {
     const [items, profile] = await Promise.all([findBelowParProducts(), findBusinessProfile()]);
@@ -222,7 +223,7 @@ const PurchaseOrderSchema = z.object({
  * client are included, and product details are re-read from the database so the
  * vendor always gets current names, costs and on-hand counts.
  */
-export const emailPurchaseOrder = createServerFn({ method: "POST" })
+export const emailPurchaseOrder = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(PurchaseOrderSchema)
   .handler(async ({ data }) => {
     await assertFeature("orders");
@@ -231,7 +232,7 @@ export const emailPurchaseOrder = createServerFn({ method: "POST" })
   });
 
 /** Looks an unknown barcode up in public product databases to pre-fill the new-product form. */
-export const lookupBarcodeDetails = createServerFn({ method: "GET" })
+export const lookupBarcodeDetails = createServerFn({ method: "GET" }).middleware([requireUser])
   .inputValidator((data: { barcode: string }) => data)
   .handler(async ({ data }) => {
     return lookupBarcodeOnline(data.barcode.trim());
@@ -244,7 +245,7 @@ const LabelSchema = z.object({
 });
 
 /** Reads brand, product name and size off a photo of the product label with AI. */
-export const readLabelPhoto = createServerFn({ method: "POST" })
+export const readLabelPhoto = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(LabelSchema)
   .handler(async ({ data }) => {
     await assertFeature("ai");
@@ -252,7 +253,7 @@ export const readLabelPhoto = createServerFn({ method: "POST" })
   });
 
 /** Talk-to-text: turns a spoken product description into form fields with AI. */
-export const readSpokenProduct = createServerFn({ method: "POST" })
+export const readSpokenProduct = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ transcript: z.string().trim().min(1).max(1000) }))
   .handler(async ({ data }) => {
     await assertFeature("ai");
@@ -277,7 +278,7 @@ function sizeKey(size: string) {
  * photo; it wins over the AI's reading. Returns the exact match (by code) or the
  * closest products by brand + name + size for staff to confirm.
  */
-export const readStockPhotoFn = createServerFn({ method: "POST" })
+export const readStockPhotoFn = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(LabelSchema.extend({ deviceBarcode: z.string().trim().max(64).optional() }))
   .handler(async ({ data }) => {
     const device = data.deviceBarcode?.trim() ?? "";
@@ -318,7 +319,7 @@ export const readStockPhotoFn = createServerFn({ method: "POST" })
   });
 
 /** Logs a scan in or out for a product picked by id (photo flow, where there may be no barcode). */
-export const recordProductMovement = createServerFn({ method: "POST" })
+export const recordProductMovement = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(
     z.object({
       productId: z.number().int().positive(),
@@ -359,7 +360,7 @@ const BulkChangesSchema = z
  * Bulk edit: applies the same changes to every selected product (only the fields
  * sent; counts are never touched). Runs a few products at a time.
  */
-export const bulkUpdateProducts = createServerFn({ method: "POST" })
+export const bulkUpdateProducts = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ productIds: z.array(z.number().int().positive()).min(1).max(2000), changes: BulkChangesSchema }))
   .handler(async ({ data }) => {
     const changes = Object.fromEntries(Object.entries(data.changes).filter(([, v]) => v !== undefined));
@@ -374,7 +375,7 @@ export const bulkUpdateProducts = createServerFn({ method: "POST" })
   });
 
 /** Bulk delete: removes the selected products and their history (same as deleting one at a time). */
-export const bulkDeleteProducts = createServerFn({ method: "POST" })
+export const bulkDeleteProducts = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ productIds: z.array(z.number().int().positive()).min(1).max(2000) }))
   .handler(async ({ data }) => {
     let deleted = 0;

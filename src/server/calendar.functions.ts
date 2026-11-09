@@ -1,3 +1,4 @@
+import { requireUser } from "./auth.middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import {
@@ -20,32 +21,32 @@ const EventSchema = z.object({
   staffName: z.string().max(60),
 });
 
-export const listCalendarEvents = createServerFn({ method: "GET" }).handler(async () => {
+export const listCalendarEvents = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => {
   return findCalendarEvents();
 });
 
-export const addCalendarEvents = createServerFn({ method: "POST" })
+export const addCalendarEvents = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ items: z.array(EventSchema).min(1).max(20) }))
   .handler(async ({ data }) => {
     await assertFeature("calendar");
     return insertCalendarEvents(data.items);
   });
 
-export const editCalendarEvent = createServerFn({ method: "POST" })
+export const editCalendarEvent = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(EventSchema.partial().extend({ id: z.number().int() }))
   .handler(async ({ data }) => {
     const { id, ...rest } = data;
     return updateCalendarEvent(id, rest);
   });
 
-export const removeCalendarEvent = createServerFn({ method: "POST" })
+export const removeCalendarEvent = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ id: z.number().int() }))
   .handler(async ({ data }) => {
     return deleteCalendarEvent(data.id);
   });
 
 /** Path of the live iCal feed. `reset` issues a new link and retires the old one. */
-export const getCalendarFeedPath = createServerFn({ method: "POST" })
+export const getCalendarFeedPath = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ reset: z.boolean().optional() }))
   .handler(async ({ data }) => {
     await assertFeature("calendar");

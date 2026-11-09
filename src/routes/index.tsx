@@ -26,6 +26,9 @@ import type { ProductCategory } from '@/lib/tax-categories'
 import { listProducts, getRecentMovements } from '@/server/inventory.functions'
 import { getInsights } from '@/server/insights.functions'
 import type { Insights } from '@/lib/insights'
+import { SignInScreen } from '@/components/auth/SignInScreen'
+import { getAuthState } from '@/server/auth.functions'
+import type { AuthState } from '@/lib/auth'
 import { addTeamMember, getBusinessProfile, listProductCategories, listTeamMembers } from '@/server/business.functions'
 
 // Keys predate the Bintro rename; keeping them preserves each device's saved name and order draft.
@@ -57,6 +60,9 @@ function tabFromHash(hash: string): { tab: Tab; restock?: RestockMode } | null {
 
 export const Route = createFileRoute('/')({
   loader: async () => {
+    const auth = await getAuthState()
+    // Sign-in is on and nobody is signed in: load nothing else (every other call would be refused).
+    if (auth.enabled && !auth.user) return { auth, data: null }
     const [products, recent, profile, team, categories, account] = await Promise.all([
       listProducts(),
       getRecentMovements({ data: { limit: 25 } }),
@@ -65,13 +71,21 @@ export const Route = createFileRoute('/')({
       listProductCategories(),
       getAccount(),
     ])
-    return { products, recent, profile, team, categories, account }
+    return { auth, data: { products, recent, profile, team, categories, account } }
   },
-  component: Home,
+  component: Gate,
 })
 
-function Home() {
-  const initial = Route.useLoaderData()
+/** Shows the sign-in screen until someone is signed in (once Google sign-in is set up). */
+function Gate() {
+  const { auth, data } = Route.useLoaderData()
+  if (!data) return <SignInScreen auth={auth} />
+  return <Home auth={auth} initial={data} />
+}
+
+type HomeData = NonNullable<ReturnType<typeof Route.useLoaderData>['data']>
+
+function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
   const [tab, setTab] = useState<Tab>('scan')
   const [products, setProducts] = useState<Product[]>(initial.products as Product[])
   const [recent, setRecent] = useState<MovementRow[]>(initial.recent as MovementRow[])
@@ -102,6 +116,26 @@ function Home() {
   const [insightPopupShowing, setInsightPopupShowing] = useState(false)
   const { fresh: freshTip, markSeen: markTipSeen } = useFreshTip()
   const businessName = displayBusinessName(profile)
+
+  // If the session ends while the app is open (signed out elsewhere, removed from the list), go back to sign-in.
+  useEffect(() => {
+    if (!auth.enabled) return
+    const check = () =>
+      getAuthState()
+        .then((a) => {
+          if (a.enabled && !a.user) window.location.reload()
+        })
+        .catch(() => {})
+    const onRejection = (e: PromiseRejectionEvent) => {
+      if (String((e.reason as Error | undefined)?.message ?? e.reason).includes('SIGNED_OUT')) check()
+    }
+    window.addEventListener('focus', check)
+    window.addEventListener('unhandledrejection', onRejection)
+    return () => {
+      window.removeEventListener('focus', check)
+      window.removeEventListener('unhandledrejection', onRejection)
+    }
+  }, [auth.enabled])
 
   useEffect(() => {
     const saved =
@@ -141,6 +175,7 @@ function Home() {
       const connected = params.get('connected')
       const error = params.get('error')
       const billing = params.get('billing')
+      if (params.get('auth') === 'owner-only') setNotice({ tone: 'bad', text: 'Only an owner can connect apps or change billing.' })
       const label = (p: string) => (p.startsWith('square') ? 'Square' : 'QuickBooks')
       // Back from Stripe Checkout.
       if (billing === 'subscribed') setNotice({ tone: 'good', text: `Welcome to Bintro ${params.get('plan') || 'Plus'}. Your plan is active.` })
@@ -503,6 +538,7 @@ function Home() {
               notice={notice}
               onDismissNotice={() => setNotice(null)}
               onChanged={refresh}
+              auth={auth}
             />
           )}
           {tab === 'restock' && <InsightsBanner insights={insights} onOpen={openInsights} />}
