@@ -1,27 +1,27 @@
 import { jsxs, jsx, Fragment } from "react/jsx-runtime";
 import { useRef, useId, useEffect, useState, useCallback, createContext, useContext, useMemo, forwardRef } from "react";
 import { X, Sparkles, Trash2, Check, Plus, Search, Copy, Mic, Lock, Square, GitMerge, Camera, Tags, ExternalLink, Wand2, RotateCcw, ArrowDownToLine, ArrowUpFromLine, FileSpreadsheet, AlertTriangle, Users, UserPlus, ScanBarcode, PackagePlus, Undo2, EyeOff, History, ClipboardCheck, Gauge, CircleMinus, Tag, CheckSquare, Pencil, ClipboardList, Mail, RefreshCw, Download, Printer, FileText, CheckCheck, PackageCheck, Truck, CalendarPlus, ChevronLeft, ChevronRight, Landmark, Repeat, CalendarDays, CheckCircle2, Send, FileUp, TriangleAlert, Plug, Lightbulb, Boxes, Leaf, CalendarClock, PiggyBank, ArrowRight, Palette, BluetoothConnected, Bluetooth, Crown, PlayCircle, CreditCard, XCircle, PauseCircle, Receipt, Flame, TrendingUp, TrendingDown, Globe, Settings, Store, Wallet, Activity } from "lucide-react";
-import { c as createSsrRpc, s as saveProductCategories, r as removeProductCategories, l as lookupBarcodeDetails, a as readSpokenProduct, b as readLabelPhoto, d as suggestProduct, e as readStockPhotoFn, f as createProduct, g as recordProductMovement, h as getMovementsSince, i as searchProducts, j as scanMovement, u as undoMovement, k as linkBarcodeToProduct, m as bulkUpdateProducts, n as updateBusinessProfile, o as mergeProducts, p as deleteProduct, q as updateProduct, t as bulkDeleteProducts, v as emailBelowPar, w as emailPurchaseOrder, x as toDay, y as parseDay, z as occurrences, A as eventKind, E as EVENT_KINDS, B as formatTime, R as REPEATS, C as estimatedTaxDates, D as googleCalendarUrl, F as outlookCalendarUrl, G as subscribeUrls, H as buildIcs, I as getBudgetOverview, J as listExpenses, K as getIntegrations, L as quickbooksPushMonth, M as editExpense, N as createExpense, O as readReceiptPhoto, P as removeExpense, Q as saveMonthBudget, S as resumePlan, T as lockInFounding, U as cancelSubscription, V as getBillingHistory, W as saveAccountDetails, X as selectPlan, Y as openPaymentPortal, Z as pausePlan, _ as addTeamMember, $ as removeTeamMember, a0 as getSquareRetailCategories, a1 as disconnect, a2 as setSquareRetailCategories, a3 as squareImportCatalog, a4 as squareSyncSales, a5 as squareSendCounts, a6 as Route, a7 as listProducts, a8 as getRecentMovements, a9 as getAccount } from "./router-Jguow7BY.js";
+import { c as createSsrRpc, s as saveProductCategories, r as removeProductCategories, l as lookupBarcodeDetails, a as readSpokenProduct, b as readLabelPhoto, d as suggestProduct, e as readStockPhotoFn, f as createProduct, g as recordProductMovement, h as getMovementsSince, i as searchProducts, j as scanMovement, u as undoMovement, k as linkBarcodeToProduct, m as bulkUpdateProducts, n as updateBusinessProfile, o as mergeProducts, p as deleteProduct, q as updateProduct, t as bulkDeleteProducts, v as emailBelowPar, w as emailPurchaseOrder, x as toDay, y as parseDay, z as occurrences, A as eventKind, E as EVENT_KINDS, B as formatTime, R as REPEATS, C as estimatedTaxDates, D as googleCalendarUrl, F as outlookCalendarUrl, G as subscribeUrls, H as buildIcs, I as getBudgetOverview, J as listExpenses, K as getIntegrations, L as quickbooksPushMonth, M as editExpense, N as createExpense, O as readReceiptPhoto, P as removeExpense, Q as saveMonthBudget, S as resumePlan, T as lockInFounding, U as cancelSubscription, V as getBillingHistory, W as saveAccountDetails, X as selectPlan, Y as openPaymentPortal, Z as pausePlan, _ as addTeamMember, $ as removeTeamMember, a0 as getSquareRetailCategories, a1 as disconnect, a2 as getIntegrationErrorLog, a3 as setSquareRetailCategories, a4 as squareImportCatalog, a5 as squareSyncSales, a6 as squareSendCounts, a7 as Route, a8 as listProducts, a9 as getRecentMovements, aa as getAccount } from "./router-I6Lyp8e2.js";
 import { createPortal } from "react-dom";
 import { c as createServerFn } from "../server.js";
 import { z } from "zod";
 import { d as daysBetween, P as PRICE_STALE_DAYS, k as WEB_PRICE_SOURCE_LABELS, g as daysLabel, h as SLOW_GROUP_LABELS, B as BULK_COVER_DAYS, o as outVerb, S as SLOW_WINDOW_DAYS } from "./insights-BQ2QJiNr.js";
 import { D as DEFAULT_REORDER_THRESHOLD, d as deriveInitials, i as isBelowPar, e as stockStatus, M as MAX_ORDER_QTY, S as STOCK_STATUS_LABEL, o as onHandQty, f as orderUpTo, g as casePack, s as suggestedOrderQty, c as clampOrderQty, u as unitsToPar, b as selectBelowPar, a as stockStats } from "./inventory-defaults-BnRHgx1T.js";
 import { d as displayBusinessName, a as businessTypeById, E as EMPTY_PROFILE, T as TAX_GROUPS, t as taxKind, c as categorySuggestionsFor, g as guessTaxGroup, e as taxGroupById, f as findCategory, b as businessSlug, m as monthKey, r as recentMonths, h as monthRange, i as monthLabel, j as dayKey, s as selectableBusinessTypes } from "./business-types-DKNVcfJE.js";
-import { o as planById, q as planHas, t as planFor, F as FEATURE_INFO, v as centsLabel, w as priceFor, x as PLANS, P as PAUSE_OPTIONS, C as CANCEL_REASONS, y as planRank } from "./account.server-IhIPs_LL.js";
+import { o as planById, q as planHas, t as planFor, F as FEATURE_INFO, v as centsLabel, w as priceFor, x as PLANS, P as PAUSE_OPTIONS, C as CANCEL_REASONS, y as planRank } from "./account.server-B5c_30md.js";
 import { M as MAX_IMPORT_LINES, S as SALES_REPORT_APPS, P as PRICE_BATCH, a as MAX_IMPORT_BYTES, n as needsPrice } from "./bulk-import-Bd6tmV71.js";
 import { g as groupPurchaseOrderLines, a as purchaseOrderTotals, b as buildPurchaseOrderCsv, p as purchaseOrderFilename, l as lineTotalCents } from "./purchase-order-1ZyUH4cu.js";
 import { L as LINKS } from "./LegalPage-DZ1ney0Q.js";
 import "@tanstack/react-router";
-import "./calendar.server-Ao_GjwJ3.js";
+import "./calendar.server-Cw9hO_il.js";
 import "drizzle-orm";
 import "node:crypto";
-import "./index-CaPewqP7.js";
+import "./index-nBnBfwCa.js";
 import "drizzle-orm/netlify-db";
 import "drizzle-orm/pg-core";
-import "./business.server-CHGYL_45.js";
-import "./integrations.server-Cl39Wgfx.js";
-import "./inventory.server-FPvzQkco.js";
+import "./business.server-CN0Pugrj.js";
+import "./integrations.server-DSD7tcf7.js";
+import "./inventory.server-NFwTD6ZI.js";
 import "node:async_hooks";
 import "node:stream";
 import "@tanstack/react-router/ssr/server";
@@ -11811,9 +11811,47 @@ function Integrations({ onChanged }) {
           ] }),
           /* @__PURE__ */ jsx("li", { children: "Redeploy, then come back here and tap Connect." })
         ] })
-      ] })
+      ] }),
+      s.configured && /* @__PURE__ */ jsx(ErrorLogLink, { provider: s.provider, name: info.name })
     ] }, s.provider);
   }) });
+}
+function ErrorLogLink({ provider, name }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  return /* @__PURE__ */ jsx(
+    "button",
+    {
+      className: "btn btn-text btn-sm !px-0 mt-2 text-ink-2",
+      disabled: busy,
+      onClick: async () => {
+        setBusy(true);
+        try {
+          const rows = await getIntegrationErrorLog({ data: { provider } });
+          if (rows.length === 0) {
+            toast(`No ${name} errors in the last year`);
+            return;
+          }
+          const cell = (v) => `"${String(v).replace(/"/g, '""')}"`;
+          const csv = [
+            ["Time (UTC)", "Action", "HTTP status", "Error code", "intuit_tid", "Message"].map(cell).join(","),
+            ...rows.map((r) => [r.createdAt, r.action, r.status, r.code, r.intuitTid, r.message].map(cell).join(","))
+          ].join("\n");
+          const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `bintro-${provider}-error-log.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+        } catch {
+          toast("Couldn't load the error log. Try again.");
+        } finally {
+          setBusy(false);
+        }
+      },
+      children: busy ? "Preparing…" : "Download error log"
+    }
+  );
 }
 const SEGMENTS = [
   { id: "fast", label: "Moving fast" },

@@ -26,6 +26,7 @@ import {
   sendAllCountsToSquare,
   integrationStatus,
   pushMonthToQuickBooks,
+  integrationErrorLog,
   syncSquareSales,
 } from "./integrations.server.js";
 import { TAX_GROUPS, type TaxGroupId } from "../lib/tax-categories.js";
@@ -198,6 +199,11 @@ export const getIntegrations = createServerFn({ method: "GET" }).handler(async (
 });
 
 const ProviderSchema = z.object({ provider: z.enum(["square", "quickbooks"]) });
+
+/** Last year of failed Square / QuickBooks calls, for sharing with their support. */
+export const getIntegrationErrorLog = createServerFn({ method: "GET" })
+  .inputValidator(ProviderSchema)
+  .handler(async ({ data }) => integrationErrorLog(data.provider));
 
 export const disconnect = createServerFn({ method: "POST" })
   .inputValidator(ProviderSchema)

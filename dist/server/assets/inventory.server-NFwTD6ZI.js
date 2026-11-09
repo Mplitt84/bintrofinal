@@ -1,5 +1,5 @@
 import { asc, eq, desc, gte, or, sql, like, and, inArray, ne } from "drizzle-orm";
-import { d as db, a as products, m as movements, l as squareOutbox, n as integrations } from "./index-CaPewqP7.js";
+import { d as db, a as products, m as movements, l as squareOutbox, n as integrations } from "./index-nBnBfwCa.js";
 import { a as stockStats, D as DEFAULT_REORDER_THRESHOLD, d as deriveInitials, b as selectBelowPar, o as onHandQty, c as clampOrderQty } from "./inventory-defaults-BnRHgx1T.js";
 async function findAllProducts() {
   return db.select().from(products).orderBy(asc(products.name));
@@ -86,7 +86,7 @@ async function queueSquareChange(product, movement, type) {
 }
 async function flushSquareSoon() {
   try {
-    const { flushSquareOutbox } = await import("./integrations.server-Cl39Wgfx.js");
+    const { flushSquareOutbox } = await import("./integrations.server-DSD7tcf7.js");
     await flushSquareOutbox();
   } catch (error) {
     console.error("Square inventory push failed; will retry", error);

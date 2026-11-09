@@ -1,4 +1,4 @@
-import { f as findAllProducts, j as updateProductFields, i as insertProduct, h as applyMovement, p as flushSquareSoon, t as countMovementsWithNote } from "./inventory.server-FPvzQkco.js";
+import { f as findAllProducts, j as updateProductFields, i as insertProduct, h as applyMovement, p as flushSquareSoon, t as countMovementsWithNote } from "./inventory.server-NFwTD6ZI.js";
 import { d as extractImportDocument, m as mapCsvColumns, C as CSV_FIELDS } from "./product-lookup.server-C6LGgHTN.js";
 import { M as MAX_IMPORT_LINES, s as salesReportNote } from "./bulk-import-Bd6tmV71.js";
 function parseCsv(text) {
@@ -175,7 +175,7 @@ function makeSku(taken) {
 async function applyImportLines(params) {
   if (params.mode === "inventory") {
     try {
-      const { syncSquareSalesIfConnected } = await import("./integrations.server-Cl39Wgfx.js");
+      const { syncSquareSalesIfConnected } = await import("./integrations.server-DSD7tcf7.js");
       await syncSquareSalesIfConnected();
     } catch (error) {
       console.error("Square sales sync before import failed", error);
