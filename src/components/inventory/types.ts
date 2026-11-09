@@ -12,6 +12,8 @@ export type Product = {
   maxQty: number;
   /** Units per case the vendor sells; orders round up to whole cases. */
   packSize: number;
+  /** "" = not set, "none" = doesn't expire, or YYYY-MM-DD. */
+  expiresOn: string;
   unitCostCents: number;
   retailPriceCents: number;
   squareVariationId: string;

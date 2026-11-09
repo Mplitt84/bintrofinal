@@ -1,0 +1,1 @@
+ALTER TABLE "products" ADD COLUMN "expires_on" text DEFAULT '' NOT NULL;

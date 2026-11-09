@@ -4,6 +4,7 @@ import type { Product } from './types'
 import { emailPurchaseOrder } from '@/server/inventory.functions'
 import { saveSentOrder } from '@/server/orders.functions'
 import { Download, Mail, Printer } from 'lucide-react'
+import { ToolButton, ToolRow } from '@/components/ui/ToolButton'
 import { EmptyState, PageHead, StatGrid, StatTile, Thumb, centsToDollars } from '@/components/ui/bits'
 import { MAX_ORDER_QTY, casePack, clampOrderQty, onHandQty, stockStatus, suggestedOrderQty } from '@/lib/inventory-defaults'
 import {
@@ -307,20 +308,18 @@ export function PurchaseOrderView({
         <StatTile label="Est. order total" value={`$${centsToDollars(totals.totalCents)}`} />
       </StatGrid>
 
-      <div className="flex flex-wrap gap-2 mb-3">
-        <button className="btn btn-primary btn-sm" onClick={emailOrder} disabled={nothingSelected || mail.kind === 'sending'}>
-          <Mail size={16} />
-          {mail.kind === 'sending' ? 'Sending…' : 'Email order'}
-        </button>
-        <button className="btn btn-tonal btn-sm" onClick={exportCsv} disabled={nothingSelected}>
-          <Download size={16} />
-          Download CSV
-        </button>
-        <button className="btn btn-tonal btn-sm" onClick={printOrder} disabled={nothingSelected}>
-          <Printer size={16} />
-          Print
-        </button>
-      </div>
+      <ToolRow label="Send the order" className="mb-3">
+        <ToolButton
+          icon={<Mail size={24} />}
+          color="bg-action"
+          label={mail.kind === 'sending' ? 'Sending…' : 'Email order'}
+          onClick={emailOrder}
+          busy={mail.kind === 'sending'}
+          disabled={nothingSelected}
+        />
+        <ToolButton icon={<Download size={24} />} color="bg-gold" label="Download CSV" onClick={exportCsv} disabled={nothingSelected} />
+        <ToolButton icon={<Printer size={24} />} color="bg-royal-2" label="Print" onClick={printOrder} disabled={nothingSelected} />
+      </ToolRow>
 
       <div className="flex gap-2 overflow-x-auto pb-1 mb-3">
         <button className="chip" onClick={() => setSelection(items.map((p) => p.id), true)}>

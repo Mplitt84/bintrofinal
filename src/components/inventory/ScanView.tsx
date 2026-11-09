@@ -15,6 +15,7 @@ import { EmptyState, StatTile, Thumb, dollarsShort, timeAgo } from '@/components
 import { CameraScanner } from './CameraScanner'
 import { PhotoStockSheet } from './PhotoStockSheet'
 import { SalesReportSheet } from './SalesReportSheet'
+import { ToolButton, ToolRow } from '@/components/ui/ToolButton'
 import { ProductForm } from './ProductForm'
 import { STAFF_IDLE_MINUTES, getStaffAskMode, type StaffPrompt } from './StaffPicker'
 import { onBluetoothCode } from '@/lib/bluetooth-scanner'
@@ -496,20 +497,16 @@ export function ScanView({
             "You'll pick your name before each scan"
           )}
         </p>
-        <button type="button" className="btn btn-tonal mt-3" onClick={startPhoto}>
-          <Camera size={18} />
-          Snap & log: photo the SKU or label
-        </button>
-        {onReceiveDelivery && (
-          <button type="button" className="btn btn-tonal mt-2" onClick={onReceiveDelivery}>
-            <PackagePlus size={18} />
-            Got a delivery? Check in the invoice
-          </button>
-        )}
-        <button type="button" className="btn btn-tonal mt-2" onClick={() => setSalesOpen(true)}>
-          <FileSpreadsheet size={18} />
-          Sold retail in another booking app? Upload the sales report
-        </button>
+        <ToolRow label="More ways to log stock" className="justify-center mt-4">
+          <ToolButton icon={<Camera size={24} />} color="bg-action" label="Snap & log" onClick={startPhoto} />
+          {onReceiveDelivery && (
+            <ToolButton icon={<PackagePlus size={24} />} color="bg-good" label="Check in delivery" onClick={onReceiveDelivery} />
+          )}
+          <ToolButton icon={<FileSpreadsheet size={24} />} color="bg-gold" label="Sales report" onClick={() => setSalesOpen(true)} />
+        </ToolRow>
+        <p className="m-0 text-[12px] text-ink-2 text-center max-w-[420px] mx-auto">
+          Snap a photo of the SKU or label, check a delivery in from its invoice, or upload sales from another booking app.
+        </p>
         <input
           ref={photoInput}
           type="file"

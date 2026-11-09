@@ -7,9 +7,11 @@ import { useToast } from '@/components/ui/Toast'
 import { CountSheet, DuplicatesSheet, FillCostsSheet, SmartParSheet } from './TidyTools'
 import { EmptyState, PageHead, StatGrid, StatTile, Thumb, centsToDollars, dollarsShort } from '@/components/ui/bits'
 import { ProductForm } from './ProductForm'
+import { ToolButton } from '@/components/ui/ToolButton'
+import { daysToExpiry, expiryLabel, expiryState } from '@/lib/expiry'
 import { isBelowPar, stockStatus } from '@/lib/inventory-defaults'
 
-type StockFilter = 'all' | 'below' | 'out'
+type StockFilter = 'all' | 'below' | 'out' | 'expiring'
 
 export function InventoryView({
   products,
@@ -33,6 +35,7 @@ export function InventoryView({
   const [adding, setAdding] = useState(false)
   // Clean-up tools: count a shelf, fix negatives, duplicates, missing costs.
   const [tool, setTool] = useState<null | 'count' | 'negatives' | 'duplicates' | 'costs' | 'smartpar'>(null)
+  const expiringCount = useMemo(() => products.filter((p) => ['soon', 'expired'].includes(expiryState(p.expiresOn))).length, [products])
   const negativeIds = useMemo(() => products.filter((p) => p.qty < 0).map((p) => p.id), [products])
   const missingCosts = useMemo(() => products.filter((p) => !p.unitCostCents).length, [products])
 
@@ -44,6 +47,7 @@ export function InventoryView({
   const filtered = products.filter((p) => {
     if (filter === 'below' && !isBelowPar(p)) return false
     if (filter === 'out' && stockStatus(p) !== 'out') return false
+    if (filter === 'expiring' && !['soon', 'expired'].includes(expiryState(p.expiresOn))) return false
     if (category !== 'all' && p.category !== category) return false
     if (query.trim()) {
       const q = query.toLowerCase()
@@ -109,15 +113,19 @@ export function InventoryView({
       </label>
 
       <div className="flex gap-2 overflow-x-auto pb-1 mb-4 items-center">
-        {(['all', 'below', 'out'] as const).map((f) => (
-          <button key={f} className="chip" aria-pressed={filter === f} onClick={() => setFilter(f)}>
-            {f === 'all'
-              ? `All ${stats.skuCount}`
-              : f === 'below'
-                ? `Below par${stats.belowPar ? ` ${stats.belowPar}` : ''}`
-                : `Out of stock${stats.outOfStock ? ` ${stats.outOfStock}` : ''}`}
-          </button>
-        ))}
+        {(['all', 'below', 'out', 'expiring'] as const)
+          .filter((f) => f !== 'expiring' || expiringCount > 0)
+          .map((f) => (
+            <button key={f} className="chip" aria-pressed={filter === f} onClick={() => setFilter(f)}>
+              {f === 'all'
+                ? `All ${stats.skuCount}`
+                : f === 'below'
+                  ? `Below par${stats.belowPar ? ` ${stats.belowPar}` : ''}`
+                  : f === 'out'
+                    ? `Out of stock${stats.outOfStock ? ` ${stats.outOfStock}` : ''}`
+                    : `Expiring ${expiringCount}`}
+            </button>
+          ))}
         {categories.length > 0 && (
           <select
             value={category}
@@ -156,6 +164,7 @@ export function InventoryView({
                 >
                   <div className="font-semibold truncate">{p.name}</div>
                   <div className="text-[13px] text-ink-2 truncate">
+                    <ExpiryTag value={p.expiresOn} />
                     {[p.brand, p.size, p.vendor].filter(Boolean).join(', ') || p.barcode}
                     {p.retailPriceCents > 0 && <span className="num"> · sells ${centsToDollars(p.retailPriceCents)}</span>}
                   </div>
@@ -257,38 +266,18 @@ export function InventoryView({
   )
 }
 
-/** Round, bold tool button with its label underneath (and a count badge when there's something to fix). */
-function ToolButton({
-  icon,
-  color,
-  label,
-  badge,
-  onClick,
-}: {
-  icon: React.ReactNode
-  color: string
-  label: string
-  badge?: number
-  onClick: () => void
-}) {
+
+/** Small expiry marker in a product row: red once expired, amber within 60 days. */
+function ExpiryTag({ value }: { value: string }) {
+  const state = expiryState(value)
+  if (state !== 'soon' && state !== 'expired') return null
+  const days = daysToExpiry(value) ?? 0
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={badge ? `${label}: ${badge}` : label}
-      className="group flex flex-col items-center gap-1.5 shrink-0 w-[76px] bg-transparent border-0 p-0 cursor-pointer"
+    <span
+      className={`inline-block mr-1.5 text-[11px] font-bold px-1.5 rounded-full ${state === 'expired' ? 'bg-bad-tint text-bad' : 'bg-warn-tint text-warn'}`}
+      title={`Expires ${expiryLabel(value)}`}
     >
-      <span
-        className={`relative grid place-items-center w-14 h-14 rounded-full text-white ${color} shadow-[0_6px_14px_-6px_rgba(0,0,0,0.45)] ring-4 ring-white transition-transform group-hover:-translate-y-0.5 group-active:scale-95`}
-      >
-        {icon}
-        {badge ? (
-          <span className="absolute -top-1 -right-1 min-w-[22px] h-[22px] px-1 rounded-full bg-white text-ink text-[11px] font-extrabold grid place-items-center border-2 border-current shadow-sm">
-            {badge}
-          </span>
-        ) : null}
-      </span>
-      <span className="text-[12px] font-semibold text-ink leading-tight text-center">{label}</span>
-    </button>
+      {state === 'expired' ? 'Expired' : days === 0 ? 'Expires today' : `Expires in ${days}d`}
+    </span>
   )
 }

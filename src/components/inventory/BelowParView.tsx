@@ -4,6 +4,7 @@ import type { Product } from './types'
 import { emailBelowPar } from '@/server/inventory.functions'
 import { STOCK_STATUS_LABEL, casePack, onHandQty, orderUpTo, stockStatus, suggestedOrderQty, type StockStatus } from '@/lib/inventory-defaults'
 import { SmartParSheet } from './TidyTools'
+import { ToolButton, ToolRow } from '@/components/ui/ToolButton'
 import { useBusiness } from '@/components/business/BusinessContext'
 import { mailtoHref, openMailDraft, type MailDraft } from '@/lib/mail-draft'
 import { EmptyState, PageHead, StatGrid, StatTile, Thumb, dollarsShort } from '@/components/ui/bits'
@@ -109,36 +110,30 @@ export function BelowParView({
         <StatTile label="Est. restock cost" value={dollarsShort(restockCostCents)} />
       </StatGrid>
 
-      <div className="flex flex-wrap items-center gap-2 mb-2">
-        <button className="btn btn-gold btn-sm" onClick={() => setSmartOpen(true)}>
-          <Gauge size={16} />
-          Smart par
-        </button>
+      <ToolRow label="Restock actions" className="mb-2">
+        <ToolButton icon={<Gauge size={24} />} color="bg-gold" label="Smart par" onClick={() => setSmartOpen(true)} />
         {onBuildOrder && (
-          <button className="btn btn-primary btn-sm" onClick={onBuildOrder} disabled={items.length === 0}>
-            <ClipboardList size={16} />
-            Build vendor order
-          </button>
+          <ToolButton icon={<ClipboardList size={24} />} color="bg-action" label="Build order" onClick={onBuildOrder} disabled={items.length === 0} />
         )}
-        <button
-          className={`btn btn-sm ${onBuildOrder ? 'btn-tonal' : 'btn-primary'}`}
+        <ToolButton
+          icon={<Mail size={24} />}
+          color="bg-royal-2"
+          label={mail.kind === 'sending' ? 'Sending…' : 'Email list'}
           onClick={handleEmail}
-          disabled={mail.kind === 'sending' || items.length === 0}
-        >
-          <Mail size={16} />
-          {mail.kind === 'sending' ? 'Sending…' : sendTo ? `Email list to ${sendTo}` : 'Email the list'}
-        </button>
-        <button
-          className="btn btn-tonal btn-sm"
+          busy={mail.kind === 'sending'}
+          disabled={items.length === 0}
+        />
+        <ToolButton
+          icon={<RefreshCw size={24} />}
+          color="bg-royal"
+          label="Refresh"
           onClick={() => {
             setMail({ kind: 'idle' })
             onChanged()
           }}
-        >
-          <RefreshCw size={16} />
-          Refresh
-        </button>
-      </div>
+        />
+      </ToolRow>
+      {sendTo && <p className="m-0 mb-2 text-[12px] text-ink-2">Email list goes to {sendTo}.</p>}
       {mail.kind === 'sent' && <p className="text-good text-sm font-semibold mt-1 mb-3">✓ {mail.message}</p>}
       {mail.kind === 'error' && <p className="text-bad text-sm mt-1 mb-3 max-w-[560px]">{mail.message}</p>}
       {mail.kind === 'drafted' && (

@@ -237,6 +237,39 @@ export async function categoryGroups(): Promise<CategoryGroup[]> {
     .sort((a, b) => b.total - a.total);
 }
 
+/** Every category in use or saved, with how many products carry it, most-used first. */
+export async function categoryList(): Promise<{ name: string; products: number; saved: boolean }[]> {
+  const [counts, saved] = await Promise.all([
+    db
+      .select({ name: products.category, n: sql<number>`count(*)::int` })
+      .from(products)
+      .where(sql`${products.category} <> ''`)
+      .groupBy(products.category),
+    db.select({ name: productCategories.name }).from(productCategories),
+  ]);
+  const savedNames = new Set(saved.map((s) => s.name));
+  const out = new Map<string, { name: string; products: number; saved: boolean }>();
+  for (const c of counts) out.set(c.name, { name: c.name, products: c.n, saved: savedNames.has(c.name) });
+  for (const s of saved) if (!out.has(s.name)) out.set(s.name, { name: s.name, products: 0, saved: true });
+  return [...out.values()].sort((a, b) => b.products - a.products || a.name.localeCompare(b.name));
+}
+
+/**
+ * Deletes a category: its products move to `moveTo` (or to no category when blank)
+ * and the saved category is removed. Returns how many products moved.
+ */
+export async function deleteCategoryName(name: string, moveTo: string) {
+  const target = moveTo.trim();
+  if (target && target !== name) return mergeCategoryNames([name], target);
+  const moved = await db
+    .update(products)
+    .set({ category: "", updatedAt: new Date() })
+    .where(eq(products.category, name))
+    .returning({ id: products.id });
+  await db.delete(productCategories).where(eq(productCategories.name, name));
+  return moved.length;
+}
+
 /** Renames every product in the `from` categories to `to` and removes the old saved spellings. */
 export async function mergeCategoryNames(from: string[], to: string) {
   const target = to.trim();

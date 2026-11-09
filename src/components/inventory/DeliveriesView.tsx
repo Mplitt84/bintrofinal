@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { PackagePlus, Truck } from 'lucide-react'
+import { ToolButton } from '@/components/ui/ToolButton'
 import type { Product } from './types'
 import { EmptyState, PageHead, StatGrid, StatTile, centsToDollars, timeAgo } from '@/components/ui/bits'
 import { useToast } from '@/components/ui/Toast'
@@ -79,12 +80,7 @@ export function DeliveriesView({
       <PageHead
         title="Deliveries"
         lead="Orders you've sent, waiting to arrive. Check each delivery in from the invoice in seconds."
-        action={
-          <button className="btn btn-primary btn-sm" onClick={() => setReceiving({ order: null })}>
-            <PackagePlus size={16} />
-            Receive a delivery
-          </button>
-        }
+        action={<ToolButton icon={<PackagePlus size={24} />} color="bg-good" label="Receive delivery" onClick={() => setReceiving({ order: null })} />}
       />
 
       <StatGrid>

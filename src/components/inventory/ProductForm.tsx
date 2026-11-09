@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { SHELF_LIFE_OPTIONS, expiryLabel, isExpiryDate, monthsFromToday } from '@/lib/expiry'
 import { Camera, Copy, ExternalLink, Lock, Plus, Sparkles, Tags, Wand2, X } from 'lucide-react'
 import type { Product } from './types'
 import { lookupBarcodeDetails, readLabelPhoto, readSpokenProduct } from '@/server/inventory.functions'
@@ -32,6 +33,8 @@ export type ProductFormValues = {
   maxQty: number
   /** Units per case; orders round up to whole cases. */
   packSize: number
+  /** "" = not set, "none" = doesn't expire, or YYYY-MM-DD. */
+  expiresOn: string
   unitCostCents: number
   retailPriceCents: number
   imageUrl: string
@@ -99,6 +102,10 @@ export function ProductForm({
   const [par, setPar] = useState(String(product?.reorderThreshold ?? DEFAULT_REORDER_THRESHOLD))
   const [maxQty, setMaxQty] = useState(product?.maxQty ? String(product.maxQty) : '')
   const [packSize, setPackSize] = useState(product && product.packSize > 1 ? String(product.packSize) : '')
+  const [expiresOn, setExpiresOn] = useState(product?.expiresOn ?? '')
+  const [expiryMode, setExpiryMode] = useState<'unset' | 'none' | 'date'>(
+    product?.expiresOn === 'none' ? 'none' : product?.expiresOn ? 'date' : 'unset',
+  )
   const [cost, setCost] = useState(product?.unitCostCents ? centsToDollars(product.unitCostCents) : '')
   const [retail, setRetail] = useState(product?.retailPriceCents ? centsToDollars(product.retailPriceCents) : '')
   const [price, setPrice] = useState<PriceState>({ kind: 'idle' })
@@ -488,6 +495,7 @@ export function ProductForm({
         reorderThreshold: Math.max(0, Math.trunc(Number(par) || 0)),
         maxQty: Math.max(0, Math.trunc(Number(maxQty) || 0)),
         packSize: Math.max(1, Math.trunc(Number(packSize) || 1)),
+        expiresOn: expiryMode === 'none' ? 'none' : expiryMode === 'date' && isExpiryDate(expiresOn) ? expiresOn : '',
         unitCostCents: Math.max(0, Math.round((Number(cost) || 0) * 100)),
         retailPriceCents: Math.max(0, Math.round((Number(retail) || 0) * 100)),
         imageUrl,
@@ -864,6 +872,68 @@ export function ProductForm({
           />
         </Field>
       </div>
+      <Field label="Expires" htmlFor="pf-expiry">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Expiry">
+          {SHELF_LIFE_OPTIONS.map((m) => {
+            const date = monthsFromToday(m)
+            return (
+              <button
+                key={m}
+                type="button"
+                className="chip"
+                aria-pressed={expiryMode === 'date' && expiresOn === date}
+                onClick={() => {
+                  setExpiryMode('date')
+                  setExpiresOn(date)
+                }}
+              >
+                {m} months
+              </button>
+            )
+          })}
+          <button
+            type="button"
+            className="chip"
+            aria-pressed={expiryMode === 'none'}
+            onClick={() => {
+              setExpiryMode('none')
+              setExpiresOn('none')
+            }}
+          >
+            No expiration
+          </button>
+        </div>
+        <input
+          id="pf-expiry"
+          type="date"
+          className="field-input mt-2"
+          value={expiryMode === 'date' ? expiresOn : ''}
+          onChange={(e) => {
+            setExpiresOn(e.target.value)
+            setExpiryMode(e.target.value ? 'date' : 'unset')
+          }}
+          aria-label="Or enter the expiry date"
+        />
+        <span className="block mt-1 text-[12px] text-ink-2">
+          {expiryMode === 'none'
+            ? "Marked as doesn't expire."
+            : expiryMode === 'date' && isExpiryDate(expiresOn)
+              ? `Expires ${expiryLabel(expiresOn)}. Months count from today, or type the date printed on the product.`
+              : 'Tap a shelf life (counted from today) or enter the date printed on the product.'}
+          {expiryMode !== 'unset' && (
+            <button
+              type="button"
+              className="ml-2 border-0 bg-transparent p-0 text-action font-semibold cursor-pointer text-[12px]"
+              onClick={() => {
+                setExpiryMode('unset')
+                setExpiresOn('')
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </span>
+      </Field>
       <p className="m-0 -mt-1 text-[12px] text-ink-2">
         Reorder at: when to order. Order up to: the most worth having on your shelf, so orders refill to here. Case pack: how many come in a case (e.g. 12 wine, 24 sparkling water); orders round up to full cases. Smart par can set these for you.
       </p>
