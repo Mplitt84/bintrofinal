@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { lastCountedLabel } from '@/lib/counts'
 import { SHELF_LIFE_OPTIONS, expiryLabel, isExpiryDate, monthsFromToday } from '@/lib/expiry'
 import { Camera, Copy, ExternalLink, Lock, Plus, Sparkles, Tags, Wand2, X } from 'lucide-react'
 import type { Product } from './types'
@@ -846,6 +847,7 @@ export function ProductForm({
           />
         </Field>
       </div>
+      {product && <p className="m-0 -mt-1 text-[12px] text-ink-2">{lastCountedLabel(product)}</p>}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Order up to" htmlFor="pf-max">
           <input

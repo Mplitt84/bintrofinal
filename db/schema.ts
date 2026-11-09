@@ -18,6 +18,9 @@ export const products = pgTable("products", {
   packSize: integer("pack_size").notNull().default(1),
   /** Expiry: "" = not set, "none" = doesn't expire, or a YYYY-MM-DD date. */
   expiresOn: text("expires_on").notNull().default(""),
+  /** When the product was last counted in an approved Count & reconcile, and by whom. */
+  lastCountedAt: timestamp("last_counted_at"),
+  lastCountedBy: text("last_counted_by").notNull().default(""),
   unitCostCents: integer("unit_cost_cents").notNull().default(0),
   /** What the business sells it for. 0 when it's backbar / not sold. */
   retailPriceCents: integer("retail_price_cents").notNull().default(0),
@@ -295,4 +298,35 @@ export const parChanges = pgTable("par_changes", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   /** Set when this apply was undone. */
   undoneAt: timestamp("undone_at"),
+});
+
+/** A stock count that was reviewed and approved: what was counted, by whom, and the totals over/short. */
+export const stockCounts = pgTable("stock_counts", {
+  id: serial().primaryKey(),
+  /** What was counted, e.g. "Everything", "Category: Color", "Vendor: SalonCentric". */
+  scope: text().notNull().default(""),
+  /** Counted without seeing the system numbers. */
+  blind: boolean().notNull().default(false),
+  staffName: text("staff_name").notNull().default(""),
+  itemsCounted: integer("items_counted").notNull().default(0),
+  itemsChanged: integer("items_changed").notNull().default(0),
+  unitsOver: integer("units_over").notNull().default(0),
+  unitsShort: integer("units_short").notNull().default(0),
+  /** Cost value of the net difference (positive = more on the shelf than recorded). */
+  valueDiffCents: integer("value_diff_cents").notNull().default(0),
+  note: text().notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** One product in an approved count: expected vs counted, the reason for any difference. */
+export const stockCountLines = pgTable("stock_count_lines", {
+  id: serial().primaryKey(),
+  countId: integer("count_id").notNull(),
+  productId: integer("product_id").notNull(),
+  name: text().notNull().default(""),
+  expected: integer().notNull(),
+  counted: integer().notNull(),
+  diff: integer().notNull(),
+  unitCostCents: integer("unit_cost_cents").notNull().default(0),
+  reason: text().notNull().default(""),
 });
