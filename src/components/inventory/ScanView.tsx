@@ -498,11 +498,11 @@ export function ScanView({
           )}
         </p>
         <ToolRow label="More ways to log stock" className="justify-center mt-4">
-          <ToolButton icon={<Camera size={24} />} color="bg-action" label="Snap & log" onClick={startPhoto} />
+          <ToolButton icon={<Camera size={24} />} tone="garnet" label="Snap & log" onClick={startPhoto} />
           {onReceiveDelivery && (
-            <ToolButton icon={<PackagePlus size={24} />} color="bg-good" label="Check in delivery" onClick={onReceiveDelivery} />
+            <ToolButton icon={<PackagePlus size={24} />} tone="green" label="Check in delivery" onClick={onReceiveDelivery} />
           )}
-          <ToolButton icon={<FileSpreadsheet size={24} />} color="bg-gold" label="Sales report" onClick={() => setSalesOpen(true)} />
+          <ToolButton icon={<FileSpreadsheet size={24} />} tone="teal" label="Sales report" onClick={() => setSalesOpen(true)} />
         </ToolRow>
         <p className="m-0 text-[12px] text-ink-2 text-center max-w-[420px] mx-auto">
           Snap a photo of the SKU or label, check a delivery in from its invoice, or upload sales from another booking app.

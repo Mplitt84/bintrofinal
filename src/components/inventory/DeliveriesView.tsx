@@ -80,7 +80,7 @@ export function DeliveriesView({
       <PageHead
         title="Deliveries"
         lead="Orders you've sent, waiting to arrive. Check each delivery in from the invoice in seconds."
-        action={<ToolButton icon={<PackagePlus size={24} />} color="bg-good" label="Receive delivery" onClick={() => setReceiving({ order: null })} />}
+        action={<ToolButton icon={<PackagePlus size={24} />} tone="green" label="Receive delivery" onClick={() => setReceiving({ order: null })} />}
       />
 
       <StatGrid>
