@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Pencil, Search } from 'lucide-react'
+import { CircleMinus, ClipboardCheck, Copy, Gauge, Pencil, Search, Tag } from 'lucide-react'
 import type { Product, Stats } from './types'
 import { createProduct, deleteProduct, linkBarcodeToProduct, mergeProducts, updateProduct } from '@/server/inventory.functions'
 import { Sheet } from '@/components/ui/Sheet'
@@ -72,26 +72,16 @@ export function InventoryView({
         <StatTile label="Out of stock" value={stats.outOfStock} tone={stats.outOfStock > 0 ? 'bad' : 'good'} />
       </StatGrid>
 
-      <div className="flex gap-2 overflow-x-auto pb-1 mb-3" role="group" aria-label="Keep your stock accurate">
-        <button type="button" className="chip" onClick={() => setTool('count')}>
-          Count stock
-        </button>
-        <button type="button" className="chip !bg-gold-tint !text-gold-ink" onClick={() => setTool('smartpar')}>
-          Smart par
-        </button>
+      <div className="flex gap-4 overflow-x-auto pb-2 mb-3 -mx-1 px-1" role="group" aria-label="Keep your stock accurate">
+        <ToolButton icon={<ClipboardCheck size={24} />} color="bg-action" label="Count stock" onClick={() => setTool('count')} />
+        <ToolButton icon={<Gauge size={24} />} color="bg-gold" label="Smart par" onClick={() => setTool('smartpar')} />
         {negativeIds.length > 0 && (
-          <button type="button" className="chip !bg-bad-tint !text-bad" onClick={() => setTool('negatives')}>
-            Fix {negativeIds.length} negative count{negativeIds.length === 1 ? '' : 's'}
-          </button>
+          <ToolButton icon={<CircleMinus size={24} />} color="bg-bad" label="Fix negatives" badge={negativeIds.length} onClick={() => setTool('negatives')} />
         )}
         {missingCosts > 0 && (
-          <button type="button" className="chip !bg-warn-tint !text-warn" onClick={() => setTool('costs')}>
-            Fill {missingCosts} missing cost{missingCosts === 1 ? '' : 's'}
-          </button>
+          <ToolButton icon={<Tag size={24} />} color="bg-warn" label="Missing costs" badge={missingCosts} onClick={() => setTool('costs')} />
         )}
-        <button type="button" className="chip" onClick={() => setTool('duplicates')}>
-          Find duplicates
-        </button>
+        <ToolButton icon={<Copy size={24} />} color="bg-royal-2" label="Duplicates" onClick={() => setTool('duplicates')} />
       </div>
 
       <CountSheet
@@ -264,5 +254,41 @@ export function InventoryView({
         )}
       </Sheet>
     </div>
+  )
+}
+
+/** Round, bold tool button with its label underneath (and a count badge when there's something to fix). */
+function ToolButton({
+  icon,
+  color,
+  label,
+  badge,
+  onClick,
+}: {
+  icon: React.ReactNode
+  color: string
+  label: string
+  badge?: number
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={badge ? `${label}: ${badge}` : label}
+      className="group flex flex-col items-center gap-1.5 shrink-0 w-[76px] bg-transparent border-0 p-0 cursor-pointer"
+    >
+      <span
+        className={`relative grid place-items-center w-14 h-14 rounded-full text-white ${color} shadow-[0_6px_14px_-6px_rgba(0,0,0,0.45)] ring-4 ring-white transition-transform group-hover:-translate-y-0.5 group-active:scale-95`}
+      >
+        {icon}
+        {badge ? (
+          <span className="absolute -top-1 -right-1 min-w-[22px] h-[22px] px-1 rounded-full bg-white text-ink text-[11px] font-extrabold grid place-items-center border-2 border-current shadow-sm">
+            {badge}
+          </span>
+        ) : null}
+      </span>
+      <span className="text-[12px] font-semibold text-ink leading-tight text-center">{label}</span>
+    </button>
   )
 }
