@@ -14,6 +14,8 @@ import {
   saveCounts,
   setPars,
   undoPars,
+  getCategoryList,
+  deleteCategory,
 } from '@/server/tidy.functions'
 import type { CategoryGroup, DuplicateGroup, SmartParResult } from '@/lib/tidy'
 import { useBusiness } from '@/components/business/BusinessContext'
@@ -694,6 +696,105 @@ export function CategoryCleanup({ onChanged }: { onChanged?: () => void | Promis
             <button type="button" className="btn btn-primary btn-sm" disabled={busy !== null} onClick={() => merge(i, g)}>
               {busy === i ? 'Merging…' : `Use “${(pick[i] ?? g.names[0].name).trim()}” for all ${g.total}`}
             </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/* ------------------------------------------------------------ All categories */
+
+/**
+ * Settings → Categories: every category in use, with a Delete that moves its
+ * products to another category first (or leaves them with none).
+ */
+export function CategoryList({ onChanged }: { onChanged?: () => void | Promise<void> }) {
+  const toast = useToast()
+  const [list, setList] = useState<{ name: string; products: number; saved: boolean }[] | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [moveTo, setMoveTo] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    getCategoryList()
+      .then(setList)
+      .catch(() => setList([]))
+  }, [])
+
+  async function confirm(name: string) {
+    setBusy(true)
+    try {
+      const r = await deleteCategory({ data: { name, moveTo } })
+      setList(r.list)
+      setDeleting(null)
+      toast(
+        r.moved
+          ? `Deleted “${name}”. ${r.moved} product${r.moved === 1 ? '' : 's'} moved to ${moveTo ? `“${moveTo}”` : 'no category'}.`
+          : `Deleted “${name}”.`,
+      )
+      await onChanged?.()
+    } catch {
+      toast("Couldn't delete that category. Try again.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!list || list.length === 0) return null
+
+  return (
+    <section className="bg-white border border-line rounded-2xl p-4 mb-5">
+      <h3 className="m-0 mb-1 text-base font-bold">All categories in use</h3>
+      <p className="m-0 mb-3 text-sm text-ink-2">Delete one you don't need. Its products move to the category you pick, so nothing is lost.</p>
+      <ul className="list-none m-0 p-0">
+        {list.map((c) => (
+          <li key={c.name} className="py-2.5 border-b border-line last:border-b-0">
+            <div className="flex items-center gap-3">
+              <span className="flex-1 min-w-0">
+                <span className="font-semibold block truncate">{c.name}</span>
+                <span className="text-[12px] text-ink-2">{c.products ? `${c.products} product${c.products === 1 ? '' : 's'}` : 'No products'}</span>
+              </span>
+              {deleting !== c.name && (
+                <button
+                  type="button"
+                  className="btn btn-text btn-sm !text-bad"
+                  onClick={() => {
+                    setDeleting(c.name)
+                    setMoveTo('')
+                  }}
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+            {deleting === c.name && (
+              <div className="mt-2 rounded-xl bg-bad-tint p-3 text-sm">
+                {c.products > 0 && (
+                  <label className="block mb-2">
+                    Move its {c.products} product{c.products === 1 ? '' : 's'} to
+                    <select className="field-input !py-2 mt-1" value={moveTo} onChange={(e) => setMoveTo(e.target.value)}>
+                      <option value="">No category</option>
+                      {list
+                        .filter((o) => o.name !== c.name)
+                        .map((o) => (
+                          <option key={o.name} value={o.name}>
+                            {o.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
+                <div className="flex gap-2">
+                  <button type="button" className="btn btn-danger btn-sm" disabled={busy} onClick={() => confirm(c.name)}>
+                    {busy ? 'Deleting…' : `Delete “${c.name}”`}
+                  </button>
+                  <button type="button" className="btn btn-tonal btn-sm" disabled={busy} onClick={() => setDeleting(null)}>
+                    Keep it
+                  </button>
+                </div>
+              </div>
+            )}
           </li>
         ))}
       </ul>

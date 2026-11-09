@@ -16,6 +16,8 @@ export const products = pgTable("products", {
   maxQty: integer("max_qty").notNull().default(0),
   /** Units per case the vendor sells (wine 12, sparkling water 24). Orders round up to whole cases. 1 = single units. */
   packSize: integer("pack_size").notNull().default(1),
+  /** Expiry: "" = not set, "none" = doesn't expire, or a YYYY-MM-DD date. */
+  expiresOn: text("expires_on").notNull().default(""),
   unitCostCents: integer("unit_cost_cents").notNull().default(0),
   /** What the business sells it for. 0 when it's backbar / not sold. */
   retailPriceCents: integer("retail_price_cents").notNull().default(0),
