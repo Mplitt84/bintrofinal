@@ -3,6 +3,7 @@ import { ArrowUpFromLine, Check, ExternalLink, Mail, Plug, RefreshCw, Trash2, Us
 import type { IntegrationStatus, Product, TeamMember } from '@/components/inventory/types'
 import { ImportView } from '@/components/business/ImportView'
 import { SetupCheck } from '@/components/business/SetupCheck'
+import { ConnectionDirectory } from '@/components/business/ConnectionDirectory'
 import { LEGAL_LINKS } from '@/components/legal/LegalPage'
 import { AppearanceSettings } from '@/components/business/AppearanceSettings'
 import { ScannerSettings } from '@/components/business/ScannerSettings'
@@ -137,7 +138,12 @@ export function SettingsView({
           <ImportView products={products} staffName={staffName} onChanged={onChanged} />
         </PlanGate>
       )}
-      {section === 'integrations' && <Integrations onChanged={onChanged} />}
+      {section === 'integrations' && (
+        <>
+          <Integrations onChanged={onChanged} />
+          <ConnectionDirectory />
+        </>
+      )}
       <nav className="mt-10 pt-4 border-t border-line flex flex-wrap gap-x-4 gap-y-1 text-[13px]" aria-label="Legal">
         {LEGAL_LINKS.map((l) => (
           <a key={l.href} href={l.href} target="_blank" rel="noreferrer" className="text-ink-2 font-semibold no-underline">

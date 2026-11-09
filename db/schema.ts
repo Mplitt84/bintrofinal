@@ -330,3 +330,14 @@ export const stockCountLines = pgTable("stock_count_lines", {
   unitCostCents: integer("unit_cost_cents").notNull().default(0),
   reason: text().notNull().default(""),
 });
+
+/** Connections a business asked Bintro to build (demand for partnership talks). */
+export const connectionRequests = pgTable("connection_requests", {
+  id: serial().primaryKey(),
+  /** Directory id (e.g. "vagaro") or "other". */
+  platform: text().notNull(),
+  /** The app's name as typed, for "other". */
+  name: text().notNull().default(""),
+  staffName: text("staff_name").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
