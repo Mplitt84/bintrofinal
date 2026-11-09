@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/Toast'
 import { isBelowPar } from '@/lib/inventory-defaults'
 import { COUNT_REASONS, lastCountedLabel, needsRecount, type CountLineDetail, type CountSummary } from '@/lib/counts'
 import { approveStockCount, getCountHistory, getCountLines } from '@/server/counts.functions'
+import { CountDetailSheet } from '@/components/inventory/CountDetailSheet'
 
 export type CountScopeKind = 'all' | 'category' | 'vendor' | 'below' | 'negatives' | 'pick'
 type Stage = 'setup' | 'count' | 'review' | 'done' | 'history'
@@ -70,6 +71,7 @@ export function CountReconcileSheet({
   const [result, setResult] = useState<CountSummary | null>(null)
   const [history, setHistory] = useState<CountSummary[] | null>(null)
   const [openCount, setOpenCount] = useState<{ id: number; lines: CountLineDetail[] | null } | null>(null)
+  const [undoCountId, setUndoCountId] = useState<number | null>(null)
   const [draftFound, setDraftFound] = useState<Draft | null>(null)
   const scanRef = useRef<HTMLInputElement>(null)
   const inputRefs = useRef<Record<number, HTMLInputElement | null>>({})
@@ -263,6 +265,7 @@ export function CountReconcileSheet({
   ]
 
   return (
+    <>
     <Sheet
       open={open}
       onClose={onClose}
@@ -623,6 +626,7 @@ export function CountReconcileSheet({
                       <b className="text-sm">
                         #{c.id} · {c.scope}
                         {c.blind && <span className="text-ink-2 font-normal"> · blind</span>}
+                        {c.undoneAt && <span className="ml-1.5 rounded-full bg-surface px-2 py-[1px] text-[11px] text-ink-2">Undone</span>}
                       </b>
                       <span className={`num text-sm font-bold ${c.valueDiffCents < 0 ? 'text-bad' : ''}`}>{money(c.valueDiffCents)}</span>
                     </div>
@@ -652,6 +656,11 @@ export function CountReconcileSheet({
                             </div>
                           ))
                       )}
+                      {!c.undoneAt && c.itemsChanged > 0 && (
+                        <button type="button" className="btn btn-text btn-sm !px-0 mt-1.5 !text-bad" onClick={() => setUndoCountId(c.id)}>
+                          Undo this count…
+                        </button>
+                      )}
                     </div>
                   )}
                 </li>
@@ -677,5 +686,16 @@ export function CountReconcileSheet({
         </SheetActions>
       )}
     </Sheet>
+    <CountDetailSheet
+      countId={undoCountId}
+      staffName={staffName}
+      onClose={() => setUndoCountId(null)}
+      onUndone={async () => {
+        setOpenCount(null)
+        setHistory(await getCountHistory().catch(() => null))
+        await onDone()
+      }}
+    />
+    </>
   )
 }

@@ -3,6 +3,8 @@ import { ArrowDownToLine, ChevronRight, ClipboardCheck, ShoppingBag, Sparkles, U
 import type { MovementRow, Product } from '@/components/inventory/types'
 import { EmptyState, Thumb, dollarsShort, timeAgo } from '@/components/ui/bits'
 import { getOverview } from '@/server/overview.functions'
+import { countIdFromNote } from '@/lib/counts'
+import { CountDetailSheet } from '@/components/inventory/CountDetailSheet'
 import {
   OVERVIEW_PERIODS,
   changeLabel,
@@ -43,7 +45,12 @@ export function ScanOverview({
   belowParCount,
   onOpenRestock,
   onUndo,
+  staffName,
+  onChanged,
 }: {
+  staffName: string
+  /** Reload after a count is undone. */
+  onChanged: () => void | Promise<void>
   recent: MovementRow[]
   products: Product[]
   belowParCount: number
@@ -54,6 +61,7 @@ export function ScanOverview({
   const [data, setData] = useState<Overview | null>(null)
   const [failed, setFailed] = useState(false)
   const [filter, setFilter] = useState<Filter>('all')
+  const [openCount, setOpenCount] = useState<number | null>(null)
 
   useEffect(() => {
     try {
@@ -249,7 +257,18 @@ export function ScanOverview({
                   {m.delta}
                 </b>
                 {isCount ? (
-                  <span className="w-10" aria-hidden="true" />
+                  countIdFromNote(m.note) ? (
+                    <button
+                      onClick={() => setOpenCount(countIdFromNote(m.note))}
+                      aria-label={`Open the count for ${m.productName}`}
+                      title="See this count / undo it"
+                      className="w-10 h-10 rounded-full border-0 bg-transparent grid place-items-center text-ink-2 cursor-pointer hover:bg-surface"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  ) : (
+                    <span className="w-10" aria-hidden="true" />
+                  )
                 ) : (
                   <button
                     onClick={() => onUndo(m)}
@@ -265,6 +284,7 @@ export function ScanOverview({
           })}
         </ul>
       )}
+      <CountDetailSheet countId={openCount} staffName={staffName} onClose={() => setOpenCount(null)} onUndone={onChanged} />
     </div>
   )
 }

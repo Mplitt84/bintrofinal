@@ -3,7 +3,7 @@
  * difference gets an adjust movement noting the count and the reason, and the
  * count is saved with every line so it can be reviewed later. Server-only.
  */
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { products, stockCountLines, stockCounts } from "../../db/schema.js";
 import { applyMovement, flushSquareSoon } from "./inventory.server.js";
@@ -83,7 +83,67 @@ function summarize(c: typeof stockCounts.$inferSelect): CountSummary {
     unitsShort: c.unitsShort,
     valueDiffCents: c.valueDiffCents,
     createdAt: c.createdAt.toISOString(),
+    undoneAt: c.undoneAt?.toISOString() ?? null,
+    undoneBy: c.undoneBy,
   };
+}
+
+export async function countWithLines(countId: number) {
+  const [count] = await db.select().from(stockCounts).where(eq(stockCounts.id, countId));
+  if (!count) return null;
+  return { count: summarize(count), lines: await countLines(countId) };
+}
+
+/**
+ * Reverses a whole approved count: every product it changed moves back by the
+ * same amount (an adjust movement "Undo count #id", which Square follows), the
+ * count is marked undone, and "last counted" falls back to the count before it.
+ * Relative, so scans made since the count are kept.
+ */
+export async function undoCount(countId: number, staffName: string) {
+  const [count] = await db
+    .update(stockCounts)
+    .set({ undoneAt: new Date(), undoneBy: staffName.trim() })
+    .where(and(eq(stockCounts.id, countId), isNull(stockCounts.undoneAt)))
+    .returning();
+  if (!count) throw new Error("That count was already undone.");
+
+  const lines = await db.select().from(stockCountLines).where(eq(stockCountLines.countId, countId));
+  const ids = lines.map((l) => l.productId);
+  const existing = new Set(
+    ids.length ? (await db.select({ id: products.id }).from(products).where(inArray(products.id, ids))).map((p) => p.id) : [],
+  );
+  let reversed = 0;
+  for (const l of lines) {
+    if (l.diff === 0 || !existing.has(l.productId)) continue;
+    await applyMovement({
+      productId: l.productId,
+      type: "adjust",
+      delta: -l.diff,
+      staffName,
+      note: `Undo count #${countId}`,
+      square: "later",
+    });
+    reversed++;
+  }
+
+  // "Last counted" goes back to the latest other count (not undone) that included the product.
+  for (const id of ids) {
+    if (!existing.has(id)) continue;
+    const [prev] = await db
+      .select({ at: stockCounts.createdAt, by: stockCounts.staffName })
+      .from(stockCountLines)
+      .innerJoin(stockCounts, eq(stockCounts.id, stockCountLines.countId))
+      .where(and(eq(stockCountLines.productId, id), ne(stockCounts.id, countId), isNull(stockCounts.undoneAt)))
+      .orderBy(desc(stockCounts.createdAt))
+      .limit(1);
+    await db
+      .update(products)
+      .set({ lastCountedAt: prev?.at ?? null, lastCountedBy: prev?.by ?? "" })
+      .where(eq(products.id, id));
+  }
+  await flushSquareSoon();
+  return { count: summarize(count), reversed };
 }
 
 export async function recentCounts(limit = 20): Promise<CountSummary[]> {

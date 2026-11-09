@@ -1,7 +1,7 @@
 import { requireUser } from "./auth.middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { approveCount, countLines, recentCounts } from "./counts.server.js";
+import { approveCount, countLines, countWithLines, recentCounts, undoCount } from "./counts.server.js";
 
 /** Approves a reviewed count: adjusts stock with the reason and saves it to count history. */
 export const approveStockCount = createServerFn({ method: "POST" }).middleware([requireUser])
@@ -23,3 +23,19 @@ export const getCountHistory = createServerFn({ method: "GET" }).middleware([req
 export const getCountLines = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ countId: z.number().int().positive() }))
   .handler(async ({ data }) => countLines(data.countId));
+
+/** One count with its lines (for a Count row in Recent). */
+export const getCount = createServerFn({ method: "POST" }).middleware([requireUser])
+  .inputValidator(z.object({ countId: z.number().int().positive() }))
+  .handler(async ({ data }) => countWithLines(data.countId));
+
+/** Reverses a whole count (every product it changed) and marks it undone. */
+export const undoStockCount = createServerFn({ method: "POST" }).middleware([requireUser])
+  .inputValidator(z.object({ countId: z.number().int().positive(), staffName: z.string().max(60) }))
+  .handler(async ({ data }) => {
+    try {
+      return { ok: true as const, ...(await undoCount(data.countId, data.staffName)) };
+    } catch (error) {
+      return { ok: false as const, message: error instanceof Error ? error.message : "Couldn't undo that count." };
+    }
+  });

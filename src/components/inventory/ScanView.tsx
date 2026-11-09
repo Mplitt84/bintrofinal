@@ -513,6 +513,8 @@ export function ScanView({
         belowParCount={belowParCount}
         onOpenRestock={onOpenRestock}
         onUndo={undo}
+        staffName={staffName}
+        onChanged={safeRefresh}
       />
 
       <CameraScanner

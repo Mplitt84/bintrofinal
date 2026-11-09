@@ -316,6 +316,9 @@ export const stockCounts = pgTable("stock_counts", {
   valueDiffCents: integer("value_diff_cents").notNull().default(0),
   note: text().notNull().default(""),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  /** Set when the whole count was reversed with "Undo this count". */
+  undoneAt: timestamp("undone_at"),
+  undoneBy: text("undone_by").notNull().default(""),
 });
 
 /** One product in an approved count: expected vs counted, the reason for any difference. */

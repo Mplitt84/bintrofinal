@@ -31,6 +31,9 @@ export type CountSummary = {
   unitsShort: number;
   valueDiffCents: number;
   createdAt: string;
+  /** Set when the count was reversed. */
+  undoneAt: string | null;
+  undoneBy: string;
 };
 
 export type CountLineDetail = {
@@ -48,4 +51,10 @@ export function lastCountedLabel(p: { lastCountedAt: string | Date | null; lastC
   if (!p.lastCountedAt) return 'Never counted';
   const when = new Date(p.lastCountedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   return `Last counted ${when}${p.lastCountedBy ? ` by ${p.lastCountedBy}` : ''}`;
+}
+
+/** The count a movement belongs to, from its note ("Count #12 · Damaged" / "Undo count #12"). */
+export function countIdFromNote(note: string) {
+  const m = /count #(\d+)/i.exec(note);
+  return m ? Number(m[1]) : null;
 }
