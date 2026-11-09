@@ -1,14 +1,22 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { applyCounts, applyPars, categoryGroups, duplicateGroups, mergeCategoryNames, smartPars } from "./tidy.server.js";
+import { applyCounts, applyPars, categoryGroups, duplicateGroups, mergeCategoryNames, smartPars, undoParChange } from "./tidy.server.js";
 
 export const getSmartPars = createServerFn({ method: "GET" }).handler(async () => smartPars());
 
 export const setPars = createServerFn({ method: "POST" })
   .inputValidator(
-    z.object({ items: z.array(z.object({ productId: z.number().int().positive(), par: z.number().int().min(0).max(999), max: z.number().int().min(0).max(100_000).optional() })).max(2000) }),
+    z.object({
+      staffName: z.string().max(60).optional(),
+      items: z.array(z.object({ productId: z.number().int().positive(), par: z.number().int().min(0).max(999), max: z.number().int().min(0).max(100_000).optional() })).max(2000),
+    }),
   )
-  .handler(async ({ data }) => applyPars(data.items));
+  .handler(async ({ data }) => applyPars(data.items, data.staffName ?? ""));
+
+/** Restores the levels from before a Smart par apply. */
+export const undoPars = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ batchId: z.string().min(1).max(80) }))
+  .handler(async ({ data }) => undoParChange(data.batchId));
 
 export const getCategoryGroups = createServerFn({ method: "GET" }).handler(async () => categoryGroups());
 
