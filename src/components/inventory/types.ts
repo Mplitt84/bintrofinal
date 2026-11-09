@@ -8,6 +8,10 @@ export type Product = {
   size: string;
   qty: number;
   reorderThreshold: number;
+  /** "Order up to" level (0 = order back to par). */
+  maxQty: number;
+  /** Units per case the vendor sells; orders round up to whole cases. */
+  packSize: number;
   unitCostCents: number;
   retailPriceCents: number;
   squareVariationId: string;

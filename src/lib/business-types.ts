@@ -169,6 +169,8 @@ export type BusinessProfile = {
   fastMoverAlertEmail: boolean
   /** Display color palette id (see src/lib/palettes.ts). */
   palette: string
+  /** How often orders are placed, in days (Smart par's order cycle). */
+  orderEveryDays: number
 }
 
 export const EMPTY_PROFILE: BusinessProfile = {
@@ -184,6 +186,7 @@ export const EMPTY_PROFILE: BusinessProfile = {
   monthlyReportEmail: true,
   fastMoverAlertEmail: true,
   palette: 'burgundy-olive',
+  orderEveryDays: 7,
 }
 
 export function displayBusinessName(profile: { name: string } | null | undefined) {

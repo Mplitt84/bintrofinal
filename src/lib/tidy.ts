@@ -5,10 +5,35 @@ export type ParSuggestion = {
   name: string;
   brand: string;
   size: string;
+  /** Reorder at (par) now and suggested. */
   current: number;
   suggested: number;
-  /** Plain-language reason, e.g. "6 used in 30 days · 7-day delivery + 1 week". */
+  /** Order up to now and suggested (0 = order back to par). */
+  currentMax: number;
+  suggestedMax: number;
+  /** Units per case, used to round "Order up to". */
+  packSize: number;
+  /** Average units used or sold per day. */
+  perDay: number;
+  /** Plain-language reason, e.g. "≈ 1.4 a day · 5-day delivery from SalonCentric · steady". */
   reason: string;
+};
+
+/** Stock sitting well above "Order up to": cash tied up on the shelf. */
+export type Overstock = {
+  productId: number;
+  name: string;
+  onHand: number;
+  /** Days the shelf would last at the current pace. */
+  daysOfStock: number;
+  /** Cost of the units above "Order up to". */
+  extraCents: number;
+};
+
+export type SmartParResult = {
+  suggestions: ParSuggestion[];
+  overstock: Overstock[];
+  orderEveryDays: number;
 };
 
 export type CategoryGroup = {

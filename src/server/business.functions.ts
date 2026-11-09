@@ -52,6 +52,7 @@ const ProfileSchema = z.object({
   monthlyReportEmail: z.boolean().optional(),
   fastMoverAlertEmail: z.boolean().optional(),
   palette: z.string().max(40).optional(),
+  orderEveryDays: z.number().int().min(1).max(90).optional(),
 });
 
 export const updateBusinessProfile = createServerFn({ method: "POST" })

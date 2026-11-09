@@ -4,7 +4,7 @@ import type { Product, Stats } from './types'
 import { createProduct, deleteProduct, linkBarcodeToProduct, mergeProducts, updateProduct } from '@/server/inventory.functions'
 import { Sheet } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
-import { CountSheet, DuplicatesSheet, FillCostsSheet } from './TidyTools'
+import { CountSheet, DuplicatesSheet, FillCostsSheet, SmartParSheet } from './TidyTools'
 import { EmptyState, PageHead, StatGrid, StatTile, Thumb, centsToDollars, dollarsShort } from '@/components/ui/bits'
 import { ProductForm } from './ProductForm'
 import { isBelowPar, stockStatus } from '@/lib/inventory-defaults'
@@ -32,7 +32,7 @@ export function InventoryView({
   const [editing, setEditing] = useState<Product | null>(null)
   const [adding, setAdding] = useState(false)
   // Clean-up tools: count a shelf, fix negatives, duplicates, missing costs.
-  const [tool, setTool] = useState<null | 'count' | 'negatives' | 'duplicates' | 'costs'>(null)
+  const [tool, setTool] = useState<null | 'count' | 'negatives' | 'duplicates' | 'costs' | 'smartpar'>(null)
   const negativeIds = useMemo(() => products.filter((p) => p.qty < 0).map((p) => p.id), [products])
   const missingCosts = useMemo(() => products.filter((p) => !p.unitCostCents).length, [products])
 
@@ -76,6 +76,9 @@ export function InventoryView({
         <button type="button" className="chip" onClick={() => setTool('count')}>
           Count stock
         </button>
+        <button type="button" className="chip !bg-gold-tint !text-gold-ink" onClick={() => setTool('smartpar')}>
+          Smart par
+        </button>
         {negativeIds.length > 0 && (
           <button type="button" className="chip !bg-bad-tint !text-bad" onClick={() => setTool('negatives')}>
             Fix {negativeIds.length} negative count{negativeIds.length === 1 ? '' : 's'}
@@ -99,6 +102,7 @@ export function InventoryView({
         prefillIds={tool === 'negatives' ? negativeIds : undefined}
         onDone={onChanged}
       />
+      <SmartParSheet open={tool === 'smartpar'} onClose={() => setTool(null)} onDone={onChanged} />
       <DuplicatesSheet open={tool === 'duplicates'} onClose={() => setTool(null)} onDone={onChanged} />
       <FillCostsSheet open={tool === 'costs'} onClose={() => setTool(null)} products={products} onDone={onChanged} />
 

@@ -3,7 +3,14 @@
 /** On-hand count at or below which a product is flagged for restock. */
 export const DEFAULT_REORDER_THRESHOLD = 2;
 
-type StockLevels = { qty: number | null | undefined; reorderThreshold: number | null | undefined };
+type StockLevels = {
+  qty: number | null | undefined;
+  reorderThreshold: number | null | undefined;
+  /** "Order up to" level; 0 or missing = order back to par. */
+  maxQty?: number | null;
+  /** Units per case; orders round up to whole cases. */
+  packSize?: number | null;
+};
 
 /** On-hand count as a whole number; a blank or missing quantity counts as 0. */
 export function onHandQty(product: { qty: number | null | undefined }) {
@@ -63,12 +70,30 @@ export const MAX_ORDER_QTY = 999;
 /** Heading used when a product has neither a vendor nor a brand on file. */
 export const UNASSIGNED_VENDOR_LABEL = "Unassigned";
 
+/** Units per case (at least 1). */
+export function casePack(product: { packSize?: number | null }) {
+  const n = Number(product.packSize);
+  return Number.isFinite(n) && n > 1 ? Math.trunc(n) : 1;
+}
+
+/** The level an order fills back up to: "Order up to" when set (never below par), else par. */
+export function orderUpTo(product: StockLevels) {
+  const max = Number(product.maxQty);
+  const par = reorderPoint(product);
+  return Number.isFinite(max) && max > 0 ? Math.max(Math.trunc(max), par) : par;
+}
+
 /**
- * Units suggested for a purchase-order line. Mirrors the restock list: enough to
- * reach par, but never zero, so an at-par item still orders one unit.
+ * Units suggested for a purchase-order line: enough to fill back up to "Order up to"
+ * (or par), minus anything already on an open order, in whole cases. Rounds *down* to
+ * whole cases so the shelf never goes past "Order up to" (small spaces, tight cash),
+ * but always at least one case. Returns 0 when open orders already cover it.
  */
-export function suggestedOrderQty(product: StockLevels) {
-  return unitsToPar(product) || 1;
+export function suggestedOrderQty(product: StockLevels, onOrder = 0) {
+  const pack = casePack(product);
+  const need = orderUpTo(product) - Math.max(0, onHandQty(product)) - Math.max(0, onOrder);
+  if (need <= 0) return onOrder > 0 ? 0 : pack;
+  return Math.max(1, Math.floor(need / pack)) * pack;
 }
 
 /** Keeps a hand-typed order quantity a whole number within 1..MAX_ORDER_QTY. */

@@ -70,6 +70,8 @@ export async function insertProduct(data: {
   size?: string;
   qty?: number;
   reorderThreshold?: number;
+  maxQty?: number;
+  packSize?: number;
   unitCostCents?: number;
   retailPriceCents?: number;
   imageUrl?: string;
@@ -85,6 +87,8 @@ export async function insertProduct(data: {
       size: data.size ?? "",
       qty: data.qty ?? 0,
       reorderThreshold: data.reorderThreshold ?? DEFAULT_REORDER_THRESHOLD,
+      maxQty: Math.max(0, data.maxQty ?? 0),
+      packSize: Math.max(1, data.packSize ?? 1),
       unitCostCents: data.unitCostCents ?? 0,
       retailPriceCents: data.retailPriceCents ?? 0,
       imageUrl: data.imageUrl ?? "",
@@ -112,6 +116,8 @@ export async function updateProductFields(
     vendor: string;
     size: string;
     reorderThreshold: number;
+    maxQty: number;
+    packSize: number;
     unitCostCents: number;
     retailPriceCents: number;
     imageUrl: string;

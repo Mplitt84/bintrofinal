@@ -28,6 +28,10 @@ export type ProductFormValues = {
   size: string
   qty: number
   reorderThreshold: number
+  /** "Order up to" level; 0 = order back to par. */
+  maxQty: number
+  /** Units per case; orders round up to whole cases. */
+  packSize: number
   unitCostCents: number
   retailPriceCents: number
   imageUrl: string
@@ -93,6 +97,8 @@ export function ProductForm({
   const [size, setSize] = useState(product?.size ?? initialDetails?.size ?? '')
   const [qty, setQty] = useState(String(product?.qty ?? 0))
   const [par, setPar] = useState(String(product?.reorderThreshold ?? DEFAULT_REORDER_THRESHOLD))
+  const [maxQty, setMaxQty] = useState(product?.maxQty ? String(product.maxQty) : '')
+  const [packSize, setPackSize] = useState(product && product.packSize > 1 ? String(product.packSize) : '')
   const [cost, setCost] = useState(product?.unitCostCents ? centsToDollars(product.unitCostCents) : '')
   const [retail, setRetail] = useState(product?.retailPriceCents ? centsToDollars(product.retailPriceCents) : '')
   const [price, setPrice] = useState<PriceState>({ kind: 'idle' })
@@ -209,6 +215,7 @@ export function ProductForm({
     setSize((v) => v || match.size)
     setVendor((v) => v || match.vendor)
     setPar((v) => (product ? v : String(match.reorderThreshold)))
+    setPackSize((v) => v || (match.packSize > 1 ? String(match.packSize) : ''))
     setCost((v) => v || (match.unitCostCents ? centsToDollars(match.unitCostCents) : ''))
     setRetail((v) => v || (match.retailPriceCents ? centsToDollars(match.retailPriceCents) : ''))
     if (match.unitCostCents || match.retailPriceCents) autoPriced.current = true
@@ -479,6 +486,8 @@ export function ProductForm({
         size: size.trim(),
         qty: Math.trunc(Number(qty) || 0),
         reorderThreshold: Math.max(0, Math.trunc(Number(par) || 0)),
+        maxQty: Math.max(0, Math.trunc(Number(maxQty) || 0)),
+        packSize: Math.max(1, Math.trunc(Number(packSize) || 1)),
         unitCostCents: Math.max(0, Math.round((Number(cost) || 0) * 100)),
         retailPriceCents: Math.max(0, Math.round((Number(retail) || 0) * 100)),
         imageUrl,
@@ -829,6 +838,35 @@ export function ProductForm({
           />
         </Field>
       </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Order up to" htmlFor="pf-max">
+          <input
+            id="pf-max"
+            className="field-input num"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            placeholder="Same as reorder"
+            value={maxQty}
+            onChange={(e) => setMaxQty(e.target.value)}
+          />
+        </Field>
+        <Field label="Case pack" htmlFor="pf-pack">
+          <input
+            id="pf-pack"
+            className="field-input num"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            placeholder="1 (single units)"
+            value={packSize}
+            onChange={(e) => setPackSize(e.target.value)}
+          />
+        </Field>
+      </div>
+      <p className="m-0 -mt-1 text-[12px] text-ink-2">
+        Reorder at: when to order. Order up to: the most worth having on your shelf, so orders refill to here. Case pack: how many come in a case (e.g. 12 wine, 24 sparkling water); orders round up to full cases. Smart par can set these for you.
+      </p>
       {barcodeLocked ? (
         <p className="text-ink-2 text-sm m-0">Barcode {barcode}</p>
       ) : (

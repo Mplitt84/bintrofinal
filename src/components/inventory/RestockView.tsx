@@ -71,7 +71,7 @@ export function RestockView({
         <BelowParView items={items} products={products} staffName={staffName} onChanged={onChanged} onBuildOrder={() => onMode('order')} onOrder={onOrder} />
       ) : mode === 'order' ? (
         <PlanGate feature="orders">
-          <PurchaseOrderView items={items} staffName={staffName} onChanged={onChanged} onOpenDeliveries={() => onMode('deliveries')} />
+          <PurchaseOrderView items={items} staffName={staffName} onChanged={onChanged} onOpenDeliveries={() => onMode('deliveries')} onOrder={onOrder} />
         </PlanGate>
       ) : (
         <PlanGate feature="orders">

@@ -5,25 +5,36 @@ import { applyImportLines } from "./import.server.js";
 import { findAllProducts, updateProductFields } from "./inventory.server.js";
 import { ordersOverview } from "./orders.server.js";
 import { vendorGroupLabel } from "../lib/inventory-defaults.js";
-import type { CategoryGroup, DuplicateGroup, ParSuggestion } from "../lib/tidy.js";
+import type { CategoryGroup, DuplicateGroup, Overstock, ParSuggestion, SmartParResult } from "../lib/tidy.js";
+import { findBusinessProfile } from "./business.server.js";
 
 const DAY = 86_400_000;
-/** Days of stock kept on top of the vendor's delivery time. */
-const BUFFER_DAYS = 7;
 /** Delivery time assumed until a vendor has deliveries checked in. */
 const DEFAULT_LEAD_DAYS = 7;
+/** Weeks of history used to measure how steady usage is. */
+const WEEKS = 12;
+/** Safety stock covers about 95% of weeks (z-score). */
+const SERVICE_Z = 1.65;
 
 /**
- * Smart par: how much to keep so you never run out before the next delivery.
- * par = units used per day (last 30 days, else 90) × (the vendor's real delivery
- * days + a week's buffer). Items untouched for 90 days (and older than 30 days)
- * get par 0, so they stop crowding the below-par list.
+ * Smart par: the least stock that still never runs out, for small shops with
+ * little shelf space and little cash.
+ *
+ * - Pace: units used or sold per day, weighted toward the last 30 days (65%) over 90 days (35%).
+ * - Reorder at (par) = pace × the vendor's real delivery days + safety stock. Safety stock
+ *   comes from how much weekly use swings (about 95% of weeks covered); with under 4 weeks of
+ *   history it's half the delivery time's use.
+ * - Order up to = par + pace × how often the business orders (`orderEveryDays`), rounded up to
+ *   whole cases. Ordering fills back to this level, so stock stays lean between orders.
+ * - Untouched for 90 days (and older than 30 days): par and order-up-to 0, so it stops alerting.
+ * Overstock: products holding more than 1.5× their order-up-to level, with the cash tied up.
  */
-export async function smartPars(): Promise<ParSuggestion[]> {
+export async function smartPars(): Promise<SmartParResult> {
   const now = Date.now();
   const since90 = new Date(now - 90 * DAY);
   const since30 = new Date(now - 30 * DAY);
-  const [all, usage, overview] = await Promise.all([
+  const sinceWeeks = new Date(now - WEEKS * 7 * DAY);
+  const [all, usage, weekly, overview, profile] = await Promise.all([
     findAllProducts(),
     db
       .select({
@@ -34,43 +45,105 @@ export async function smartPars(): Promise<ParSuggestion[]> {
       .from(movements)
       .where(and(eq(movements.type, "out"), gte(movements.createdAt, since90)))
       .groupBy(movements.productId),
+    db
+      .select({
+        productId: movements.productId,
+        week: sql<number>`floor(extract(epoch from (now() - ${movements.createdAt})) / 604800)::int`,
+        used: sql<number>`coalesce(sum(-${movements.delta}), 0)::int`,
+      })
+      .from(movements)
+      .where(and(eq(movements.type, "out"), gte(movements.createdAt, sinceWeeks)))
+      .groupBy(movements.productId, sql`2`),
     ordersOverview(),
+    findBusinessProfile(),
   ]);
   const used = new Map(usage.map((u) => [u.productId, u]));
+  const weeksByProduct = new Map<number, number[]>();
+  for (const w of weekly) {
+    if (w.week < 0 || w.week >= WEEKS) continue;
+    const arr = weeksByProduct.get(w.productId) ?? new Array(WEEKS).fill(0);
+    arr[w.week] = Math.max(0, w.used);
+    weeksByProduct.set(w.productId, arr);
+  }
   const leadByVendor = new Map(overview.vendors.filter((v) => v.avgDays !== null).map((v) => [v.vendor, v.avgDays!]));
+  const cycle = Math.max(1, profile.orderEveryDays || 7);
 
-  const out: ParSuggestion[] = [];
+  const suggestions: ParSuggestion[] = [];
+  const overstock: Overstock[] = [];
   for (const p of all) {
     const u = used.get(p.id);
     const used30 = Math.max(0, u?.used30 ?? 0);
     const used90 = Math.max(0, u?.used90 ?? 0);
+    const pack = Math.max(1, p.packSize || 1);
     const vendor = vendorGroupLabel(p).vendor;
     const knownLead = leadByVendor.get(vendor);
-    const leadDays = Math.max(1, Math.round(knownLead ?? DEFAULT_LEAD_DAYS));
+    const lead = Math.max(1, Math.round(knownLead ?? DEFAULT_LEAD_DAYS));
     const ageDays = (now - p.createdAt.getTime()) / DAY;
-    let suggested: number;
+
+    let par: number;
+    let max: number;
+    let perDay = 0;
     let reason: string;
-    if (used30 > 0) {
-      suggested = Math.max(1, Math.ceil((used30 / 30) * (leadDays + BUFFER_DAYS)));
-      reason = `${used30} used in 30 days · ${leadDays}-day delivery${knownLead ? ` from ${vendor}` : ""} + 1 week`;
-    } else if (used90 > 0) {
-      suggested = Math.max(1, Math.ceil((used90 / 90) * (leadDays + BUFFER_DAYS)));
-      reason = `${used90} used in 90 days · ${leadDays}-day delivery + 1 week`;
+    if (used90 > 0) {
+      perDay = used30 > 0 ? 0.65 * (used30 / 30) + 0.35 * (used90 / 90) : used90 / 90;
+      // How much a week's use swings, over the weeks the product has existed (up to 12).
+      const weeksKnown = Math.max(1, Math.min(WEEKS, Math.floor(ageDays / 7)));
+      const series = (weeksByProduct.get(p.id) ?? new Array(WEEKS).fill(0)).slice(0, weeksKnown);
+      const mean = series.reduce((a, b) => a + b, 0) / series.length;
+      const sd = Math.sqrt(series.reduce((a, b) => a + (b - mean) ** 2, 0) / series.length);
+      const safety = weeksKnown >= 4 ? SERVICE_Z * sd * Math.sqrt(lead / 7) : perDay * lead * 0.5;
+      par = Math.max(1, Math.ceil(perDay * lead + safety));
+      max = Math.ceil((par + perDay * cycle) / pack) * pack;
+      if (max <= par) max = Math.ceil((par + 1) / pack) * pack;
+      const steadiness = weeksKnown < 4 ? "new, extra cushion" : sd > mean ? "use swings a lot, extra cushion" : "steady";
+      reason = `≈ ${perDay >= 1 ? perDay.toFixed(1) : perDay.toFixed(2)} a day · ${lead}-day delivery${knownLead ? ` from ${vendor}` : " (assumed)"} · ${steadiness}`;
     } else if (ageDays >= 30) {
-      suggested = 0;
-      reason = "Not used in 90 days · no reorder alert";
+      par = 0;
+      max = 0;
+      reason = "Not used in 90 days · stops alerting";
     } else {
       continue; // Too new to judge.
     }
-    if (suggested !== p.reorderThreshold) {
-      out.push({ productId: p.id, name: p.name, brand: p.brand, size: p.size, current: p.reorderThreshold, suggested, reason });
+
+    if (par !== p.reorderThreshold || max !== p.maxQty) {
+      suggestions.push({
+        productId: p.id,
+        name: p.name,
+        brand: p.brand,
+        size: p.size,
+        current: p.reorderThreshold,
+        suggested: par,
+        currentMax: p.maxQty,
+        suggestedMax: max,
+        packSize: pack,
+        perDay,
+        reason,
+      });
+    }
+
+    const onHand = Math.max(0, p.qty);
+    if (perDay > 0 && max > 0 && onHand > max * 1.5) {
+      overstock.push({
+        productId: p.id,
+        name: p.name,
+        onHand,
+        daysOfStock: Math.round(onHand / perDay),
+        extraCents: (onHand - max) * p.unitCostCents,
+      });
     }
   }
-  return out.sort((a, b) => Math.abs(b.suggested - b.current) - Math.abs(a.suggested - a.current));
+  suggestions.sort((a, b) => Math.abs(b.suggested - b.current) - Math.abs(a.suggested - a.current) || b.perDay - a.perDay);
+  overstock.sort((a, b) => b.extraCents - a.extraCents);
+  return { suggestions, overstock: overstock.slice(0, 25), orderEveryDays: cycle };
 }
 
-export async function applyPars(items: { productId: number; par: number }[]) {
-  for (const item of items) await updateProductFields(item.productId, { reorderThreshold: item.par });
+export async function applyPars(items: { productId: number; par: number; max?: number }[]) {
+  for (const item of items) {
+    await updateProductFields(item.productId, {
+      reorderThreshold: item.par,
+      ...(item.max !== undefined ? { maxQty: item.max } : {}),
+    });
+  }
   return items.length;
 }
 

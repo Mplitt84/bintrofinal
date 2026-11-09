@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ClipboardList, Gauge, Mail, RefreshCw } from 'lucide-react'
 import type { Product } from './types'
 import { emailBelowPar } from '@/server/inventory.functions'
-import { STOCK_STATUS_LABEL, onHandQty, stockStatus, unitsToPar, type StockStatus } from '@/lib/inventory-defaults'
+import { STOCK_STATUS_LABEL, casePack, onHandQty, orderUpTo, stockStatus, suggestedOrderQty, type StockStatus } from '@/lib/inventory-defaults'
 import { SmartParSheet } from './TidyTools'
 import { useBusiness } from '@/components/business/BusinessContext'
 import { mailtoHref, openMailDraft, type MailDraft } from '@/lib/mail-draft'
@@ -46,8 +46,9 @@ export function BelowParView({
 
   const outOfStock = items.filter((p) => stockStatus(p) === 'out')
   const inStock = products.filter((p) => stockStatus(p) === 'in')
-  const unitsNeeded = items.reduce((sum, p) => sum + (unitsToPar(p) || 1), 0)
-  const restockCostCents = items.reduce((sum, p) => sum + (unitsToPar(p) || 1) * p.unitCostCents, 0)
+  const toOrder = (p: Product) => suggestedOrderQty(p, onOrder[p.id] ?? 0)
+  const unitsNeeded = items.reduce((sum, p) => sum + toOrder(p), 0)
+  const restockCostCents = items.reduce((sum, p) => sum + toOrder(p) * p.unitCostCents, 0)
 
   /** Built from what's on screen, for when the server can't be reached at all. */
   function localDraft(): MailDraft {
@@ -59,7 +60,7 @@ export function BelowParView({
         '',
         ...items.map((p) => {
           const bits = [p.brand, p.size].filter(Boolean).join(' ')
-          return `- ${bits ? `${p.name} (${bits})` : p.name} — on hand ${p.qty}, par ${p.reorderThreshold}, order ${unitsToPar(p) || 1}+`
+          return `- ${bits ? `${p.name} (${bits})` : p.name} — on hand ${p.qty}, reorder at ${p.reorderThreshold}, order ${toOrder(p)}`
         }),
         '',
         staffName ? `Sent by ${staffName} from Bintro.` : 'Sent from Bintro.',
@@ -170,19 +171,23 @@ export function BelowParView({
                       {STOCK_STATUS_LABEL[status]}
                     </span>
                     <div className="num mt-0.5">
-                      {Math.max(0, onHandQty(p))} on hand · par {p.reorderThreshold}
+                      {Math.max(0, onHandQty(p))} on hand · reorder at {p.reorderThreshold}
+                      {orderUpTo(p) > p.reorderThreshold ? ` · up to ${orderUpTo(p)}` : ''}
                     </div>
                   </div>
                   <div className="text-right min-w-14">
-                    {onOrder[p.id] ? (
+                    {onOrder[p.id] && toOrder(p) === 0 ? (
                       <>
                         <b className="num block text-lg leading-tight text-good">{onOrder[p.id]}</b>
                         <span className="text-[12px] text-good">on order</span>
                       </>
                     ) : (
                       <>
-                        <b className="num block text-lg leading-tight">{unitsToPar(p) || 1}+</b>
-                        <span className="text-[12px] text-ink-2">to order</span>
+                        <b className="num block text-lg leading-tight">{toOrder(p)}</b>
+                        <span className="text-[12px] text-ink-2">
+                          {casePack(p) > 1 ? `to order (${toOrder(p) / casePack(p)} case${toOrder(p) / casePack(p) === 1 ? '' : 's'})` : 'to order'}
+                          {onOrder[p.id] ? ` · ${onOrder[p.id]} on order` : ''}
+                        </span>
                       </>
                     )}
                   </div>
@@ -225,7 +230,7 @@ export function BelowParView({
       )}
 
       <p className="text-ink-2 text-[13px] mt-5 leading-relaxed">
-        Out means none on hand; Low means 1 or more but at or under the product's par level. Products with no par level set only show here once they run out. The email is sent from the server, so
+        Out means none on hand; Low means 1 or more but at or under the product's reorder point. "To order" refills to the product's Order up to level (or its reorder point), minus anything already on order, in full cases. Smart par sets these from how fast you really use things. Products with no reorder point only show here once they run out. The email is sent from the server, so
         it goes out even if this device has no mail app set up. Build a vendor order from these items in step 2.
       </p>
       <SmartParSheet open={smartOpen} onClose={() => setSmartOpen(false)} onDone={onChanged} />

@@ -6,7 +6,7 @@ export const getSmartPars = createServerFn({ method: "GET" }).handler(async () =
 
 export const setPars = createServerFn({ method: "POST" })
   .inputValidator(
-    z.object({ items: z.array(z.object({ productId: z.number().int().positive(), par: z.number().int().min(0).max(999) })).max(2000) }),
+    z.object({ items: z.array(z.object({ productId: z.number().int().positive(), par: z.number().int().min(0).max(999), max: z.number().int().min(0).max(100_000).optional() })).max(2000) }),
   )
   .handler(async ({ data }) => applyPars(data.items));
 
