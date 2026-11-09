@@ -144,6 +144,10 @@ body {
   --c: var(--color-action);
   --t: var(--color-action-tint);
 }
+.orb-check {
+  --c: var(--color-ink);
+  --t: var(--color-surface);
+}
 .orb-warn {
   --g: var(--color-warn-tint);
   --c: var(--color-warn);
