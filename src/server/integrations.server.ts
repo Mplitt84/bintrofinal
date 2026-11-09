@@ -115,6 +115,7 @@ export async function integrationStatus() {
       configured: isConfigured(provider),
       sandbox: isSandbox(provider),
       connected: Boolean(row?.accessToken),
+      expired: !row?.accessToken && Boolean((row?.meta as { reconnect?: boolean } | undefined)?.reconnect),
       accountName: row?.accountName ?? "",
       lastSyncAt: row?.lastSyncAt?.toISOString() ?? null,
       connectedAt: row?.connectedAt?.toISOString() ?? null,
@@ -154,6 +155,18 @@ export async function buildAuthorizeUrl(provider: Provider, origin: string) {
   return `https://appcenter.intuit.com/connect/oauth2?${params}`;
 }
 
+/** A token request the provider refused; `code` is the OAuth error (e.g. invalid_grant). */
+class TokenError extends Error {
+  constructor(message: string, readonly code: string) {
+    super(message);
+  }
+}
+
+/** The refresh token is expired or revoked: only a fresh sign-in fixes it. */
+function isDeadGrant(error: unknown) {
+  return error instanceof TokenError && (error.code === "invalid_grant" || error.code === "invalid_client");
+}
+
 type TokenSet = { accessToken: string; refreshToken: string; expiresAt: Date | null; accountId?: string };
 
 async function requestSquareToken(body: Record<string, string>): Promise<TokenSet> {
@@ -164,7 +177,8 @@ async function requestSquareToken(body: Record<string, string>): Promise<TokenSe
     body: JSON.stringify({ client_id: id, client_secret: secret, ...body }),
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, string>;
-  if (!res.ok || !data.access_token) throw new Error(data.message || data.error_description || "Square rejected the request.");
+  if (!res.ok || !data.access_token)
+    throw new TokenError(data.message || data.error_description || "Square rejected the request.", String(data.error ?? data.type ?? ""));
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? "",
@@ -185,12 +199,19 @@ async function requestQuickBooksToken(body: Record<string, string>): Promise<Tok
     body: new URLSearchParams(body),
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, string | number>;
-  if (!res.ok || !data.access_token) throw new Error(String(data.error_description || data.error || "QuickBooks rejected the request."));
+  if (!res.ok || !data.access_token)
+    throw new TokenError(String(data.error_description || data.error || "QuickBooks rejected the request."), String(data.error ?? ""));
   return {
     accessToken: String(data.access_token),
     refreshToken: String(data.refresh_token ?? ""),
     expiresAt: new Date(Date.now() + (Number(data.expires_in) || 3600) * 1000),
   };
+}
+
+export class StateMismatchError extends Error {
+  constructor() {
+    super("That connection link expired. Start again from Settings.");
+  }
 }
 
 /** Finishes the OAuth handshake. Throws with a readable message on failure. */
@@ -201,7 +222,8 @@ export async function completeAuthorization(
 ) {
   const row = await findIntegration(provider);
   if (!row?.pendingState || row.pendingState !== params.state) {
-    throw new Error("That connection link expired. Start again from Settings.");
+    // State doesn't match the one we issued: stale tab, replayed link or forged request (CSRF).
+    throw new StateMismatchError();
   }
   const redirect = callbackUrl(origin, provider);
 
@@ -231,6 +253,9 @@ export async function completeAuthorization(
   }
 
   if (!params.realmId) throw new Error("QuickBooks didn't say which company to connect.");
+  // Reconnecting the same company keeps what was already sent, so nothing is pushed twice.
+  const { reconnect: _r, ...keptMeta } = (row.meta ?? {}) as Record<string, unknown>;
+  const meta = row.accountId === params.realmId ? keptMeta : {};
   const tokens = await requestQuickBooksToken({ grant_type: "authorization_code", code: params.code, redirect_uri: redirect });
   const res = await fetch(
     `${quickbooksApiBase()}/v3/company/${params.realmId}/companyinfo/${params.realmId}?minorversion=${QB_MINOR_VERSION}`,
@@ -245,28 +270,61 @@ export async function completeAuthorization(
     accountName: info.CompanyInfo?.CompanyName ?? "",
     pendingState: "",
     connectedAt: new Date(),
-    meta: {},
+    meta,
   });
+}
+
+const PROVIDER_NAME: Record<Provider, string> = { square: "Square", quickbooks: "QuickBooks" };
+
+/**
+ * The provider no longer accepts our refresh token (expired after 100 days unused,
+ * revoked, or the app was disconnected on their side). Clear the tokens and flag the
+ * connection so Settings asks the owner to sign in again.
+ */
+async function markNeedsReconnect(row: Integration) {
+  await saveIntegration(row.provider as Provider, {
+    accessToken: "",
+    refreshToken: "",
+    expiresAt: null,
+    meta: { ...(row.meta ?? {}), reconnect: true },
+  });
+  return new Error(`${PROVIDER_NAME[row.provider as Provider]} needs to be reconnected. Open Settings → Integrations and tap Connect.`);
+}
+
+async function refreshTokens(row: Integration): Promise<Integration> {
+  const provider = row.provider as Provider;
+  try {
+    const tokens =
+      provider === "square"
+        ? await requestSquareToken({ grant_type: "refresh_token", refresh_token: row.refreshToken })
+        : await requestQuickBooksToken({ grant_type: "refresh_token", refresh_token: row.refreshToken });
+    const updated = {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken || row.refreshToken,
+      expiresAt: tokens.expiresAt,
+    };
+    await saveIntegration(provider, updated);
+    return { ...row, ...updated };
+  } catch (error) {
+    if (!isDeadGrant(error)) throw error;
+    // Another request may have just rotated the token; use that before giving up.
+    const latest = await findIntegration(provider);
+    if (latest?.accessToken && latest.refreshToken && latest.refreshToken !== row.refreshToken) return latest;
+    throw await markNeedsReconnect(row);
+  }
 }
 
 /** Returns a connected integration with a usable access token, refreshing it if it's about to expire. */
 async function activeIntegration(provider: Provider): Promise<Integration> {
   const row = await findIntegration(provider);
-  if (!row?.accessToken) throw new Error(`${provider === "square" ? "Square" : "QuickBooks"} isn't connected.`);
+  if (!row?.accessToken) {
+    if ((row?.meta as { reconnect?: boolean } | undefined)?.reconnect)
+      throw new Error(`${PROVIDER_NAME[provider]} needs to be reconnected. Open Settings → Integrations and tap Connect.`);
+    throw new Error(`${PROVIDER_NAME[provider]} isn't connected.`);
+  }
   const expiring = row.expiresAt && row.expiresAt.getTime() - Date.now() < 5 * 60_000;
   if (!expiring || !row.refreshToken) return row;
-
-  const tokens =
-    provider === "square"
-      ? await requestSquareToken({ grant_type: "refresh_token", refresh_token: row.refreshToken })
-      : await requestQuickBooksToken({ grant_type: "refresh_token", refresh_token: row.refreshToken });
-  const updated = {
-    accessToken: tokens.accessToken,
-    refreshToken: tokens.refreshToken || row.refreshToken,
-    expiresAt: tokens.expiresAt,
-  };
-  await saveIntegration(provider, updated);
-  return { ...row, ...updated };
+  return refreshTokens(row);
 }
 
 // ---------------------------------------------------------------------------
@@ -705,7 +763,7 @@ async function fetchSquareCounts(row: Integration, variationIds: string[]) {
 // QuickBooks
 // ---------------------------------------------------------------------------
 
-async function qbFetch<T>(row: Integration, path: string, init: RequestInit = {}): Promise<T> {
+async function qbFetch<T>(row: Integration, path: string, init: RequestInit = {}, retried = false): Promise<T> {
   const sep = path.includes("?") ? "&" : "?";
   const res = await fetch(`${quickbooksApiBase()}/v3/company/${row.accountId}${path}${sep}minorversion=${QB_MINOR_VERSION}`, {
     ...init,
@@ -716,6 +774,14 @@ async function qbFetch<T>(row: Integration, path: string, init: RequestInit = {}
       ...(init.headers ?? {}),
     },
   });
+  // Access token expired or was revoked early: refresh once and try again.
+  if (res.status === 401 && !retried) {
+    if (!row.refreshToken) throw await markNeedsReconnect(row);
+    const fresh = await refreshTokens(row);
+    Object.assign(row, { accessToken: fresh.accessToken, refreshToken: fresh.refreshToken, expiresAt: fresh.expiresAt });
+    return qbFetch<T>(row, path, init, true);
+  }
+  if (res.status === 401) throw await markNeedsReconnect(row);
   const data = (await res.json().catch(() => ({}))) as T & {
     Fault?: { Error?: Array<{ Message?: string; Detail?: string }> };
   };
