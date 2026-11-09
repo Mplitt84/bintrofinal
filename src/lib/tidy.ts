@@ -30,10 +30,15 @@ export type Overstock = {
   extraCents: number;
 };
 
+/** The latest Smart par apply that can still be undone. */
+export type ParChangeSummary = { batchId: string; at: string; products: number; staffName: string };
+
 export type SmartParResult = {
   suggestions: ParSuggestion[];
   overstock: Overstock[];
   orderEveryDays: number;
+  /** Latest apply that can be undone. */
+  lastChange: ParChangeSummary | null;
 };
 
 export type CategoryGroup = {

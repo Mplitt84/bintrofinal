@@ -1,11 +1,11 @@
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { movements, productCategories, products } from "../../db/schema.js";
+import { movements, parChanges, productCategories, products } from "../../db/schema.js";
 import { applyImportLines } from "./import.server.js";
 import { findAllProducts, updateProductFields } from "./inventory.server.js";
 import { ordersOverview } from "./orders.server.js";
 import { vendorGroupLabel } from "../lib/inventory-defaults.js";
-import type { CategoryGroup, DuplicateGroup, Overstock, ParSuggestion, SmartParResult } from "../lib/tidy.js";
+import type { CategoryGroup, DuplicateGroup, Overstock, ParChangeSummary, ParSuggestion, SmartParResult } from "../lib/tidy.js";
 import { findBusinessProfile } from "./business.server.js";
 
 const DAY = 86_400_000;
@@ -134,17 +134,70 @@ export async function smartPars(): Promise<SmartParResult> {
   }
   suggestions.sort((a, b) => Number(a.suggested === 0) - Number(b.suggested === 0) || Math.abs(b.suggested - b.current) - Math.abs(a.suggested - a.current) || b.perDay - a.perDay);
   overstock.sort((a, b) => b.extraCents - a.extraCents);
-  return { suggestions, overstock: overstock.slice(0, 25), orderEveryDays: cycle };
+  return { suggestions, overstock: overstock.slice(0, 25), orderEveryDays: cycle, lastChange: await lastParChange() };
 }
 
-export async function applyPars(items: { productId: number; par: number; max?: number }[]) {
-  for (const item of items) {
-    await updateProductFields(item.productId, {
-      reorderThreshold: item.par,
-      ...(item.max !== undefined ? { maxQty: item.max } : {}),
-    });
+/**
+ * Saves Smart par's levels and records each product's old and new levels under one
+ * batch id, so the whole apply can be undone. Updates run a few at a time.
+ */
+export async function applyPars(items: { productId: number; par: number; max?: number }[], staffName = "") {
+  if (items.length === 0) return { updated: 0, batchId: "" };
+  const ids = items.map((i) => i.productId);
+  const before = await db.select({ id: products.id, par: products.reorderThreshold, max: products.maxQty }).from(products).where(inArray(products.id, ids));
+  const old = new Map(before.map((b) => [b.id, b]));
+  const batchId = `par-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  const rows = items
+    .filter((i) => old.has(i.productId))
+    .map((i) => ({
+      batchId,
+      productId: i.productId,
+      oldPar: old.get(i.productId)!.par,
+      oldMax: old.get(i.productId)!.max,
+      newPar: i.par,
+      newMax: i.max ?? old.get(i.productId)!.max,
+      staffName: staffName.trim(),
+    }));
+  // History first, so an interrupted apply can still be undone for whatever changed.
+  for (let i = 0; i < rows.length; i += 200) await db.insert(parChanges).values(rows.slice(i, i + 200));
+  let updated = 0;
+  for (let i = 0; i < rows.length; i += 10) {
+    const chunk = rows.slice(i, i + 10);
+    await Promise.all(chunk.map((r) => updateProductFields(r.productId, { reorderThreshold: r.newPar, maxQty: r.newMax })));
+    updated += chunk.length;
   }
-  return items.length;
+  return { updated, batchId };
+}
+
+/** The latest Smart par apply that hasn't been undone, if any. */
+export async function lastParChange(): Promise<ParChangeSummary | null> {
+  const [latest] = await db
+    .select({ batchId: parChanges.batchId, at: parChanges.createdAt, staffName: parChanges.staffName })
+    .from(parChanges)
+    .where(isNull(parChanges.undoneAt))
+    .orderBy(desc(parChanges.createdAt), desc(parChanges.id))
+    .limit(1);
+  if (!latest) return null;
+  const [{ n }] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(parChanges)
+    .where(and(eq(parChanges.batchId, latest.batchId), isNull(parChanges.undoneAt)));
+  return { batchId: latest.batchId, at: latest.at.toISOString(), products: n, staffName: latest.staffName };
+}
+
+/** Puts every product in one Smart par apply back to its levels from before it. */
+export async function undoParChange(batchId: string) {
+  const rows = await db
+    .select()
+    .from(parChanges)
+    .where(and(eq(parChanges.batchId, batchId), isNull(parChanges.undoneAt)));
+  for (let i = 0; i < rows.length; i += 10) {
+    await Promise.all(
+      rows.slice(i, i + 10).map((r) => updateProductFields(r.productId, { reorderThreshold: r.oldPar, maxQty: r.oldMax }).catch(() => null)),
+    );
+  }
+  await db.update(parChanges).set({ undoneAt: new Date() }).where(eq(parChanges.batchId, batchId));
+  return { restored: rows.length };
 }
 
 /** "Floor bar back", "Floor Back bar " and "floor back-bar" all become "backbarfloor". */

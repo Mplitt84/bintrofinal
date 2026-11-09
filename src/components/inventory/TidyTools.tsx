@@ -13,6 +13,7 @@ import {
   mergeCategories,
   saveCounts,
   setPars,
+  undoPars,
 } from '@/server/tidy.functions'
 import type { CategoryGroup, DuplicateGroup, SmartParResult } from '@/lib/tidy'
 import { useBusiness } from '@/components/business/BusinessContext'
@@ -435,6 +436,7 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
   const [skip, setSkip] = useState<Set<number>>(new Set())
   const [saving, setSaving] = useState(false)
   const [cycleBusy, setCycleBusy] = useState(false)
+  const [undoing, setUndoing] = useState(false)
 
   function load() {
     setData(null)
@@ -444,7 +446,7 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
         // "Not used in 90 days" may only mean it isn't scanned out (back bar), so those start unticked.
         setSkip(new Set(d.suggestions.filter((i) => i.suggested === 0).map((i) => i.productId)))
       })
-      .catch(() => setData({ suggestions: [], overstock: [], orderEveryDays: profile.orderEveryDays || 7 }))
+      .catch(() => setData({ suggestions: [], overstock: [], orderEveryDays: profile.orderEveryDays || 7, lastChange: null }))
   }
 
   useEffect(() => {
@@ -473,15 +475,29 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
   const cycle = data?.orderEveryDays ?? profile.orderEveryDays ?? 7
   const tiedUp = (data?.overstock ?? []).reduce((sum, o) => sum + o.extraCents, 0)
 
+  async function undo(batchId: string, count: number) {
+    setUndoing(true)
+    try {
+      const r = await undoPars({ data: { batchId } })
+      toast(`Put ${r.restored || count} product${(r.restored || count) === 1 ? '' : 's'} back to their old levels`)
+      await onDone()
+      load()
+    } catch {
+      toast("Couldn't undo. Check your connection and try again.")
+    } finally {
+      setUndoing(false)
+    }
+  }
+
   async function apply() {
     setSaving(true)
     try {
-      await setPars({ data: { items: chosen.map((i) => ({ productId: i.productId, par: i.suggested, max: i.suggestedMax })) } })
-      toast(`Updated ${chosen.length} product${chosen.length === 1 ? '' : 's'}`)
+      const r = await setPars({ data: { items: chosen.map((i) => ({ productId: i.productId, par: i.suggested, max: i.suggestedMax })) } })
       await onDone()
       onClose()
+      toast(`Updated ${r.updated} product${r.updated === 1 ? '' : 's'}. Your counts didn't change.`, r.batchId ? () => undo(r.batchId, r.updated) : undefined)
     } catch {
-      toast("Couldn't save the new levels. Try again.")
+      toast("Couldn't save the new levels. Nothing was changed, or use Undo in Smart par if some were.")
     } finally {
       setSaving(false)
     }
@@ -512,6 +528,23 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
         </div>
         <p className="m-0 mt-1.5 text-[12px] text-ink-2">Ordering more often keeps less on the shelf and less cash tied up.</p>
       </div>
+
+      {data?.lastChange && (
+        <div className="flex items-center gap-3 rounded-xl bg-surface px-3 py-2.5 mb-3 text-sm">
+          <span className="flex-1">
+            Last applied {new Date(data.lastChange.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} to{' '}
+            <b>{data.lastChange.products}</b> product{data.lastChange.products === 1 ? '' : 's'}. Only levels changed, never counts.
+          </span>
+          <button
+            type="button"
+            className="btn btn-tonal btn-sm shrink-0"
+            disabled={undoing}
+            onClick={() => undo(data.lastChange!.batchId, data.lastChange!.products)}
+          >
+            {undoing ? 'Undoing…' : 'Undo'}
+          </button>
+        </div>
+      )}
 
       {!data ? (
         <p className="text-ink-2 text-sm">Working out your usage…</p>

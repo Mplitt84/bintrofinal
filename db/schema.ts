@@ -276,3 +276,21 @@ export const purchaseOrderLines = pgTable("purchase_order_lines", {
   /** Cost per unit on the delivery's invoice (0 until received or if the invoice had none). */
   receivedCostCents: integer("received_cost_cents").notNull().default(0),
 });
+
+/**
+ * Every Smart par apply, product by product, with the levels before and after,
+ * so one apply can be undone. Rows of one apply share a batchId.
+ */
+export const parChanges = pgTable("par_changes", {
+  id: serial().primaryKey(),
+  batchId: text("batch_id").notNull(),
+  productId: integer("product_id").notNull(),
+  oldPar: integer("old_par").notNull(),
+  oldMax: integer("old_max").notNull(),
+  newPar: integer("new_par").notNull(),
+  newMax: integer("new_max").notNull(),
+  staffName: text("staff_name").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  /** Set when this apply was undone. */
+  undoneAt: timestamp("undone_at"),
+});
