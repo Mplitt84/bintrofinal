@@ -1,10 +1,10 @@
 import { c as createServerFn } from "../server.js";
 import { z } from "zod";
-import { f as findBusinessProfile, s as saveBusinessProfile, c as findTeamMembers, i as insertTeamMember, d as deleteTeamMember, b as findProductCategories, u as upsertProductCategories, e as deleteProductCategories, g as computeBudgetOverview, h as findExpensesForMonth, j as insertExpense, k as updateExpense, l as deleteExpense, m as setMonthBudget, a as findBusinessContext } from "./business.server-CHGYL_45.js";
+import { f as findBusinessProfile, s as saveBusinessProfile, c as findTeamMembers, i as insertTeamMember, d as deleteTeamMember, b as findProductCategories, u as upsertProductCategories, e as deleteProductCategories, g as computeBudgetOverview, h as findExpensesForMonth, j as insertExpense, k as updateExpense, l as deleteExpense, m as setMonthBudget, a as findBusinessContext } from "./business.server-CN0Pugrj.js";
 import { s as suggestProductDetails, b as readReceipt } from "./product-lookup.server-C6LGgHTN.js";
-import { integrationStatus, disconnectIntegration, squareRetailCategories, saveSquareRetailCategories, sendAllCountsToSquare, syncSquareSales, pushMonthToQuickBooks, importSquareCatalog } from "./integrations.server-Cl39Wgfx.js";
+import { integrationStatus, integrationErrorLog, disconnectIntegration, squareRetailCategories, saveSquareRetailCategories, sendAllCountsToSquare, syncSquareSales, pushMonthToQuickBooks, importSquareCatalog } from "./integrations.server-DSD7tcf7.js";
 import { T as TAX_GROUPS } from "./business-types-DKNVcfJE.js";
-import { m as assertTeamRoom, d as assertFeature } from "./account.server-IhIPs_LL.js";
+import { m as assertTeamRoom, d as assertFeature } from "./account.server-B5c_30md.js";
 import { c as createServerRpc } from "./createServerRpc-D_-6bKnO.js";
 import "node:async_hooks";
 import "node:stream";
@@ -13,11 +13,11 @@ import "@tanstack/react-router";
 import "react/jsx-runtime";
 import "@tanstack/react-router/ssr/server";
 import "drizzle-orm";
-import "./index-CaPewqP7.js";
+import "./index-nBnBfwCa.js";
 import "drizzle-orm/netlify-db";
 import "drizzle-orm/pg-core";
 import "node:crypto";
-import "./inventory.server-FPvzQkco.js";
+import "./inventory.server-NFwTD6ZI.js";
 import "./inventory-defaults-BnRHgx1T.js";
 const MONTH = z.string().regex(/^\d{4}-\d{2}$/);
 const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -297,6 +297,16 @@ const getIntegrations = createServerFn({
 const ProviderSchema = z.object({
   provider: z.enum(["square", "quickbooks"])
 });
+const getIntegrationErrorLog_createServerFn_handler = createServerRpc({
+  id: "b4d5d2e66b56601226f6243a8e4301b02f959e74f4f9ef33982245a3a359ce3e",
+  name: "getIntegrationErrorLog",
+  filename: "src/server/business.functions.ts"
+}, (opts) => getIntegrationErrorLog.__executeServer(opts));
+const getIntegrationErrorLog = createServerFn({
+  method: "GET"
+}).inputValidator(ProviderSchema).handler(getIntegrationErrorLog_createServerFn_handler, async ({
+  data
+}) => integrationErrorLog(data.provider));
 const disconnect_createServerFn_handler = createServerRpc({
   id: "cee688b920afcb247e533bef8972f2caef04ad0aedf980b312a4aae716be36db",
   name: "disconnect",
@@ -415,6 +425,7 @@ export {
   editExpense_createServerFn_handler,
   getBudgetOverview_createServerFn_handler,
   getBusinessProfile_createServerFn_handler,
+  getIntegrationErrorLog_createServerFn_handler,
   getIntegrations_createServerFn_handler,
   getSquareRetailCategories_createServerFn_handler,
   listExpenses_createServerFn_handler,

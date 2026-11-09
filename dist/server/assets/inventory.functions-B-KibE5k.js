@@ -1,11 +1,11 @@
 import { c as createServerFn } from "../server.js";
 import { z } from "zod";
-import { f as findAllProducts, c as computeStats, a as findRecentMovements, b as findMovementsSince, d as findProductByBarcode, s as searchProductsByText, i as insertProduct, u as updateProductBarcode, e as findBarcodeOwner, g as findProductById, h as applyMovement, j as updateProductFields, k as deleteProductById, m as mergeProductsInto, r as reverseAndDeleteMovement, l as findBelowParProducts, n as buildPurchaseOrderLines } from "./inventory.server-FPvzQkco.js";
+import { f as findAllProducts, c as computeStats, a as findRecentMovements, b as findMovementsSince, d as findProductByBarcode, s as searchProductsByText, i as insertProduct, u as updateProductBarcode, e as findBarcodeOwner, g as findProductById, h as applyMovement, j as updateProductFields, k as deleteProductById, m as mergeProductsInto, r as reverseAndDeleteMovement, l as findBelowParProducts, n as buildPurchaseOrderLines } from "./inventory.server-NFwTD6ZI.js";
 import { s as sendRestockEmail, a as sendPurchaseOrderEmail } from "./email.server-2uKsRAsj.js";
 import { l as lookupBarcodeOnline, r as readProductLabel, p as parseSpokenProduct, a as readStockPhoto } from "./product-lookup.server-C6LGgHTN.js";
-import { f as findBusinessProfile, a as findBusinessContext } from "./business.server-CHGYL_45.js";
+import { f as findBusinessProfile, a as findBusinessContext } from "./business.server-CN0Pugrj.js";
 import { M as MAX_ORDER_QTY } from "./inventory-defaults-BnRHgx1T.js";
-import { b as assertProductRoom, d as assertFeature, a as hasFeature } from "./account.server-IhIPs_LL.js";
+import { b as assertProductRoom, d as assertFeature, a as hasFeature } from "./account.server-B5c_30md.js";
 import { c as createServerRpc } from "./createServerRpc-D_-6bKnO.js";
 import "node:async_hooks";
 import "node:stream";
@@ -14,7 +14,7 @@ import "@tanstack/react-router";
 import "react/jsx-runtime";
 import "@tanstack/react-router/ssr/server";
 import "drizzle-orm";
-import "./index-CaPewqP7.js";
+import "./index-nBnBfwCa.js";
 import "drizzle-orm/netlify-db";
 import "drizzle-orm/pg-core";
 import "./business-types-DKNVcfJE.js";
@@ -186,7 +186,7 @@ const updateProduct = createServerFn({
       try {
         const {
           syncSquareSalesIfConnected
-        } = await import("./integrations.server-Cl39Wgfx.js");
+        } = await import("./integrations.server-DSD7tcf7.js");
         await syncSquareSalesIfConnected();
         current = await findProductById(productId);
       } catch (error) {

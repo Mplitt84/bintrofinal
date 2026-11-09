@@ -2,12 +2,12 @@ import { createRootRoute, HeadContent, Scripts, createFileRoute, lazyRouteCompon
 import { jsxs, jsx } from "react/jsx-runtime";
 import { T as TSS_SERVER_FUNCTION, g as getServerFnById, c as createServerFn } from "../server.js";
 import { z } from "zod";
-import { P as PAUSE_OPTIONS, c as completeCheckout, h as handleStripeWebhook, a as hasFeature } from "./account.server-IhIPs_LL.js";
+import { P as PAUSE_OPTIONS, c as completeCheckout, h as handleStripeWebhook, a as hasFeature } from "./account.server-B5c_30md.js";
 import { M as MAX_ORDER_QTY } from "./inventory-defaults-BnRHgx1T.js";
 import { T as TAX_GROUPS, d as displayBusinessName } from "./business-types-DKNVcfJE.js";
-import { i as isCalendarToken, f as findCalendarEvents } from "./calendar.server-Ao_GjwJ3.js";
-import { f as findBusinessProfile } from "./business.server-CHGYL_45.js";
-import { PROVIDERS, completeAuthorization, StateMismatchError, isConfigured, buildAuthorizeUrl } from "./integrations.server-Cl39Wgfx.js";
+import { i as isCalendarToken, f as findCalendarEvents } from "./calendar.server-Cw9hO_il.js";
+import { f as findBusinessProfile } from "./business.server-CN0Pugrj.js";
+import { PROVIDERS, logIntegrationError, completeAuthorization, StateMismatchError, isConfigured, buildAuthorizeUrl } from "./integrations.server-DSD7tcf7.js";
 const Route$9 = createRootRoute({
   head: () => ({
     meta: [
@@ -359,6 +359,9 @@ const getIntegrations = createServerFn({
 const ProviderSchema = z.object({
   provider: z.enum(["square", "quickbooks"])
 });
+const getIntegrationErrorLog = createServerFn({
+  method: "GET"
+}).inputValidator(ProviderSchema).handler(createSsrRpc("b4d5d2e66b56601226f6243a8e4301b02f959e74f4f9ef33982245a3a359ce3e"));
 const disconnect = createServerFn({
   method: "POST"
 }).inputValidator(ProviderSchema).handler(createSsrRpc("cee688b920afcb247e533bef8972f2caef04ad0aedf980b312a4aae716be36db"));
@@ -382,7 +385,7 @@ const squareSyncSales = createServerFn({
 const quickbooksPushMonth = createServerFn({
   method: "POST"
 }).inputValidator(MonthWindowSchema).handler(createSsrRpc("7fef2669d1d6f3e9fdccdfbabede084b9e0823ba1f054366dd5ae9501cff565b"));
-const $$splitComponentImporter$3 = () => import("./index-D3omWW0m.js");
+const $$splitComponentImporter$3 = () => import("./index-BT80X0u-.js");
 const Route$8 = createFileRoute("/")({
   loader: async () => {
     const [products, recent, profile, team, categories, account] = await Promise.all([listProducts(), getRecentMovements({
@@ -665,7 +668,12 @@ const Route$1 = createFileRoute("/api/integrations/$provider/callback")({
         if (!PROVIDERS.includes(provider)) return new Response("Unknown integration", { status: 404 });
         const back = (query) => Response.redirect(`${url.origin}/?${new URLSearchParams({ settings: "integrations", ...query })}`, 302);
         const code = url.searchParams.get("code");
-        if (!code) return back({ error: `${provider}-declined` });
+        if (!code) {
+          const reason = url.searchParams.get("error") ?? "";
+          if (reason && reason !== "access_denied")
+            await logIntegrationError({ provider, action: "connect", code: reason, message: url.searchParams.get("error_description") ?? "Authorization returned an error" });
+          return back({ error: `${provider}-declined` });
+        }
         try {
           await completeAuthorization(
             provider,
@@ -679,6 +687,12 @@ const Route$1 = createFileRoute("/api/integrations/$provider/callback")({
           return back({ connected: provider });
         } catch (error) {
           console.error(`${provider} connect failed`, error);
+          await logIntegrationError({
+            provider,
+            action: "connect",
+            code: error instanceof StateMismatchError ? "state_mismatch" : "",
+            message: error instanceof Error ? error.message : String(error)
+          });
           return back({ error: `${provider}-${error instanceof StateMismatchError ? "expired" : "failed"}` });
         }
       }
@@ -804,15 +818,16 @@ export {
   readSpokenProduct as a,
   getSquareRetailCategories as a0,
   disconnect as a1,
-  setSquareRetailCategories as a2,
-  squareImportCatalog as a3,
-  squareSyncSales as a4,
-  squareSendCounts as a5,
-  Route$8 as a6,
-  listProducts as a7,
-  getRecentMovements as a8,
-  getAccount as a9,
-  router as aa,
+  getIntegrationErrorLog as a2,
+  setSquareRetailCategories as a3,
+  squareImportCatalog as a4,
+  squareSyncSales as a5,
+  squareSendCounts as a6,
+  Route$8 as a7,
+  listProducts as a8,
+  getRecentMovements as a9,
+  getAccount as aa,
+  router as ab,
   readLabelPhoto as b,
   createSsrRpc as c,
   suggestProduct as d,

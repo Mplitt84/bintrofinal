@@ -341,3 +341,18 @@ export const connectionRequests = pgTable("connection_requests", {
   staffName: text("staff_name").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+/** Every failed Square / QuickBooks call, kept a year so it can be shared with the provider's support. */
+export const integrationLogs = pgTable("integration_logs", {
+  id: serial().primaryKey(),
+  provider: text().notNull(),
+  /** What Bintro was doing, e.g. "POST /purchase", "token refresh", "connect". */
+  action: text().notNull().default(""),
+  status: integer().notNull().default(0),
+  /** Provider error code (QuickBooks Fault code, OAuth error). */
+  code: text().notNull().default(""),
+  /** QuickBooks intuit_tid response header. */
+  intuitTid: text("intuit_tid").notNull().default(""),
+  message: text().notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});

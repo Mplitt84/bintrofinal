@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { PROVIDERS, StateMismatchError, completeAuthorization, type Provider } from '@/server/integrations.server'
+import { PROVIDERS, StateMismatchError, completeAuthorization, logIntegrationError, type Provider } from '@/server/integrations.server'
 
 /** Where Square / QuickBooks send the owner back after approving (or declining) the connection. */
 export const Route = createFileRoute('/api/integrations/$provider/callback')({
@@ -15,7 +15,12 @@ export const Route = createFileRoute('/api/integrations/$provider/callback')({
 
         const code = url.searchParams.get('code')
         // Declined, or the provider sent an error (e.g. access_denied) instead of a code.
-        if (!code) return back({ error: `${provider}-declined` })
+        if (!code) {
+          const reason = url.searchParams.get('error') ?? ''
+          if (reason && reason !== 'access_denied')
+            await logIntegrationError({ provider, action: 'connect', code: reason, message: url.searchParams.get('error_description') ?? 'Authorization returned an error' })
+          return back({ error: `${provider}-declined` })
+        }
         try {
           await completeAuthorization(
             provider,
@@ -29,6 +34,12 @@ export const Route = createFileRoute('/api/integrations/$provider/callback')({
           return back({ connected: provider })
         } catch (error) {
           console.error(`${provider} connect failed`, error)
+          await logIntegrationError({
+            provider,
+            action: 'connect',
+            code: error instanceof StateMismatchError ? 'state_mismatch' : '',
+            message: error instanceof Error ? error.message : String(error),
+          })
           return back({ error: `${provider}-${error instanceof StateMismatchError ? 'expired' : 'failed'}` })
         }
       },

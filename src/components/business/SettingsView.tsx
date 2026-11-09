@@ -21,6 +21,7 @@ import {
   addTeamMember,
   disconnect,
   getIntegrations,
+  getIntegrationErrorLog,
   removeTeamMember,
   squareImportCatalog,
   squareSendCounts,
@@ -819,9 +820,49 @@ function Integrations({ onChanged }: { onChanged: () => void | Promise<void> }) 
                 </ol>
               </details>
             )}
+            {s.configured && <ErrorLogLink provider={s.provider} name={info.name} />}
           </section>
         )
       })}
     </div>
+  )
+}
+
+/** Downloads the last year of failed calls to this provider as a CSV to share with their support. */
+function ErrorLogLink({ provider, name }: { provider: IntegrationStatus['provider']; name: string }) {
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+  return (
+    <button
+      className="btn btn-text btn-sm !px-0 mt-2 text-ink-2"
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true)
+        try {
+          const rows = await getIntegrationErrorLog({ data: { provider } })
+          if (rows.length === 0) {
+            toast(`No ${name} errors in the last year`)
+            return
+          }
+          const cell = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
+          const csv = [
+            ['Time (UTC)', 'Action', 'HTTP status', 'Error code', 'intuit_tid', 'Message'].map(cell).join(','),
+            ...rows.map((r) => [r.createdAt, r.action, r.status, r.code, r.intuitTid, r.message].map(cell).join(',')),
+          ].join('\n')
+          const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `bintro-${provider}-error-log.csv`
+          a.click()
+          URL.revokeObjectURL(url)
+        } catch {
+          toast("Couldn't load the error log. Try again.")
+        } finally {
+          setBusy(false)
+        }
+      }}
+    >
+      {busy ? 'Preparing…' : 'Download error log'}
+    </button>
   )
 }

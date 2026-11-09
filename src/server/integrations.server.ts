@@ -10,9 +10,9 @@
  * client id/secret env vars; tokens are stored in the integrations table.
  */
 import { randomBytes } from "node:crypto";
-import { asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { expenses, integrations, products, squareOutbox } from "../../db/schema.js";
+import { expenses, integrationLogs, integrations, products, squareOutbox } from "../../db/schema.js";
 import { SQUARE_STAFF_NAME, applyMovement, findProductByBarcode } from "./inventory.server.js";
 import { findExpensesForMonth, findInventorySpend, findProductCategories, upsertProductCategories, type MonthWindow } from "./business.server.js";
 
@@ -78,6 +78,43 @@ async function saveIntegration(provider: Provider, values: Partial<Omit<Integrat
     .insert(integrations)
     .values({ provider, ...values })
     .onConflictDoUpdate({ target: integrations.provider, set: values });
+}
+
+const LOG_DAYS = 365;
+
+/** Records a failed provider call. Never throws: logging must not hide the real error. */
+export async function logIntegrationError(entry: {
+  provider: Provider;
+  action: string;
+  status?: number;
+  code?: string;
+  intuitTid?: string;
+  message: string;
+}) {
+  try {
+    await db.insert(integrationLogs).values({
+      provider: entry.provider,
+      action: entry.action.slice(0, 200),
+      status: entry.status ?? 0,
+      code: (entry.code ?? "").slice(0, 100),
+      intuitTid: entry.intuitTid ?? "",
+      message: entry.message.slice(0, 2000),
+    });
+    await db.delete(integrationLogs).where(lt(integrationLogs.createdAt, new Date(Date.now() - LOG_DAYS * 86_400_000)));
+  } catch (error) {
+    console.error("Couldn't save integration log", error);
+  }
+}
+
+/** The last year of errors for one provider, newest first (for Settings → Download error log). */
+export async function integrationErrorLog(provider: Provider) {
+  const rows = await db
+    .select()
+    .from(integrationLogs)
+    .where(and(eq(integrationLogs.provider, provider), gte(integrationLogs.createdAt, new Date(Date.now() - LOG_DAYS * 86_400_000))))
+    .orderBy(desc(integrationLogs.id))
+    .limit(5000);
+  return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
 }
 
 export async function disconnectIntegration(provider: Provider) {
@@ -177,8 +214,11 @@ async function requestSquareToken(body: Record<string, string>): Promise<TokenSe
     body: JSON.stringify({ client_id: id, client_secret: secret, ...body }),
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, string>;
-  if (!res.ok || !data.access_token)
-    throw new TokenError(data.message || data.error_description || "Square rejected the request.", String(data.error ?? data.type ?? ""));
+  if (!res.ok || !data.access_token) {
+    const message = data.message || data.error_description || "Square rejected the request.";
+    await logIntegrationError({ provider: "square", action: `token ${body.grant_type ?? ""}`.trim(), status: res.status, code: String(data.error ?? data.type ?? ""), message });
+    throw new TokenError(message, String(data.error ?? data.type ?? ""));
+  }
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? "",
@@ -202,6 +242,14 @@ async function requestQuickBooksToken(body: Record<string, string>): Promise<Tok
   const tid = res.headers.get("intuit_tid") ?? "";
   if (!res.ok || !data.access_token) {
     console.error(`QuickBooks token request failed (${res.status}) intuit_tid=${tid || "none"}`, data.error ?? "");
+    await logIntegrationError({
+      provider: "quickbooks",
+      action: `token ${body.grant_type ?? ""}`.trim(),
+      status: res.status,
+      code: String(data.error ?? ""),
+      intuitTid: tid,
+      message: String(data.error_description || data.error || "Token request rejected"),
+    });
     throw new TokenError(
       `${String(data.error_description || data.error || "QuickBooks rejected the request.")}${tid ? ` (QuickBooks ref ${tid})` : ""}`,
       String(data.error ?? ""),
@@ -288,6 +336,7 @@ const PROVIDER_NAME: Record<Provider, string> = { square: "Square", quickbooks: 
  * connection so Settings asks the owner to sign in again.
  */
 async function markNeedsReconnect(row: Integration) {
+  await logIntegrationError({ provider: row.provider as Provider, action: "token refresh", code: "invalid_grant", message: "Refresh token rejected; tokens cleared, asked to reconnect" });
   await saveIntegration(row.provider as Provider, {
     accessToken: "",
     refreshToken: "",
@@ -348,7 +397,11 @@ async function squareFetch<T>(token: string, path: string, init: RequestInit = {
     },
   });
   const data = (await res.json().catch(() => ({}))) as T & { errors?: Array<{ detail?: string }> };
-  if (!res.ok) throw new Error(data.errors?.[0]?.detail || `Square returned ${res.status}.`);
+  if (!res.ok) {
+    const e = data.errors?.[0] as { detail?: string; code?: string } | undefined;
+    await logIntegrationError({ provider: "square", action: `${init.method ?? "GET"} ${path.split("?")[0]}`, status: res.status, code: e?.code ?? "", message: e?.detail || `HTTP ${res.status}` });
+    throw new Error(e?.detail || `Square returned ${res.status}.`);
+  }
   return data;
 }
 
@@ -790,7 +843,10 @@ async function qbFetch<T>(row: Integration, path: string, init: RequestInit = {}
     Object.assign(row, { accessToken: fresh.accessToken, refreshToken: fresh.refreshToken, expiresAt: fresh.expiresAt });
     return qbFetch<T>(row, path, init, true);
   }
-  if (res.status === 401) throw await markNeedsReconnect(row);
+  if (res.status === 401) {
+    await logIntegrationError({ provider: "quickbooks", action: `${init.method ?? "GET"} ${path.split("?")[0]}`, status: 401, intuitTid: tid, message: "Still unauthorized after refresh; asked to reconnect" });
+    throw await markNeedsReconnect(row);
+  }
   const data = (await res.json().catch(() => ({}))) as T & {
     Fault?: { Error?: Array<{ Message?: string; Detail?: string }> };
   };
@@ -800,6 +856,14 @@ async function qbFetch<T>(row: Integration, path: string, init: RequestInit = {}
       `QuickBooks ${init.method ?? "GET"} ${path.split("?")[0]} failed (${res.status}${err?.code ? `, code ${err.code}` : ""}) intuit_tid=${tid || "none"}`,
       err?.Detail || err?.Message || "",
     );
+    await logIntegrationError({
+      provider: "quickbooks",
+      action: `${init.method ?? "GET"} ${path.split("?")[0]}`,
+      status: res.status,
+      code: err?.code ?? "",
+      intuitTid: tid,
+      message: [err?.Message, err?.Detail].filter(Boolean).join(" — ") || `HTTP ${res.status}`,
+    });
     throw new Error(`${err?.Detail || err?.Message || `QuickBooks returned ${res.status}.`}${tid ? ` (QuickBooks ref ${tid})` : ""}`);
   }
   return data;

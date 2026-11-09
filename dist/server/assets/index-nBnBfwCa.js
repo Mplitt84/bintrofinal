@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/netlify-db";
 import { sql } from "drizzle-orm";
-import { pgTable, timestamp, integer, text, boolean, serial, jsonb, unique } from "drizzle-orm/pg-core";
+import { pgTable, timestamp, text, integer, serial, boolean, jsonb, unique } from "drizzle-orm/pg-core";
 const products = pgTable("products", {
   id: serial().primaryKey(),
   barcode: text().notNull().unique(),
@@ -292,6 +292,19 @@ const connectionRequests = pgTable("connection_requests", {
   staffName: text("staff_name").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
+const integrationLogs = pgTable("integration_logs", {
+  id: serial().primaryKey(),
+  provider: text().notNull(),
+  /** What Bintro was doing, e.g. "POST /purchase", "token refresh", "connect". */
+  action: text().notNull().default(""),
+  status: integer().notNull().default(0),
+  /** Provider error code (QuickBooks Fault code, OAuth error). */
+  code: text().notNull().default(""),
+  /** QuickBooks intuit_tid response header. */
+  intuitTid: text("intuit_tid").notNull().default(""),
+  message: text().notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
 const schema = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
   account,
@@ -302,6 +315,7 @@ const schema = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProper
   connectionRequests,
   expenses,
   insightReports,
+  integrationLogs,
   integrations,
   movements,
   parChanges,
@@ -334,8 +348,9 @@ export {
   billingEvents as o,
   priceChecks as p,
   account as q,
-  expenses as r,
+  integrationLogs as r,
   stockCounts as s,
   teamMembers as t,
-  budgets as u
+  expenses as u,
+  budgets as v
 };
