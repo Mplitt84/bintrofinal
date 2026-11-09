@@ -132,7 +132,7 @@ export async function smartPars(): Promise<SmartParResult> {
       });
     }
   }
-  suggestions.sort((a, b) => Math.abs(b.suggested - b.current) - Math.abs(a.suggested - a.current) || b.perDay - a.perDay);
+  suggestions.sort((a, b) => Number(a.suggested === 0) - Number(b.suggested === 0) || Math.abs(b.suggested - b.current) - Math.abs(a.suggested - a.current) || b.perDay - a.perDay);
   overstock.sort((a, b) => b.extraCents - a.extraCents);
   return { suggestions, overstock: overstock.slice(0, 25), orderEveryDays: cycle };
 }
