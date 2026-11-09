@@ -1,47 +1,134 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { BadgeCheck, Minus, Plus } from 'lucide-react'
 import type { Product } from '@/components/inventory/types'
 import { Sheet, SheetActions } from '@/components/ui/Sheet'
 import { Thumb, centsToDollars } from '@/components/ui/bits'
-import { COUNT_REASONS, lastCountedLabel } from '@/lib/counts'
+import { useToast } from '@/components/ui/Toast'
+import { useBusiness } from '@/components/business/BusinessContext'
+import { CHECK_REASONS, lastCountedLabel } from '@/lib/counts'
+import { updateProduct } from '@/server/inventory.functions'
+
+type Details = {
+  name: string
+  brand: string
+  size: string
+  category: string
+  vendor: string
+  reorderThreshold: string
+  maxQty: string
+  cost: string
+  retail: string
+}
+
+const toDetails = (p: Product): Details => ({
+  name: p.name,
+  brand: p.brand,
+  size: p.size,
+  category: p.category,
+  vendor: p.vendor,
+  reorderThreshold: String(p.reorderThreshold),
+  maxQty: p.maxQty ? String(p.maxQty) : '',
+  cost: p.unitCostCents ? centsToDollars(p.unitCostCents) : '',
+  retail: p.retailPriceCents ? centsToDollars(p.retailPriceCents) : '',
+})
+
+const cents = (v: string) => {
+  const n = Number(v.replace(/[^\d.]/g, ''))
+  return Number.isFinite(n) ? Math.round(n * 100) : 0
+}
+const whole = (v: string) => Math.max(0, Math.trunc(Number(v.replace(/[^\d]/g, '')) || 0))
 
 /**
- * Check mode on the Scan tab: shows what a scanned SKU is (nothing changes),
- * then lets staff confirm the shelf count ("Matches") or save a different one
- * with a reason. Saved checks go to Count history as a one-item "Spot check".
+ * Check mode on the Scan tab: what a scanned SKU is, with its details editable
+ * in place, then "verify the count". Nothing changes until staff save. Saved
+ * counts go to Count history as a one-item "Spot check".
  */
 export function CheckProductSheet({
   product,
   matchedCode,
   onClose,
   onSave,
+  onUpdated,
 }: {
   product: Product | null
   /** The code that was scanned (main barcode or an extra SKU). */
   matchedCode: string
   onClose: () => void
   onSave: (product: Product, counted: number, reason: string) => Promise<void>
+  /** Product details were edited and saved. */
+  onUpdated: (product: Product) => void
 }) {
+  const toast = useToast()
+  const { categories } = useBusiness()
+  const [current, setCurrent] = useState<Product | null>(product)
+  const [details, setDetails] = useState<Details | null>(product ? toDetails(product) : null)
   const [counted, setCounted] = useState('')
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
+  const [savingDetails, setSavingDetails] = useState(false)
 
   useEffect(() => {
+    setCurrent(product)
+    setDetails(product ? toDetails(product) : null)
     setCounted('')
     setReason('')
     setBusy(false)
+    // Only a new scan resets the sheet; saving details here mustn't clear a count in progress.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product?.id, matchedCode])
 
-  if (!product) return <Sheet open={false} onClose={onClose} title="">{null}</Sheet>
+  const dirty = useMemo(() => {
+    if (!current || !details) return false
+    const base = toDetails(current)
+    return (Object.keys(base) as (keyof Details)[]).some((k) => base[k].trim() !== details[k].trim())
+  }, [current, details])
 
-  const onHand = product.qty
+  if (!current || !details) return <Sheet open={false} onClose={onClose} title="">{null}</Sheet>
+
+  const onHand = current.qty
   const n = counted.trim() === '' ? null : Math.max(0, Math.trunc(Number(counted)))
   const diff = n == null || Number.isNaN(n) ? null : n - onHand
-  const viaExtra = matchedCode && matchedCode !== product.barcode
-  const save = async (value: number, why: string) => {
+  const viaExtra = matchedCode && matchedCode !== current.barcode
+  const set = (k: keyof Details) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setDetails((d) => (d ? { ...d, [k]: e.target.value } : d))
+  const categoryNames = Array.from(new Set([...categories.map((c) => c.name), current.category].filter(Boolean))).sort()
+
+  const saveDetails = async () => {
+    if (!details.name.trim()) return toast('The product needs a name.')
+    setSavingDetails(true)
+    try {
+      const updated = (await updateProduct({
+        data: {
+          productId: current.id,
+          name: details.name.trim(),
+          brand: details.brand.trim(),
+          size: details.size.trim(),
+          category: details.category.trim(),
+          vendor: details.vendor.trim(),
+          reorderThreshold: whole(details.reorderThreshold),
+          maxQty: whole(details.maxQty),
+          unitCostCents: cents(details.cost),
+          retailPriceCents: cents(details.retail),
+        },
+      })) as Product | null
+      if (updated) {
+        setCurrent(updated)
+        setDetails(toDetails(updated))
+        onUpdated(updated)
+      }
+      toast('Product details saved')
+    } catch {
+      toast('Couldn’t save the details. Try again.')
+    } finally {
+      setSavingDetails(false)
+    }
+  }
+
+  const saveCount = async (value: number, why: string) => {
+    if (dirty) await saveDetails()
     setBusy(true)
     try {
-      await onSave(product, value, why)
+      await onSave(current, value, why)
     } finally {
       setBusy(false)
     }
@@ -49,34 +136,49 @@ export function CheckProductSheet({
   const step = (d: number) => setCounted(String(Math.max(0, (n ?? onHand) + d)))
 
   return (
-    <Sheet open onClose={onClose} title="Check SKU" subtitle="Nothing changes until you save a count.">
+    <Sheet open onClose={onClose} title="Check SKU" subtitle="Edit anything that’s wrong. Stock only changes if you save a different count.">
       <div className="flex items-center gap-3 mb-3">
-        <Thumb imageUrl={product.imageUrl} label={product.brand || product.name} size="lg" />
-        <div className="min-w-0">
-          <div className="font-bold text-[17px] leading-tight">{product.name}</div>
-          <div className="text-[13px] text-ink-2 truncate">{[product.brand, product.size, product.category].filter(Boolean).join(' · ')}</div>
+        <Thumb imageUrl={current.imageUrl} label={details.brand || details.name} size="lg" />
+        <div className="bg-good-tint text-good rounded-xl px-3 py-2 text-sm flex items-center gap-2 flex-1 min-w-0">
+          <BadgeCheck size={17} className="shrink-0" />
+          <span className="min-w-0">
+            SKU matches <b className="num break-all">{matchedCode}</b>
+            {viaExtra && <span className="text-ink-2 block text-[12px]">Extra SKU · main {current.barcode}</span>}
+          </span>
         </div>
       </div>
 
-      <div className="bg-good-tint text-good rounded-xl px-3.5 py-2 text-sm flex items-center gap-2 mb-3">
-        <BadgeCheck size={17} />
-        <span>
-          SKU matches <b className="num">{matchedCode}</b>
-          {viaExtra && <span className="text-ink-2"> (extra SKU; main {product.barcode})</span>}
-        </span>
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <Input label="Product name" value={details.name} onChange={set('name')} wide />
+        <Input label="Brand" value={details.brand} onChange={set('brand')} />
+        <Input label="Size" value={details.size} onChange={set('size')} />
+        <label className="block">
+          <span className="text-[12px] text-ink-2">Category</span>
+          <select className="field-input !py-2" value={details.category} onChange={set('category')}>
+            <option value="">No category</option>
+            {categoryNames.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Input label="Vendor" value={details.vendor} onChange={set('vendor')} />
+        <Input label="Reorder at" value={details.reorderThreshold} onChange={set('reorderThreshold')} numeric />
+        <Input label="Order up to" value={details.maxQty} onChange={set('maxQty')} numeric placeholder="Back to par" />
+        <Input label="Cost $" value={details.cost} onChange={set('cost')} decimal />
+        <Input label="Retail $" value={details.retail} onChange={set('retail')} decimal />
       </div>
+      {dirty && (
+        <button type="button" className="btn btn-tonal btn-sm w-full mb-2" disabled={savingDetails} onClick={saveDetails}>
+          {savingDetails ? 'Saving…' : 'Save details'}
+        </button>
+      )}
+      <p className="text-[12px] text-ink-2 mt-0 mb-4">{lastCountedLabel(current)}</p>
 
-      <dl className="grid grid-cols-3 gap-2 m-0 mb-3 text-center">
-        <Stat label="On hand" value={String(onHand)} strong />
-        <Stat label="Reorder at" value={String(product.reorderThreshold)} />
-        <Stat label="Order up to" value={product.maxQty ? String(product.maxQty) : '—'} />
-        <Stat label="Cost" value={product.unitCostCents ? `$${centsToDollars(product.unitCostCents)}` : '—'} />
-        <Stat label="Retail" value={product.retailPriceCents ? `$${centsToDollars(product.retailPriceCents)}` : '—'} />
-        <Stat label="Vendor" value={product.vendor || '—'} />
-      </dl>
-      <p className="text-[12px] text-ink-2 mt-0 mb-4">{lastCountedLabel(product)}</p>
-
-      <h3 className="text-[15px] font-bold m-0 mb-2">Verify the count</h3>
+      <h3 className="text-[15px] font-bold m-0 mb-2">
+        Verify the count <span className="text-ink-2 font-normal text-sm">· Bintro says {onHand}</span>
+      </h3>
       <div className="flex items-center gap-2 mb-3">
         <button type="button" aria-label="One fewer" className="w-11 h-11 rounded-full border border-line bg-white grid place-items-center cursor-pointer" onClick={() => step(-1)}>
           <Minus size={18} />
@@ -101,8 +203,8 @@ export function CheckProductSheet({
         <>
           <p className="text-[13px] font-semibold m-0 mb-1.5">Why is it different?</p>
           <div className="flex flex-wrap gap-1.5 mb-1">
-            {COUNT_REASONS.map((r) => (
-              <button key={r} type="button" className="chip !text-[12px] !py-1" aria-pressed={reason === r} onClick={() => setReason(r)}>
+            {CHECK_REASONS.map((r) => (
+              <button key={r} type="button" className="chip !text-[13px]" aria-pressed={reason === r} onClick={() => setReason(r)}>
                 {r}
               </button>
             ))}
@@ -112,27 +214,49 @@ export function CheckProductSheet({
 
       <SheetActions>
         {diff == null || diff === 0 ? (
-          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => save(onHand, '')}>
+          <button type="button" className="btn btn-primary" disabled={busy || savingDetails} onClick={() => saveCount(onHand, '')}>
             <BadgeCheck size={17} /> {busy ? 'Saving…' : `Count matches · ${onHand}`}
           </button>
         ) : (
-          <button type="button" className="btn btn-primary" disabled={busy || !reason} onClick={() => save(n!, reason)}>
+          <button type="button" className="btn btn-primary" disabled={busy || savingDetails || !reason} onClick={() => saveCount(n!, reason)}>
             {busy ? 'Saving…' : reason ? `Save count · ${n}` : 'Pick a reason'}
           </button>
         )}
         <button type="button" className="btn btn-tonal" onClick={onClose}>
-          Done
+          {dirty ? 'Close without saving' : 'Done'}
         </button>
       </SheetActions>
     </Sheet>
   )
 }
 
-function Stat({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function Input({
+  label,
+  value,
+  onChange,
+  wide,
+  numeric,
+  decimal,
+  placeholder,
+}: {
+  label: string
+  value: string
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  wide?: boolean
+  numeric?: boolean
+  decimal?: boolean
+  placeholder?: string
+}) {
   return (
-    <div className="bg-surface rounded-xl px-2 py-2 min-w-0">
-      <dt className="text-[11px] text-ink-2">{label}</dt>
-      <dd className={`m-0 num truncate ${strong ? 'text-xl font-bold' : 'text-sm font-semibold'}`}>{value}</dd>
-    </div>
+    <label className={`block min-w-0 ${wide ? 'col-span-2' : ''}`}>
+      <span className="text-[12px] text-ink-2">{label}</span>
+      <input
+        className="field-input !py-2"
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        inputMode={numeric ? 'numeric' : decimal ? 'decimal' : undefined}
+      />
+    </label>
   )
 }
