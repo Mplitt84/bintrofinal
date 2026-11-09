@@ -385,7 +385,7 @@ const squareSyncSales = createServerFn({
 const quickbooksPushMonth = createServerFn({
   method: "POST"
 }).inputValidator(MonthWindowSchema).handler(createSsrRpc("7fef2669d1d6f3e9fdccdfbabede084b9e0823ba1f054366dd5ae9501cff565b"));
-const $$splitComponentImporter$3 = () => import("./index-BT80X0u-.js");
+const $$splitComponentImporter$3 = () => import("./index-Dqe4TgxR.js");
 const Route$8 = createFileRoute("/")({
   loader: async () => {
     const [products, recent, profile, team, categories, account] = await Promise.all([listProducts(), getRecentMovements({
@@ -404,7 +404,7 @@ const Route$8 = createFileRoute("/")({
   },
   component: lazyRouteComponent($$splitComponentImporter$3, "component")
 });
-const $$splitComponentImporter$2 = () => import("./eula-gtKERv-H.js");
+const $$splitComponentImporter$2 = () => import("./eula-Db4dlrX-.js");
 const Route$7 = createFileRoute("/eula")({
   head: () => ({
     meta: [{
@@ -413,7 +413,7 @@ const Route$7 = createFileRoute("/eula")({
   }),
   component: lazyRouteComponent($$splitComponentImporter$2, "component")
 });
-const $$splitComponentImporter$1 = () => import("./privacy-_50QH73Q.js");
+const $$splitComponentImporter$1 = () => import("./privacy-COmHOTOo.js");
 const Route$6 = createFileRoute("/privacy")({
   head: () => ({
     meta: [{
@@ -422,7 +422,7 @@ const Route$6 = createFileRoute("/privacy")({
   }),
   component: lazyRouteComponent($$splitComponentImporter$1, "component")
 });
-const $$splitComponentImporter = () => import("./terms-BMR9Aw2S.js");
+const $$splitComponentImporter = () => import("./terms-Bo-DHEhP.js");
 const Route$5 = createFileRoute("/terms")({
   head: () => ({
     meta: [{

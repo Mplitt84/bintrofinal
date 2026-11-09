@@ -1,7 +1,7 @@
 import { jsxs, jsx, Fragment } from "react/jsx-runtime";
 import { useRef, useId, useEffect, useState, useCallback, createContext, useContext, useMemo, forwardRef } from "react";
 import { X, Sparkles, Trash2, Check, Plus, Search, Copy, Mic, Lock, Square, GitMerge, Camera, Tags, ExternalLink, Wand2, RotateCcw, ArrowDownToLine, ArrowUpFromLine, FileSpreadsheet, AlertTriangle, Users, UserPlus, ScanBarcode, PackagePlus, Undo2, EyeOff, History, ClipboardCheck, Gauge, CircleMinus, Tag, CheckSquare, Pencil, ClipboardList, Mail, RefreshCw, Download, Printer, FileText, CheckCheck, PackageCheck, Truck, CalendarPlus, ChevronLeft, ChevronRight, Landmark, Repeat, CalendarDays, CheckCircle2, Send, FileUp, TriangleAlert, Plug, Lightbulb, Boxes, Leaf, CalendarClock, PiggyBank, ArrowRight, Palette, BluetoothConnected, Bluetooth, Crown, PlayCircle, CreditCard, XCircle, PauseCircle, Receipt, Flame, TrendingUp, TrendingDown, Globe, Settings, Store, Wallet, Activity } from "lucide-react";
-import { c as createSsrRpc, s as saveProductCategories, r as removeProductCategories, l as lookupBarcodeDetails, a as readSpokenProduct, b as readLabelPhoto, d as suggestProduct, e as readStockPhotoFn, f as createProduct, g as recordProductMovement, h as getMovementsSince, i as searchProducts, j as scanMovement, u as undoMovement, k as linkBarcodeToProduct, m as bulkUpdateProducts, n as updateBusinessProfile, o as mergeProducts, p as deleteProduct, q as updateProduct, t as bulkDeleteProducts, v as emailBelowPar, w as emailPurchaseOrder, x as toDay, y as parseDay, z as occurrences, A as eventKind, E as EVENT_KINDS, B as formatTime, R as REPEATS, C as estimatedTaxDates, D as googleCalendarUrl, F as outlookCalendarUrl, G as subscribeUrls, H as buildIcs, I as getBudgetOverview, J as listExpenses, K as getIntegrations, L as quickbooksPushMonth, M as editExpense, N as createExpense, O as readReceiptPhoto, P as removeExpense, Q as saveMonthBudget, S as resumePlan, T as lockInFounding, U as cancelSubscription, V as getBillingHistory, W as saveAccountDetails, X as selectPlan, Y as openPaymentPortal, Z as pausePlan, _ as addTeamMember, $ as removeTeamMember, a0 as getSquareRetailCategories, a1 as disconnect, a2 as getIntegrationErrorLog, a3 as setSquareRetailCategories, a4 as squareImportCatalog, a5 as squareSyncSales, a6 as squareSendCounts, a7 as Route, a8 as listProducts, a9 as getRecentMovements, aa as getAccount } from "./router-I6Lyp8e2.js";
+import { c as createSsrRpc, s as saveProductCategories, r as removeProductCategories, l as lookupBarcodeDetails, a as readSpokenProduct, b as readLabelPhoto, d as suggestProduct, e as readStockPhotoFn, f as createProduct, g as recordProductMovement, h as getMovementsSince, i as searchProducts, j as scanMovement, u as undoMovement, k as linkBarcodeToProduct, m as bulkUpdateProducts, n as updateBusinessProfile, o as mergeProducts, p as deleteProduct, q as updateProduct, t as bulkDeleteProducts, v as emailBelowPar, w as emailPurchaseOrder, x as toDay, y as parseDay, z as occurrences, A as eventKind, E as EVENT_KINDS, B as formatTime, R as REPEATS, C as estimatedTaxDates, D as googleCalendarUrl, F as outlookCalendarUrl, G as subscribeUrls, H as buildIcs, I as getBudgetOverview, J as listExpenses, K as getIntegrations, L as quickbooksPushMonth, M as editExpense, N as createExpense, O as readReceiptPhoto, P as removeExpense, Q as saveMonthBudget, S as resumePlan, T as lockInFounding, U as cancelSubscription, V as getBillingHistory, W as saveAccountDetails, X as selectPlan, Y as openPaymentPortal, Z as pausePlan, _ as addTeamMember, $ as removeTeamMember, a0 as getSquareRetailCategories, a1 as disconnect, a2 as getIntegrationErrorLog, a3 as setSquareRetailCategories, a4 as squareImportCatalog, a5 as squareSyncSales, a6 as squareSendCounts, a7 as Route, a8 as listProducts, a9 as getRecentMovements, aa as getAccount } from "./router-vcMbWth8.js";
 import { createPortal } from "react-dom";
 import { c as createServerFn } from "../server.js";
 import { z } from "zod";
@@ -11,7 +11,7 @@ import { d as displayBusinessName, a as businessTypeById, E as EMPTY_PROFILE, T 
 import { o as planById, q as planHas, t as planFor, F as FEATURE_INFO, v as centsLabel, w as priceFor, x as PLANS, P as PAUSE_OPTIONS, C as CANCEL_REASONS, y as planRank } from "./account.server-B5c_30md.js";
 import { M as MAX_IMPORT_LINES, S as SALES_REPORT_APPS, P as PRICE_BATCH, a as MAX_IMPORT_BYTES, n as needsPrice } from "./bulk-import-Bd6tmV71.js";
 import { g as groupPurchaseOrderLines, a as purchaseOrderTotals, b as buildPurchaseOrderCsv, p as purchaseOrderFilename, l as lineTotalCents } from "./purchase-order-1ZyUH4cu.js";
-import { L as LINKS } from "./LegalPage-DZ1ney0Q.js";
+import { L as LINKS, a as LEGAL } from "./LegalPage-yOebtSyS.js";
 import "@tanstack/react-router";
 import "./calendar.server-Cw9hO_il.js";
 import "drizzle-orm";
@@ -11241,7 +11241,8 @@ function SettingsView({
       /* @__PURE__ */ jsx(Integrations, { onChanged }),
       /* @__PURE__ */ jsx(ConnectionDirectory, {})
     ] }),
-    /* @__PURE__ */ jsx("nav", { className: "mt-10 pt-4 border-t border-line flex flex-wrap gap-x-4 gap-y-1 text-[13px]", "aria-label": "Legal", children: LINKS.map((l) => /* @__PURE__ */ jsx("a", { href: l.href, target: "_blank", rel: "noreferrer", className: "text-ink-2 font-semibold no-underline", children: l.label }, l.href)) })
+    /* @__PURE__ */ jsx(HelpSupport, {}),
+    /* @__PURE__ */ jsx("nav", { className: "mt-6 pt-4 border-t border-line flex flex-wrap gap-x-4 gap-y-1 text-[13px]", "aria-label": "Legal", children: LINKS.map((l) => /* @__PURE__ */ jsx("a", { href: l.href, target: "_blank", rel: "noreferrer", className: "text-ink-2 font-semibold no-underline", children: l.label }, l.href)) })
   ] });
 }
 const REPORTS = [
@@ -11852,6 +11853,34 @@ function ErrorLogLink({ provider, name }) {
       children: busy ? "Preparing…" : "Download error log"
     }
   );
+}
+function HelpSupport() {
+  const { name } = useBusiness();
+  const ready = !LEGAL.supportEmail.includes("[");
+  const href = () => {
+    const body = [
+      "What happened (and what you expected):",
+      "",
+      "",
+      "— Details for Bintro support —",
+      `Business: ${name}`,
+      `Site: ${window.location.host}`,
+      `Device: ${navigator.userAgent}`,
+      `Time: ${(/* @__PURE__ */ new Date()).toString()}`,
+      "If this is about Square or QuickBooks, attach the error log from Settings → Connections → Download error log."
+    ].join("\n");
+    const params = new URLSearchParams({ subject: `Bintro help: ${name}`, body }).toString().replace(/\+/g, "%20");
+    return `mailto:${LEGAL.supportEmail}?${params}`;
+  };
+  return /* @__PURE__ */ jsxs("section", { className: "mt-10 bg-white border border-line rounded-2xl p-4", children: [
+    /* @__PURE__ */ jsxs("h3", { className: "m-0 mb-1 text-[17px] font-bold flex items-center gap-2", children: [
+      /* @__PURE__ */ jsx(Mail, { size: 18, className: "text-ink-2" }),
+      "Help & support"
+    ] }),
+    /* @__PURE__ */ jsx("p", { className: "text-ink-2 text-sm mt-0 mb-3", children: "Something not working, or a question? Email us and we’ll get back to you." }),
+    ready ? /* @__PURE__ */ jsx("a", { className: "btn btn-primary btn-sm no-underline", href: href(), onClick: (e) => e.currentTarget.href = href(), children: "Email support" }) : /* @__PURE__ */ jsx("p", { className: "text-sm m-0 text-warn", children: "Support email isn’t set yet (LEGAL.supportEmail in src/lib/legal.ts)." }),
+    ready && /* @__PURE__ */ jsx("p", { className: "text-ink-2 text-[13px] mt-2 mb-0", children: LEGAL.supportEmail })
+  ] });
 }
 const SEGMENTS = [
   { id: "fast", label: "Moving fast" },
