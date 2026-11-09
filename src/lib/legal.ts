@@ -10,7 +10,7 @@ export const LEGAL = {
   /** Where customers send legal and privacy requests. */
   email: '[legal or privacy email]',
   /** Where customers get help from inside the app (Settings → Help & support). */
-  supportEmail: '[support email]',
+  supportEmail: 'hello@bintroapp.com',
   /** Mailing address for legal notices. */
   address: '[Mailing address]',
   /** State whose law governs the Terms. */

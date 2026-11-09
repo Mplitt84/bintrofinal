@@ -406,7 +406,7 @@ const squareSyncSales = createServerFn({
 const quickbooksPushMonth = createServerFn({
   method: "POST"
 }).middleware([requireUser]).inputValidator(MonthWindowSchema).handler(createSsrRpc("7fef2669d1d6f3e9fdccdfbabede084b9e0823ba1f054366dd5ae9501cff565b"));
-const $$splitComponentImporter$3 = () => import("./index-CSK88p09.js");
+const $$splitComponentImporter$3 = () => import("./index-DfoP5n6p.js");
 const Route$a = createFileRoute("/")({
   loader: async () => {
     const auth = await getAuthState();
@@ -433,7 +433,7 @@ const Route$a = createFileRoute("/")({
   },
   component: lazyRouteComponent($$splitComponentImporter$3, "component")
 });
-const $$splitComponentImporter$2 = () => import("./eula-Bk88SfxG.js");
+const $$splitComponentImporter$2 = () => import("./eula-DwcfMmon.js");
 const Route$9 = createFileRoute("/eula")({
   head: () => ({
     meta: [{
@@ -442,7 +442,7 @@ const Route$9 = createFileRoute("/eula")({
   }),
   component: lazyRouteComponent($$splitComponentImporter$2, "component")
 });
-const $$splitComponentImporter$1 = () => import("./privacy-Cu85mT7M.js");
+const $$splitComponentImporter$1 = () => import("./privacy-C4EcywB2.js");
 const Route$8 = createFileRoute("/privacy")({
   head: () => ({
     meta: [{
@@ -451,7 +451,7 @@ const Route$8 = createFileRoute("/privacy")({
   }),
   component: lazyRouteComponent($$splitComponentImporter$1, "component")
 });
-const $$splitComponentImporter = () => import("./terms-Djlv-CBn.js");
+const $$splitComponentImporter = () => import("./terms-D2bCf5zn.js");
 const Route$7 = createFileRoute("/terms")({
   head: () => ({
     meta: [{
