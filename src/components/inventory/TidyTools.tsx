@@ -439,7 +439,11 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
   function load() {
     setData(null)
     getSmartPars()
-      .then(setData)
+      .then((d) => {
+        setData(d)
+        // "Not used in 90 days" may only mean it isn't scanned out (back bar), so those start unticked.
+        setSkip(new Set(d.suggestions.filter((i) => i.suggested === 0).map((i) => i.productId)))
+      })
       .catch(() => setData({ suggestions: [], overstock: [], orderEveryDays: profile.orderEveryDays || 7 }))
   }
 
@@ -465,6 +469,7 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
   const items = data?.suggestions ?? []
   const chosen = items.filter((i) => !skip.has(i.productId))
   const quieted = chosen.filter((i) => i.suggested === 0).length
+  const unused = items.filter((i) => i.suggested === 0).length
   const cycle = data?.orderEveryDays ?? profile.orderEveryDays ?? 7
   const tiedUp = (data?.overstock ?? []).reduce((sum, o) => sum + o.extraCents, 0)
 
@@ -536,8 +541,13 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
           ) : (
             <>
               <p className="text-sm mt-0">
-                {items.length} suggestion{items.length === 1 ? '' : 's'}
-                {quieted > 0 && ` · ${quieted} unused item${quieted === 1 ? '' : 's'} would stop alerting`}. Untick any you want to keep as they are.
+                {items.length - unused} product{items.length - unused === 1 ? '' : 's'} to tune from real use. Untick any you want to keep as they are.
+                {unused > 0 && (
+                  <span className="block mt-1 text-[13px] text-ink-2">
+                    {unused} more had nothing scanned out in 90 days. They're left unticked: if you use them on clients but don't scan them out, keep their alerts on.
+                    Tick only the ones you've truly stopped using{quieted > 0 ? ` (${quieted} ticked)` : ''}.
+                  </span>
+                )}
               </p>
               <ul className="list-none m-0 p-0">
                 {items.map((i) => (
