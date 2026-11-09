@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { eq, asc, sql, inArray } from "drizzle-orm";
 import { d as db, n as integrations, l as squareOutbox, a as products, r as expenses } from "./index-CaPewqP7.js";
-import { d as findProductByBarcode, h as applyMovement, S as SQUARE_STAFF_NAME } from "./inventory.server-CSgjh4TC.js";
+import { d as findProductByBarcode, h as applyMovement, S as SQUARE_STAFF_NAME } from "./inventory.server-FPvzQkco.js";
 import { b as findProductCategories, u as upsertProductCategories, h as findExpensesForMonth, n as inventorySpend } from "./business.server-CHGYL_45.js";
 import "drizzle-orm/netlify-db";
 import "drizzle-orm/pg-core";
@@ -141,8 +141,14 @@ async function requestQuickBooksToken(body) {
     body: new URLSearchParams(body)
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.access_token)
-    throw new TokenError(String(data.error_description || data.error || "QuickBooks rejected the request."), String(data.error ?? ""));
+  const tid = res.headers.get("intuit_tid") ?? "";
+  if (!res.ok || !data.access_token) {
+    console.error(`QuickBooks token request failed (${res.status}) intuit_tid=${tid || "none"}`, data.error ?? "");
+    throw new TokenError(
+      `${String(data.error_description || data.error || "QuickBooks rejected the request.")}${tid ? ` (QuickBooks ref ${tid})` : ""}`,
+      String(data.error ?? "")
+    );
+  }
   return {
     accessToken: String(data.access_token),
     refreshToken: String(data.refresh_token ?? ""),
@@ -580,7 +586,9 @@ async function qbFetch(row, path, init = {}, retried = false) {
       ...init.headers ?? {}
     }
   });
+  const tid = res.headers.get("intuit_tid") ?? "";
   if (res.status === 401 && !retried) {
+    console.warn(`QuickBooks 401 on ${init.method ?? "GET"} ${path.split("?")[0]} intuit_tid=${tid || "none"}; refreshing`);
     if (!row.refreshToken) throw await markNeedsReconnect(row);
     const fresh = await refreshTokens(row);
     Object.assign(row, { accessToken: fresh.accessToken, refreshToken: fresh.refreshToken, expiresAt: fresh.expiresAt });
@@ -590,7 +598,11 @@ async function qbFetch(row, path, init = {}, retried = false) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.Fault) {
     const err = data.Fault?.Error?.[0];
-    throw new Error(err?.Detail || err?.Message || `QuickBooks returned ${res.status}.`);
+    console.error(
+      `QuickBooks ${init.method ?? "GET"} ${path.split("?")[0]} failed (${res.status}${err?.code ? `, code ${err.code}` : ""}) intuit_tid=${tid || "none"}`,
+      err?.Detail || err?.Message || ""
+    );
+    throw new Error(`${err?.Detail || err?.Message || `QuickBooks returned ${res.status}.`}${tid ? ` (QuickBooks ref ${tid})` : ""}`);
   }
   return data;
 }
