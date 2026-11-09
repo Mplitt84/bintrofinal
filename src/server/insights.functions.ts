@@ -1,3 +1,4 @@
+import { requireUser } from "./auth.middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { InsightKind, WebPriceResult, WebPriceSource } from "../lib/insights.js";
@@ -9,19 +10,19 @@ import { hasFeature } from "./account.server.js";
 
 const KindSchema = z.enum(["weekly", "monthly", "fast"]);
 
-export const getInsights = createServerFn({ method: "GET" }).handler(async () => {
+export const getInsights = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => {
   return findInsights();
 });
 
 /** AI summary for a pop-up; writes one for the current period if the scheduled report hasn't yet. */
-export const getInsightSummary = createServerFn({ method: "POST" })
+export const getInsightSummary = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ kind: KindSchema }))
   .handler(async ({ data }) => {
     return { summary: await ensureInsightSummary(data.kind as InsightKind) };
   });
 
 /** Settings → Reports & alerts → Send now. */
-export const sendInsightReportNow = createServerFn({ method: "POST" })
+export const sendInsightReportNow = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ kind: KindSchema }))
   .handler(async ({ data }) => {
     if (!(await hasFeature("insights"))) {
@@ -50,7 +51,7 @@ const PriceFieldsSchema = z.object({
  * Looks up the price on the manufacturer's site, an authorised distributor or
  * Amazon (never third-party resale listings). Saved products keep a record of each check.
  */
-export const checkWebPrice = createServerFn({ method: "POST" })
+export const checkWebPrice = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(PriceFieldsSchema)
   .handler(async ({ data }): Promise<WebPriceResult> => {
     if (!(await hasFeature("ai"))) {
@@ -89,7 +90,7 @@ export const checkWebPrice = createServerFn({ method: "POST" })
   });
 
 /** Applies prices (from a web check or typed) and marks the product's prices as current. */
-export const applyWebPrice = createServerFn({ method: "POST" })
+export const applyWebPrice = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(
     z.object({
       productId: z.number().int().positive(),
@@ -115,7 +116,7 @@ export const applyWebPrice = createServerFn({ method: "POST" })
   });
 
 /** "Price still right": keeps the prices and resets the reminder clock. */
-export const confirmPrices = createServerFn({ method: "POST" })
+export const confirmPrices = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ productId: z.number().int().positive() }))
   .handler(async ({ data }) => {
     const product = await markPricesChecked(data.productId);

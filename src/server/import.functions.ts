@@ -1,3 +1,4 @@
+import { requireUser } from "./auth.middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { applyImportLines, applySalesReport, parseImportFile, parseSalesReportFile } from "./import.server.js";
@@ -10,7 +11,7 @@ import { assertFeature } from "./account.server.js";
 const businessContext = findBusinessContext;
 
 /** Reads an uploaded CSV, PDF or photo into reviewable line items matched to existing products. */
-export const parseImport = createServerFn({ method: "POST" })
+export const parseImport = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(
     z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("csv"), text: z.string().min(1).max(4_000_000) }),
@@ -27,7 +28,7 @@ export const parseImport = createServerFn({ method: "POST" })
   });
 
 /** AI price estimates for a batch of import lines missing a cost or retail price. */
-export const estimateImportPrices = createServerFn({ method: "POST" })
+export const estimateImportPrices = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(
     z.object({
       items: z
@@ -62,7 +63,7 @@ const LineSchema = z.object({
 });
 
 /** Saves the reviewed import: new products, price updates and stock counts / receipts (prices only for a price list). */
-export const applyImport = createServerFn({ method: "POST" })
+export const applyImport = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(
     z.object({
       mode: z.enum(["inventory", "receipt", "prices"]),
@@ -81,7 +82,7 @@ export const applyImport = createServerFn({ method: "POST" })
  * and for lines that match a product and show a unit price, updates that product's
  * cost (prices only — stock is left alone, so nothing is counted twice).
  */
-export const applyReceiptPrices = createServerFn({ method: "POST" })
+export const applyReceiptPrices = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(
     z.object({
       data: z.string().min(1).max(5_800_000),
@@ -114,7 +115,7 @@ const FileSchema = z.discriminatedUnion("kind", [
 ]);
 
 /** Reads a product sales report exported from a booking app with no direct connection. */
-export const parseSalesReport = createServerFn({ method: "POST" })
+export const parseSalesReport = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(FileSchema)
   .handler(async ({ data }) => {
     await assertFeature("import");
@@ -122,7 +123,7 @@ export const parseSalesReport = createServerFn({ method: "POST" })
   });
 
 /** Logs the reviewed units sold as scan-outs, one per product, tagged with the app and period. */
-export const logSalesReport = createServerFn({ method: "POST" })
+export const logSalesReport = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(
     z.object({
       app: z.enum(SALES_REPORT_APPS),

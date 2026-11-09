@@ -1,3 +1,4 @@
+import { requireUser } from "./auth.middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { cancelOrder, ordersOverview, receiveDelivery, saveOrders } from "./orders.server.js";
@@ -6,7 +7,7 @@ import { MAX_IMPORT_LINES } from "../lib/bulk-import.js";
 import { MAX_ORDER_QTY } from "../lib/inventory-defaults.js";
 
 /** Saves an emailed / printed / downloaded order as open purchase orders, one per vendor. */
-export const saveSentOrder = createServerFn({ method: "POST" })
+export const saveSentOrder = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(
     z.object({
       lines: z
@@ -23,11 +24,11 @@ export const saveSentOrder = createServerFn({ method: "POST" })
     return saveOrders(data);
   });
 
-export const getOrders = createServerFn({ method: "GET" }).handler(async () => {
+export const getOrders = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => {
   return ordersOverview();
 });
 
-export const cancelSavedOrder = createServerFn({ method: "POST" })
+export const cancelSavedOrder = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ orderId: z.number().int().positive() }))
   .handler(async ({ data }) => {
     await assertFeature("orders");
@@ -49,7 +50,7 @@ const DeliveryLine = z.object({
 });
 
 /** Checks a delivery in: adds stock, updates costs and, for a saved order, records what arrived. */
-export const receiveDeliveryFn = createServerFn({ method: "POST" })
+export const receiveDeliveryFn = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(
     z.object({
       orderId: z.number().int().positive().nullable(),

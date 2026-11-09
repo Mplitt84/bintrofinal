@@ -22,7 +22,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 
 ```
 ├── db
-│   ├── schema.ts   # Drizzle schema: products, movements, business_profile, team_members, expenses, budgets, integrations, square_outbox, product_categories, calendar_events, insight_reports, price_checks, account, billing_events, par_changes, stock_counts, stock_count_lines, connection_requests, integration_logs
+│   ├── schema.ts   # Drizzle schema: products, movements, business_profile, team_members, expenses, budgets, integrations, square_outbox, product_categories, calendar_events, insight_reports, price_checks, account, billing_events, par_changes, stock_counts, stock_count_lines, connection_requests, integration_logs, app_users, app_sessions
 │   └── index.ts    # Drizzle client (Netlify Database adapter)
 ├── drizzle.config.ts        # Drizzle Kit config; migrations output to netlify/database/migrations
 ├── netlify/database/migrations/  # Auto-applied SQL migrations (never hand-edit an applied one)
@@ -224,6 +224,9 @@ Tiers live in `src/lib/plans.ts` (prices, product/team limits, `Feature` ids). F
 
 ### Setup check
 Settings → Setup check (`?settings=setup`) runs `runSetupCheck`: `pingAI` (a 5-token Claude call through `postToClaude`, with hints for a rejected key or no credit), `stripeCheck` (key mode test/live from its prefix, `/v1/account`, each `STRIPE_PRICE_*` fetched and compared with the plan's price and interval in `plans.ts` — GET only), `emailSetup` (Resend / SendGrid / none, custom sender) with a "Send me a test email" button to the profile email, Square/QuickBooks app keys present, and whether the site is a pilot. It never returns a key's value.
+
+### Sign-in (Google)
+`src/server/auth.server.ts`: Sign in with Google (authorization code + PKCE, `state` cookie for CSRF, `nonce` checked in the ID token; `/api/auth/google/{start,callback}`). Only emails in `app_users` get in; the first sign-in by env `BINTRO_OWNER_EMAIL` creates the owner. No passwords are stored; MFA is Google's 2-Step Verification. Sessions: random token in the httpOnly, Secure, SameSite=Lax `bintro_session` cookie (30 days); `app_sessions` stores only its SHA-256. **Every server function** carries `.middleware([requireUser])` (`auth.middleware.ts`) — add it to every new `createServerFn`; owner-only ones use `requireOwner`. Public: `getAuthState`, `signOut`. Integration connect/callback require an owner and billing return a signed-in user (`routeUser`); the calendar feed (secret token), Stripe webhook (signature) and legal pages stay public. The index loader returns `{ auth, data: null }` when signed out and `Gate` shows `SignInScreen`; the app reloads to sign-in on focus or a `SIGNED_OUT` error. Settings → Sign-in & access (`AccessPanel`): sign out, and owners add/remove Google emails (owner/staff; removing ends their sessions; the last owner can't be removed). **Until `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set, sign-in is off and the app is open as before** (AccessPanel warns). Google redirect URI: `<site>/api/auth/google/callback`. The Scan tab's staff picker still records who scanned; sign-in controls who can open the app.
 
 ### Help & support
 Settings shows a **Help & support** card on every panel (`HelpSupport` in `SettingsView.tsx`): "Email support" opens a mail draft to `LEGAL.supportEmail` with the business name, site, device and time filled in, and points to the integration error-log download. Until `supportEmail` is set (still `[support email]`) the card says so instead of showing the button.

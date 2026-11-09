@@ -1,3 +1,4 @@
+import { requireUser } from "./auth.middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
@@ -30,15 +31,15 @@ async function attempt<T>(fn: () => Promise<T>): Promise<{ ok: true; result: T }
   }
 }
 
-export const getAccount = createServerFn({ method: "GET" }).handler(async () => {
+export const getAccount = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => {
   return getAccountSummary();
 });
 
-export const getBillingHistory = createServerFn({ method: "GET" }).handler(async () => {
+export const getBillingHistory = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => {
   return listBillingHistory();
 });
 
-export const saveAccountDetails = createServerFn({ method: "POST" })
+export const saveAccountDetails = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(
     z.object({
       ownerName: z.string().trim().max(120).optional(),
@@ -49,35 +50,35 @@ export const saveAccountDetails = createServerFn({ method: "POST" })
     return updateAccountDetails(data);
   });
 
-export const selectPlan = createServerFn({ method: "POST" })
+export const selectPlan = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ plan: z.enum(["free", "plus", "premium"]), interval: z.enum(["month", "year"]) }))
   .handler(async ({ data }) => {
     return attempt<BillingResult>(() => changePlan(data.plan, data.interval, origin()));
   });
 
 /** Pilot testers: lock in the founding rate now; billing starts when the free pilot ends. */
-export const lockInFounding = createServerFn({ method: "POST" })
+export const lockInFounding = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ plan: z.enum(["plus", "premium"]), interval: z.enum(["month", "year"]) }))
   .handler(async ({ data }) => {
     return attempt<BillingResult>(() => lockInFoundingRate(data.plan, data.interval, origin()));
   });
 
-export const pausePlan = createServerFn({ method: "POST" })
+export const pausePlan = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ months: z.number().int().refine((m) => (PAUSE_OPTIONS as readonly number[]).includes(m)) }))
   .handler(async ({ data }) => {
     return attempt<BillingResult>(() => pauseBilling(data.months));
   });
 
-export const resumePlan = createServerFn({ method: "POST" }).handler(async () => {
+export const resumePlan = createServerFn({ method: "POST" }).middleware([requireUser]).handler(async () => {
   return attempt<BillingResult>(resumeBilling);
 });
 
-export const cancelSubscription = createServerFn({ method: "POST" })
+export const cancelSubscription = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ reason: z.string().trim().max(500) }))
   .handler(async ({ data }) => {
     return attempt<BillingResult>(() => cancelPlan(data.reason));
   });
 
-export const openPaymentPortal = createServerFn({ method: "POST" }).handler(async () => {
+export const openPaymentPortal = createServerFn({ method: "POST" }).middleware([requireUser]).handler(async () => {
   return attempt(() => paymentPortalUrl(origin()));
 });

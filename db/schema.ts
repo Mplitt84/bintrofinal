@@ -356,3 +356,27 @@ export const integrationLogs = pgTable("integration_logs", {
   message: text().notNull().default(""),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+/** People allowed to sign in (with Google). The first sign-in by BINTRO_OWNER_EMAIL creates the owner. */
+export const appUsers = pgTable("app_users", {
+  id: serial().primaryKey(),
+  /** Lower-cased Google account email. */
+  email: text().notNull().unique(),
+  name: text().notNull().default(""),
+  /** owner = manages who can sign in, connections and billing; staff = everything else. */
+  role: text().notNull().default("staff"),
+  /** Google's stable account id, set on first sign-in. */
+  googleSub: text("google_sub").notNull().default(""),
+  addedBy: text("added_by").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastSignInAt: timestamp("last_sign_in_at"),
+});
+
+/** Signed-in browsers. Only a SHA-256 of the cookie token is stored. */
+export const appSessions = pgTable("app_sessions", {
+  tokenHash: text("token_hash").primaryKey(),
+  userId: integer("user_id").notNull(),
+  userAgent: text("user_agent").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+});

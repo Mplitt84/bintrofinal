@@ -6,6 +6,8 @@ import { SetupCheck } from '@/components/business/SetupCheck'
 import { ConnectionDirectory } from '@/components/business/ConnectionDirectory'
 import { LEGAL_LINKS } from '@/components/legal/LegalPage'
 import { LEGAL } from '@/lib/legal'
+import type { AuthState } from '@/lib/auth'
+import { AccessPanel } from '@/components/auth/AccessPanel'
 import { AppearanceSettings } from '@/components/business/AppearanceSettings'
 import { ScannerSettings } from '@/components/business/ScannerSettings'
 import { AccountView, type AccountPanel } from '@/components/business/AccountView'
@@ -72,6 +74,7 @@ export function SettingsView({
   notice,
   onDismissNotice,
   onChanged,
+  auth,
 }: {
   section: SettingsSection
   onSection: (s: SettingsSection) => void
@@ -87,6 +90,7 @@ export function SettingsView({
   notice: { tone: 'good' | 'bad'; text: string } | null
   onDismissNotice: () => void
   onChanged: () => void | Promise<void>
+  auth: AuthState
 }) {
   return (
     <div className="max-w-[680px]">
@@ -146,6 +150,7 @@ export function SettingsView({
           <ConnectionDirectory />
         </>
       )}
+      <AccessPanel auth={auth} />
       <HelpSupport />
       <nav className="mt-6 pt-4 border-t border-line flex flex-wrap gap-x-4 gap-y-1 text-[13px]" aria-label="Legal">
         {LEGAL_LINKS.map((l) => (
@@ -889,7 +894,7 @@ function HelpSupport() {
     return `mailto:${LEGAL.supportEmail}?${params}`
   }
   return (
-    <section className="mt-10 bg-white border border-line rounded-2xl p-4">
+    <section className="mt-4 bg-white border border-line rounded-2xl p-4">
       <h3 className="m-0 mb-1 text-[17px] font-bold flex items-center gap-2">
         <Mail size={18} className="text-ink-2" />
         Help &amp; support

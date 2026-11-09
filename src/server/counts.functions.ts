@@ -1,9 +1,10 @@
+import { requireUser } from "./auth.middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { approveCount, countLines, recentCounts } from "./counts.server.js";
 
 /** Approves a reviewed count: adjusts stock with the reason and saves it to count history. */
-export const approveStockCount = createServerFn({ method: "POST" })
+export const approveStockCount = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(
     z.object({
       scope: z.string().max(120),
@@ -17,8 +18,8 @@ export const approveStockCount = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => approveCount(data));
 
-export const getCountHistory = createServerFn({ method: "GET" }).handler(async () => recentCounts());
+export const getCountHistory = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => recentCounts());
 
-export const getCountLines = createServerFn({ method: "POST" })
+export const getCountLines = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ countId: z.number().int().positive() }))
   .handler(async ({ data }) => countLines(data.countId));
