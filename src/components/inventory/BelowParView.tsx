@@ -111,13 +111,13 @@ export function BelowParView({
       </StatGrid>
 
       <ToolRow label="Restock actions" className="mb-2">
-        <ToolButton icon={<Gauge size={24} />} color="bg-gold" label="Smart par" onClick={() => setSmartOpen(true)} />
+        <ToolButton icon={<Gauge size={24} />} tone="yellow" label="Smart par" onClick={() => setSmartOpen(true)} />
         {onBuildOrder && (
-          <ToolButton icon={<ClipboardList size={24} />} color="bg-action" label="Build order" onClick={onBuildOrder} disabled={items.length === 0} />
+          <ToolButton icon={<ClipboardList size={24} />} tone="garnet" label="Build order" onClick={onBuildOrder} disabled={items.length === 0} />
         )}
         <ToolButton
           icon={<Mail size={24} />}
-          color="bg-royal-2"
+          tone="royal"
           label={mail.kind === 'sending' ? 'Sending…' : 'Email list'}
           onClick={handleEmail}
           busy={mail.kind === 'sending'}
@@ -125,7 +125,7 @@ export function BelowParView({
         />
         <ToolButton
           icon={<RefreshCw size={24} />}
-          color="bg-royal"
+          tone="charcoal"
           label="Refresh"
           onClick={() => {
             setMail({ kind: 'idle' })

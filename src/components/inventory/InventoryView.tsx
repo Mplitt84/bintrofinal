@@ -123,15 +123,15 @@ export function InventoryView({
       </StatGrid>
 
       <div className="flex gap-4 overflow-x-auto pb-2 mb-3 -mx-1 px-1" role="group" aria-label="Keep your stock accurate">
-        <ToolButton icon={<ClipboardCheck size={24} />} color="bg-action" label="Count & reconcile" onClick={() => setTool('count')} />
-        <ToolButton icon={<Gauge size={24} />} color="bg-gold" label="Smart par" onClick={() => setTool('smartpar')} />
+        <ToolButton icon={<ClipboardCheck size={24} />} tone="garnet" label="Count & reconcile" onClick={() => setTool('count')} />
+        <ToolButton icon={<Gauge size={24} />} tone="yellow" label="Smart par" onClick={() => setTool('smartpar')} />
         {negativeIds.length > 0 && (
-          <ToolButton icon={<CircleMinus size={24} />} color="bg-bad" label="Fix negatives" badge={negativeIds.length} onClick={() => setTool('negatives')} />
+          <ToolButton icon={<CircleMinus size={24} />} tone="red" label="Fix negatives" badge={negativeIds.length} onClick={() => setTool('negatives')} />
         )}
         {missingCosts > 0 && (
-          <ToolButton icon={<Tag size={24} />} color="bg-warn" label="Missing costs" badge={missingCosts} onClick={() => setTool('costs')} />
+          <ToolButton icon={<Tag size={24} />} tone="orange" label="Missing costs" badge={missingCosts} onClick={() => setTool('costs')} />
         )}
-        <ToolButton icon={<Copy size={24} />} color="bg-royal-2" label="Duplicates" onClick={() => setTool('duplicates')} />
+        <ToolButton icon={<Copy size={24} />} tone="purple" label="Duplicates" onClick={() => setTool('duplicates')} />
       </div>
 
       <CountReconcileSheet
