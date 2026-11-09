@@ -12,6 +12,10 @@ export const products = pgTable("products", {
   size: text().notNull().default(""),
   qty: integer().notNull().default(0),
   reorderThreshold: integer("reorder_threshold").notNull().default(2),
+  /** "Order up to": the most worth having on hand (shelf space and cash). 0 = order just back to par. Set by Smart par or by hand. */
+  maxQty: integer("max_qty").notNull().default(0),
+  /** Units per case the vendor sells (wine 12, sparkling water 24). Orders round up to whole cases. 1 = single units. */
+  packSize: integer("pack_size").notNull().default(1),
   unitCostCents: integer("unit_cost_cents").notNull().default(0),
   /** What the business sells it for. 0 when it's backbar / not sold. */
   retailPriceCents: integer("retail_price_cents").notNull().default(0),
@@ -61,6 +65,8 @@ export const businessProfile = pgTable("business_profile", {
   fastMoverAlertEmail: boolean("fast_mover_alert_email").notNull().default(true),
   /** Display color palette id from PALETTES (src/lib/palettes.ts), shared by every device. */
   palette: text().notNull().default("burgundy-olive"),
+  /** How often the business places orders, in days. Smart par keeps about this much stock above the reorder point. */
+  orderEveryDays: integer("order_every_days").notNull().default(7),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 

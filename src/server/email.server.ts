@@ -1,4 +1,4 @@
-import { clampOrderQty, unitsToPar } from "../lib/inventory-defaults.js";
+import { clampOrderQty, suggestedOrderQty } from "../lib/inventory-defaults.js";
 import { businessSlug, displayBusinessName, type BusinessProfile } from "../lib/business-types.js";
 import type { Product } from "./inventory.server.js";
 import {
@@ -63,7 +63,7 @@ function buildText(items: Product[], staffName: string) {
   const lines = items.map((p) => {
     const bits = [p.brand, p.size].filter(Boolean).join(" ");
     const label = bits ? `${p.name} (${bits})` : p.name;
-    return `- ${label} — on hand ${p.qty}, par ${p.reorderThreshold}, order ${unitsToPar(p) || 1}+`;
+    return `- ${label} — on hand ${p.qty}, reorder at ${p.reorderThreshold}, order ${suggestedOrderQty(p)}`;
   });
 
   return [
@@ -96,7 +96,7 @@ function buildHtml(items: Product[], staffName: string) {
         <td style="padding:8px 12px;border-bottom:1px solid #eee;color:#777;font-size:12px;">${escapeHtml(p.barcode)}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right;color:${qtyColor};font-weight:bold;">${p.qty}${outOfStock ? " (out)" : ""}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right;color:#555;">${p.reorderThreshold}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right;">${unitsToPar(p) || 1}+</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right;">${suggestedOrderQty(p)}</td>
       </tr>`;
     })
     .join("");

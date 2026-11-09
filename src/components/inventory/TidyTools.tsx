@@ -14,7 +14,9 @@ import {
   saveCounts,
   setPars,
 } from '@/server/tidy.functions'
-import type { CategoryGroup, DuplicateGroup, ParSuggestion } from '@/lib/tidy'
+import type { CategoryGroup, DuplicateGroup, SmartParResult } from '@/lib/tidy'
+import { useBusiness } from '@/components/business/BusinessContext'
+import { updateBusinessProfile } from '@/server/business.functions'
 
 /* ------------------------------------------------------------------ Count stock */
 
@@ -414,34 +416,67 @@ export function FillCostsSheet({
 
 /* ------------------------------------------------------------------ Smart par */
 
-/** Suggested par levels from real usage and real delivery times; tick and apply. */
+const ORDER_CYCLES = [
+  { days: 3, label: 'Twice a week' },
+  { days: 7, label: 'Weekly' },
+  { days: 14, label: 'Every 2 weeks' },
+  { days: 30, label: 'Monthly' },
+]
+
+/**
+ * Smart par: reorder points and "order up to" levels from real usage, real delivery
+ * times and how often the business orders, rounded to whole cases. Lean on purpose:
+ * small shops have little shelf space and little cash for backstock.
+ */
 export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void | Promise<void> }) {
   const toast = useToast()
-  const [items, setItems] = useState<ParSuggestion[] | null>(null)
+  const { profile } = useBusiness()
+  const [data, setData] = useState<SmartParResult | null>(null)
   const [skip, setSkip] = useState<Set<number>>(new Set())
   const [saving, setSaving] = useState(false)
+  const [cycleBusy, setCycleBusy] = useState(false)
+
+  function load() {
+    setData(null)
+    getSmartPars()
+      .then(setData)
+      .catch(() => setData({ suggestions: [], overstock: [], orderEveryDays: profile.orderEveryDays || 7 }))
+  }
 
   useEffect(() => {
     if (!open) return
-    setItems(null)
     setSkip(new Set())
-    getSmartPars()
-      .then(setItems)
-      .catch(() => setItems([]))
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  const chosen = (items ?? []).filter((i) => !skip.has(i.productId))
+  async function setCycle(days: number) {
+    setCycleBusy(true)
+    try {
+      await updateBusinessProfile({ data: { orderEveryDays: days } })
+      load()
+    } catch {
+      toast("Couldn't save how often you order. Try again.")
+    } finally {
+      setCycleBusy(false)
+    }
+  }
+
+  const items = data?.suggestions ?? []
+  const chosen = items.filter((i) => !skip.has(i.productId))
   const quieted = chosen.filter((i) => i.suggested === 0).length
+  const cycle = data?.orderEveryDays ?? profile.orderEveryDays ?? 7
+  const tiedUp = (data?.overstock ?? []).reduce((sum, o) => sum + o.extraCents, 0)
 
   async function apply() {
     setSaving(true)
     try {
-      await setPars({ data: { items: chosen.map((i) => ({ productId: i.productId, par: i.suggested })) } })
-      toast(`Updated par on ${chosen.length} product${chosen.length === 1 ? '' : 's'}`)
+      await setPars({ data: { items: chosen.map((i) => ({ productId: i.productId, par: i.suggested, max: i.suggestedMax })) } })
+      toast(`Updated ${chosen.length} product${chosen.length === 1 ? '' : 's'}`)
       await onDone()
       onClose()
     } catch {
-      toast("Couldn't save the new pars. Try again.")
+      toast("Couldn't save the new levels. Try again.")
     } finally {
       setSaving(false)
     }
@@ -452,55 +487,106 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
       open={open}
       onClose={onClose}
       title="Smart par"
-      subtitle="Par = what you use per day × (your vendor's real delivery time + 1 week). Items unused for 90 days stop alerting."
+      subtitle="Lean stock levels from what you really use and how long your vendors really take. Reorder before you run out, and order only up to what one order cycle needs."
     >
-      {!items ? (
+      <div className="mb-3">
+        <p className="m-0 mb-1.5 text-sm font-semibold">How often do you place orders?</p>
+        <div className="flex flex-wrap gap-2" role="group" aria-label="How often you order">
+          {ORDER_CYCLES.map((c) => (
+            <button
+              key={c.days}
+              type="button"
+              className="chip"
+              aria-pressed={cycle === c.days}
+              disabled={cycleBusy}
+              onClick={() => cycle !== c.days && setCycle(c.days)}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+        <p className="m-0 mt-1.5 text-[12px] text-ink-2">Ordering more often keeps less on the shelf and less cash tied up.</p>
+      </div>
+
+      {!data ? (
         <p className="text-ink-2 text-sm">Working out your usage…</p>
-      ) : items.length === 0 ? (
-        <p className="text-ink-2 text-sm">Your pars already match how fast you use things.</p>
       ) : (
-        <>
-          <p className="text-sm mt-0">
-            {items.length} suggestion{items.length === 1 ? '' : 's'}
-            {quieted > 0 && ` · ${quieted} unused item${quieted === 1 ? '' : 's'} would stop alerting`}. Untick any you want to keep.
-          </p>
-          <ul className="list-none m-0 p-0 max-h-[52vh] overflow-auto">
-            {items.map((i) => (
-              <li key={i.productId} className="flex items-start gap-2 py-2.5 border-b border-line last:border-b-0">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={!skip.has(i.productId)}
-                  aria-label={`Apply to ${i.name}`}
-                  onChange={(e) =>
-                    setSkip((s) => {
-                      const next = new Set(s)
-                      if (e.target.checked) next.delete(i.productId)
-                      else next.add(i.productId)
-                      return next
-                    })
-                  }
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold truncate">{i.name}</div>
-                  <div className="text-[12px] text-ink-2">{i.reason}</div>
-                </div>
-                <div className="text-right whitespace-nowrap text-sm num">
-                  {i.current} → <b>{i.suggested}</b>
-                </div>
-              </li>
-            ))}
-          </ul>
-          <SheetActions>
-            <button type="button" className="btn btn-tonal" onClick={onClose}>
-              Cancel
-            </button>
-            <button type="button" className="btn btn-primary" disabled={chosen.length === 0 || saving} onClick={apply}>
-              {saving ? 'Saving…' : `Apply ${chosen.length}`}
-            </button>
-          </SheetActions>
-        </>
+        <div className="max-h-[50vh] overflow-auto">
+          {data.overstock.length > 0 && (
+            <div className="rounded-xl bg-warn-tint p-3 mb-3 text-sm">
+              <p className="m-0 font-semibold text-warn">
+                About ${centsToDollars(tiedUp)} is sitting on the shelf beyond what you need
+              </p>
+              <p className="m-0 mt-0.5 text-[13px]">Hold off reordering these until they come down. Consider featuring them or using them first.</p>
+              <ul className="list-none m-0 mt-2 p-0">
+                {data.overstock.slice(0, 6).map((o) => (
+                  <li key={o.productId} className="flex justify-between gap-2 py-0.5">
+                    <span className="truncate">{o.name}</span>
+                    <span className="whitespace-nowrap text-[13px] num">
+                      {o.onHand} on hand · ~{o.daysOfStock} days · ${centsToDollars(o.extraCents)} extra
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {items.length === 0 ? (
+            <p className="text-ink-2 text-sm">Your levels already match how fast you use things.</p>
+          ) : (
+            <>
+              <p className="text-sm mt-0">
+                {items.length} suggestion{items.length === 1 ? '' : 's'}
+                {quieted > 0 && ` · ${quieted} unused item${quieted === 1 ? '' : 's'} would stop alerting`}. Untick any you want to keep as they are.
+              </p>
+              <ul className="list-none m-0 p-0">
+                {items.map((i) => (
+                  <li key={i.productId} className="flex items-start gap-2 py-2.5 border-b border-line last:border-b-0">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={!skip.has(i.productId)}
+                      aria-label={`Apply to ${i.name}`}
+                      onChange={(e) =>
+                        setSkip((s) => {
+                          const next = new Set(s)
+                          if (e.target.checked) next.delete(i.productId)
+                          else next.add(i.productId)
+                          return next
+                        })
+                      }
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold leading-snug">{i.name}</div>
+                      <div className="text-[12px] text-ink-2">{i.reason}</div>
+                    </div>
+                    <div className="text-right whitespace-nowrap text-[13px] num">
+                      <div>
+                        Reorder at {i.current !== i.suggested && <span className="text-ink-2 line-through mr-1">{i.current}</span>}
+                        <b>{i.suggested}</b>
+                      </div>
+                      {i.suggestedMax > 0 && (
+                        <div className="text-ink-2">
+                          Order up to <b className="text-ink">{i.suggestedMax}</b>
+                          {i.packSize > 1 && ` (cases of ${i.packSize})`}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
       )}
+      <SheetActions>
+        <button type="button" className="btn btn-tonal" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="button" className="btn btn-primary" disabled={chosen.length === 0 || saving || !data} onClick={apply}>
+          {saving ? 'Saving…' : `Apply ${chosen.length}`}
+        </button>
+      </SheetActions>
     </Sheet>
   )
 }

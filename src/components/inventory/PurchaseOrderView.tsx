@@ -5,7 +5,7 @@ import { emailPurchaseOrder } from '@/server/inventory.functions'
 import { saveSentOrder } from '@/server/orders.functions'
 import { Download, Mail, Printer } from 'lucide-react'
 import { EmptyState, PageHead, StatGrid, StatTile, Thumb, centsToDollars } from '@/components/ui/bits'
-import { MAX_ORDER_QTY, clampOrderQty, onHandQty, stockStatus, suggestedOrderQty } from '@/lib/inventory-defaults'
+import { MAX_ORDER_QTY, casePack, clampOrderQty, onHandQty, stockStatus, suggestedOrderQty } from '@/lib/inventory-defaults'
 import {
   buildPurchaseOrderCsv,
   groupPurchaseOrderLines,
@@ -87,9 +87,12 @@ export function PurchaseOrderView({
   staffName,
   onChanged,
   onOpenDeliveries,
+  onOrder = {},
 }: {
   items: Product[]
   staffName: string
+  /** Units already on an open order, per product id; suggested quantities subtract them. */
+  onOrder?: Record<number, number>
   onChanged: () => void | Promise<void>
   /** Goes to Restock step 3 where saved orders are checked in. */
   onOpenDeliveries?: () => void
@@ -118,7 +121,7 @@ export function PurchaseOrderView({
 
   /** Hand-set quantity, else enough to reach par at today's on-hand count. */
   function qtyFor(product: Product, row: DraftRow | undefined = draft[product.id]) {
-    return row?.qty ?? String(suggestedOrderQty(product))
+    return row?.qty ?? String(Math.max(1, suggestedOrderQty(product, onOrder[product.id] ?? 0)))
   }
 
   function patchRows(productIds: number[], patch: (product: Product, row: DraftRow) => DraftRow) {
@@ -163,7 +166,7 @@ export function PurchaseOrderView({
   function bumpQty(product: Product, step: number) {
     patchRows([product.id], (_product, row) => ({
       selected: true,
-      qty: String(clampOrderQty(resolveQty(qtyFor(_product, row)) + step)),
+      qty: String(clampOrderQty(resolveQty(qtyFor(_product, row)) + step * casePack(_product))),
     }))
   }
 
@@ -395,6 +398,7 @@ export function PurchaseOrderView({
           isSelected={isSelected}
           qtyFor={(productId) => draft[productId]?.qty}
           products={items}
+          onOrder={onOrder}
           onToggleGroup={(selected) => setSelection(group.lines.map((l) => l.productId), selected)}
           onToggleLine={(productId, selected) => setSelection([productId], selected)}
           onQtyChange={setQty}
@@ -420,6 +424,7 @@ export function PurchaseOrderView({
 function VendorGroup({
   group,
   products,
+  onOrder,
   isSelected,
   qtyFor,
   onToggleGroup,
@@ -430,6 +435,7 @@ function VendorGroup({
 }: {
   group: PurchaseOrderGroup
   products: Product[]
+  onOrder: Record<number, number>
   isSelected: (productId: number) => boolean
   qtyFor: (productId: number) => string | undefined
   onToggleGroup: (selected: boolean) => void
@@ -466,7 +472,7 @@ function VendorGroup({
           if (!product) return null
           const checked = isSelected(line.productId)
           const out = stockStatus(product) === 'out'
-          const suggested = suggestedOrderQty(product)
+          const suggested = Math.max(1, suggestedOrderQty(product, onOrder[product.id] ?? 0))
           const qty = clampOrderQty(line.qty)
           const raw = qtyFor(line.productId)
           const inputId = `po-qty-${line.productId}`

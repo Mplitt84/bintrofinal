@@ -23,6 +23,7 @@ export async function findBusinessProfile(): Promise<BusinessProfile> {
     monthlyReportEmail: row.monthlyReportEmail,
     fastMoverAlertEmail: row.fastMoverAlertEmail,
     palette: row.palette,
+    orderEveryDays: row.orderEveryDays,
   };
 }
 
