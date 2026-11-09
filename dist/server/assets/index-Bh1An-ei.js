@@ -1,15 +1,15 @@
 import { jsxs, jsx, Fragment } from "react/jsx-runtime";
 import { useRef, useId, useEffect, useState, useCallback, createContext, useContext, useMemo, forwardRef } from "react";
 import { X, RotateCcw, ChevronRight, ClipboardCheck, Undo2, ShoppingBag, Sparkles, ArrowDownToLine, BadgeCheck, Minus, Plus, Trash2, Check, Search, Copy, Mic, Lock, Square, GitMerge, Camera, Tags, ExternalLink, Wand2, ArrowUpFromLine, FileSpreadsheet, AlertTriangle, Users, UserPlus, ScanBarcode, ScanSearch, PackagePlus, EyeOff, History, Gauge, CircleMinus, Tag, CheckSquare, Pencil, ClipboardList, Mail, RefreshCw, Download, Printer, FileText, CheckCheck, PackageCheck, Truck, CalendarPlus, ChevronLeft, Landmark, Repeat, CalendarDays, CheckCircle2, Send, FileUp, TriangleAlert, Plug, ShieldCheck, LogOut, Lightbulb, Boxes, Leaf, CalendarClock, PiggyBank, ArrowRight, Palette, BluetoothConnected, Bluetooth, Crown, PlayCircle, CreditCard, XCircle, PauseCircle, Receipt, Flame, TrendingUp, TrendingDown, Globe, Settings, Store, Wallet, Activity } from "lucide-react";
-import { c as createSsrRpc, s as saveProductCategories, r as removeProductCategories, l as lookupBarcodeDetails, a as readSpokenProduct, b as readLabelPhoto, d as suggestProduct, e as readStockPhotoFn, f as createProduct, g as recordProductMovement, h as searchProducts, i as lookupBarcode, j as scanMovement, u as undoMovement, k as linkBarcodeToProduct, m as bulkUpdateProducts, n as updateBusinessProfile, o as mergeProducts, p as deleteProduct, q as updateProduct, t as bulkDeleteProducts, v as getMovementsSince, w as emailBelowPar, x as emailPurchaseOrder, y as toDay, z as parseDay, A as occurrences, B as eventKind, E as EVENT_KINDS, C as formatTime, R as REPEATS, D as estimatedTaxDates, F as googleCalendarUrl, G as outlookCalendarUrl, H as subscribeUrls, I as buildIcs, J as getBudgetOverview, K as listExpenses, L as getIntegrations, M as quickbooksPushMonth, N as editExpense, O as createExpense, P as readReceiptPhoto, Q as removeExpense, S as saveMonthBudget, T as getAccessList, U as signOut, V as removeAccess, W as addAccess, X as resumePlan, Y as lockInFounding, Z as cancelSubscription, _ as getBillingHistory, $ as saveAccountDetails, a0 as selectPlan, a1 as openPaymentPortal, a2 as pausePlan, a3 as addTeamMember, a4 as removeTeamMember, a5 as getSquareRetailCategories, a6 as disconnect, a7 as getIntegrationErrorLog, a8 as setSquareRetailCategories, a9 as squareImportCatalog, aa as squareSyncSales, ab as squareSendCounts, ac as Route, ad as listProducts, ae as getRecentMovements, af as getAccount, ag as getAuthState } from "./router-DSGXFFjO.js";
+import { c as createSsrRpc, u as updateProduct, s as saveProductCategories, r as removeProductCategories, l as lookupBarcodeDetails, a as readSpokenProduct, b as readLabelPhoto, d as suggestProduct, e as readStockPhotoFn, f as createProduct, g as recordProductMovement, h as searchProducts, i as lookupBarcode, j as scanMovement, k as undoMovement, m as linkBarcodeToProduct, n as bulkUpdateProducts, o as updateBusinessProfile, p as mergeProducts, q as deleteProduct, t as bulkDeleteProducts, v as getMovementsSince, w as emailBelowPar, x as emailPurchaseOrder, y as toDay, z as parseDay, A as occurrences, B as eventKind, E as EVENT_KINDS, C as formatTime, R as REPEATS, D as estimatedTaxDates, F as googleCalendarUrl, G as outlookCalendarUrl, H as subscribeUrls, I as buildIcs, J as getBudgetOverview, K as listExpenses, L as getIntegrations, M as quickbooksPushMonth, N as editExpense, O as createExpense, P as readReceiptPhoto, Q as removeExpense, S as saveMonthBudget, T as getAccessList, U as signOut, V as removeAccess, W as addAccess, X as resumePlan, Y as lockInFounding, Z as cancelSubscription, _ as getBillingHistory, $ as saveAccountDetails, a0 as selectPlan, a1 as openPaymentPortal, a2 as pausePlan, a3 as addTeamMember, a4 as removeTeamMember, a5 as getSquareRetailCategories, a6 as disconnect, a7 as getIntegrationErrorLog, a8 as setSquareRetailCategories, a9 as squareImportCatalog, aa as squareSyncSales, ab as squareSendCounts, ac as Route, ad as listProducts, ae as getRecentMovements, af as getAccount, ag as getAuthState } from "./router-DdiipPkf.js";
 import { createPortal } from "react-dom";
 import { c as createServerFn } from "../server.js";
 import { z } from "zod";
 import { r as requireUser } from "./auth.middleware-2uPScvPU.js";
-import { d as daysBetween, P as PRICE_STALE_DAYS, k as WEB_PRICE_SOURCE_LABELS, g as daysLabel, h as SLOW_GROUP_LABELS, B as BULK_COVER_DAYS, o as outVerb, S as SLOW_WINDOW_DAYS } from "./insights-BQ2QJiNr.js";
-import { D as DEFAULT_REORDER_THRESHOLD, d as deriveInitials, i as isBelowPar, e as stockStatus, M as MAX_ORDER_QTY, S as STOCK_STATUS_LABEL, o as onHandQty, f as orderUpTo, g as casePack, s as suggestedOrderQty, c as clampOrderQty, u as unitsToPar, b as selectBelowPar, a as stockStats } from "./inventory-defaults-BnRHgx1T.js";
 import { d as displayBusinessName, a as businessTypeById, E as EMPTY_PROFILE, T as TAX_GROUPS, t as taxKind, c as categorySuggestionsFor, g as guessTaxGroup, e as taxGroupById, f as findCategory, b as businessSlug, m as monthKey, r as recentMonths, h as monthRange, i as monthLabel, j as dayKey, s as selectableBusinessTypes } from "./business-types-DKNVcfJE.js";
 import { o as planById, q as planHas, t as planFor, F as FEATURE_INFO, v as centsLabel, w as priceFor, x as PLANS, P as PAUSE_OPTIONS, C as CANCEL_REASONS, y as planRank } from "./account.server-Dnxw0Aoe.js";
+import { d as daysBetween, P as PRICE_STALE_DAYS, k as WEB_PRICE_SOURCE_LABELS, g as daysLabel, h as SLOW_GROUP_LABELS, B as BULK_COVER_DAYS, o as outVerb, S as SLOW_WINDOW_DAYS } from "./insights-BQ2QJiNr.js";
+import { D as DEFAULT_REORDER_THRESHOLD, d as deriveInitials, i as isBelowPar, e as stockStatus, M as MAX_ORDER_QTY, S as STOCK_STATUS_LABEL, o as onHandQty, f as orderUpTo, g as casePack, s as suggestedOrderQty, c as clampOrderQty, u as unitsToPar, b as selectBelowPar, a as stockStats } from "./inventory-defaults-BnRHgx1T.js";
 import { M as MAX_IMPORT_LINES, S as SALES_REPORT_APPS, P as PRICE_BATCH, a as MAX_IMPORT_BYTES, n as needsPrice } from "./bulk-import-Bd6tmV71.js";
 import { g as groupPurchaseOrderLines, a as purchaseOrderTotals, b as buildPurchaseOrderCsv, p as purchaseOrderFilename, l as lineTotalCents } from "./purchase-order-1ZyUH4cu.js";
 import { L as LINKS, a as LEGAL } from "./LegalPage-CBwwSP5h.js";
@@ -206,11 +206,11 @@ function timeAgo(value) {
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
 }
-function centsToDollars(cents) {
-  return (cents / 100).toFixed(2);
+function centsToDollars(cents2) {
+  return (cents2 / 100).toFixed(2);
 }
-function dollarsShort(cents) {
-  return `$${Math.round(cents / 100).toLocaleString()}`;
+function dollarsShort(cents2) {
+  return `$${Math.round(cents2 / 100).toLocaleString()}`;
 }
 const When = z.string().datetime();
 const getOverview = createServerFn({
@@ -233,6 +233,7 @@ const COUNT_REASONS = [
   "Missing",
   "Not sure"
 ];
+const CHECK_REASONS = ["Recount", "Damaged", "Missing SKU", "Theft"];
 function needsRecount(expected, counted, unitCostCents) {
   const diff = Math.abs(counted - Math.max(0, expected));
   if (diff === 0) return false;
@@ -278,7 +279,7 @@ const undoStockCount = createServerFn({
   countId: z.number().int().positive(),
   staffName: z.string().max(60)
 })).handler(createSsrRpc("6b83bf36dc78f5fb7676206c43a1d0f9bae5b159f62cce7aa9d60646c0735748"));
-const money$2 = (cents) => `${cents < 0 ? "−" : ""}$${centsToDollars(Math.abs(cents))}`;
+const money$2 = (cents2) => `${cents2 < 0 ? "−" : ""}$${centsToDollars(Math.abs(cents2))}`;
 function CountDetailSheet({
   countId,
   staffName,
@@ -746,64 +747,184 @@ function ActivityChart({ data }) {
     }) })
   ] });
 }
+const BusinessContext = createContext({
+  profile: EMPTY_PROFILE,
+  type: businessTypeById(EMPTY_PROFILE.businessType),
+  name: displayBusinessName(EMPTY_PROFILE),
+  categories: [],
+  onCategories: () => {
+  },
+  account: null,
+  onAccount: () => {
+  },
+  plan: planById("free"),
+  can: () => true,
+  openPlans: () => {
+  }
+});
+function BusinessProvider({
+  profile,
+  categories,
+  onCategories,
+  account,
+  onAccount,
+  openPlans,
+  children
+}) {
+  const can = (feature) => account ? planHas(account.effectivePlan, feature) : true;
+  return /* @__PURE__ */ jsx(
+    BusinessContext.Provider,
+    {
+      value: {
+        profile,
+        type: businessTypeById(profile.businessType),
+        name: displayBusinessName(profile),
+        categories,
+        onCategories,
+        account,
+        onAccount,
+        plan: planById(account?.effectivePlan ?? "premium"),
+        can,
+        openPlans
+      },
+      children
+    }
+  );
+}
+function useBusiness() {
+  return useContext(BusinessContext);
+}
+const toDetails = (p) => ({
+  name: p.name,
+  brand: p.brand,
+  size: p.size,
+  category: p.category,
+  vendor: p.vendor,
+  reorderThreshold: String(p.reorderThreshold),
+  maxQty: p.maxQty ? String(p.maxQty) : "",
+  cost: p.unitCostCents ? centsToDollars(p.unitCostCents) : "",
+  retail: p.retailPriceCents ? centsToDollars(p.retailPriceCents) : ""
+});
+const cents = (v) => {
+  const n = Number(v.replace(/[^\d.]/g, ""));
+  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+};
+const whole = (v) => Math.max(0, Math.trunc(Number(v.replace(/[^\d]/g, "")) || 0));
 function CheckProductSheet({
   product,
   matchedCode,
   onClose,
-  onSave
+  onSave,
+  onUpdated
 }) {
+  const toast = useToast();
+  const { categories } = useBusiness();
+  const [current, setCurrent] = useState(product);
+  const [details, setDetails] = useState(product ? toDetails(product) : null);
   const [counted, setCounted] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [savingDetails, setSavingDetails] = useState(false);
   useEffect(() => {
+    setCurrent(product);
+    setDetails(product ? toDetails(product) : null);
     setCounted("");
     setReason("");
     setBusy(false);
   }, [product?.id, matchedCode]);
-  if (!product) return /* @__PURE__ */ jsx(Sheet, { open: false, onClose, title: "", children: null });
-  const onHand = product.qty;
+  const dirty = useMemo(() => {
+    if (!current || !details) return false;
+    const base = toDetails(current);
+    return Object.keys(base).some((k) => base[k].trim() !== details[k].trim());
+  }, [current, details]);
+  if (!current || !details) return /* @__PURE__ */ jsx(Sheet, { open: false, onClose, title: "", children: null });
+  const onHand = current.qty;
   const n = counted.trim() === "" ? null : Math.max(0, Math.trunc(Number(counted)));
   const diff = n == null || Number.isNaN(n) ? null : n - onHand;
-  const viaExtra = matchedCode && matchedCode !== product.barcode;
-  const save = async (value, why) => {
+  const viaExtra = matchedCode && matchedCode !== current.barcode;
+  const set = (k) => (e) => setDetails((d) => d ? { ...d, [k]: e.target.value } : d);
+  const categoryNames = Array.from(new Set([...categories.map((c) => c.name), current.category].filter(Boolean))).sort();
+  const saveDetails = async () => {
+    if (!details.name.trim()) return toast("The product needs a name.");
+    setSavingDetails(true);
+    try {
+      const updated = await updateProduct({
+        data: {
+          productId: current.id,
+          name: details.name.trim(),
+          brand: details.brand.trim(),
+          size: details.size.trim(),
+          category: details.category.trim(),
+          vendor: details.vendor.trim(),
+          reorderThreshold: whole(details.reorderThreshold),
+          maxQty: whole(details.maxQty),
+          unitCostCents: cents(details.cost),
+          retailPriceCents: cents(details.retail)
+        }
+      });
+      if (updated) {
+        setCurrent(updated);
+        setDetails(toDetails(updated));
+        onUpdated(updated);
+      }
+      toast("Product details saved");
+    } catch {
+      toast("Couldn’t save the details. Try again.");
+    } finally {
+      setSavingDetails(false);
+    }
+  };
+  const saveCount = async (value, why) => {
+    if (dirty) await saveDetails();
     setBusy(true);
     try {
-      await onSave(product, value, why);
+      await onSave(current, value, why);
     } finally {
       setBusy(false);
     }
   };
   const step = (d) => setCounted(String(Math.max(0, (n ?? onHand) + d)));
-  return /* @__PURE__ */ jsxs(Sheet, { open: true, onClose, title: "Check SKU", subtitle: "Nothing changes until you save a count.", children: [
+  return /* @__PURE__ */ jsxs(Sheet, { open: true, onClose, title: "Check SKU", subtitle: "Edit anything that’s wrong. Stock only changes if you save a different count.", children: [
     /* @__PURE__ */ jsxs("div", { className: "flex items-center gap-3 mb-3", children: [
-      /* @__PURE__ */ jsx(Thumb, { imageUrl: product.imageUrl, label: product.brand || product.name, size: "lg" }),
-      /* @__PURE__ */ jsxs("div", { className: "min-w-0", children: [
-        /* @__PURE__ */ jsx("div", { className: "font-bold text-[17px] leading-tight", children: product.name }),
-        /* @__PURE__ */ jsx("div", { className: "text-[13px] text-ink-2 truncate", children: [product.brand, product.size, product.category].filter(Boolean).join(" · ") })
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxs("div", { className: "bg-good-tint text-good rounded-xl px-3.5 py-2 text-sm flex items-center gap-2 mb-3", children: [
-      /* @__PURE__ */ jsx(BadgeCheck, { size: 17 }),
-      /* @__PURE__ */ jsxs("span", { children: [
-        "SKU matches ",
-        /* @__PURE__ */ jsx("b", { className: "num", children: matchedCode }),
-        viaExtra && /* @__PURE__ */ jsxs("span", { className: "text-ink-2", children: [
-          " (extra SKU; main ",
-          product.barcode,
-          ")"
+      /* @__PURE__ */ jsx(Thumb, { imageUrl: current.imageUrl, label: details.brand || details.name, size: "lg" }),
+      /* @__PURE__ */ jsxs("div", { className: "bg-good-tint text-good rounded-xl px-3 py-2 text-sm flex items-center gap-2 flex-1 min-w-0", children: [
+        /* @__PURE__ */ jsx(BadgeCheck, { size: 17, className: "shrink-0" }),
+        /* @__PURE__ */ jsxs("span", { className: "min-w-0", children: [
+          "SKU matches ",
+          /* @__PURE__ */ jsx("b", { className: "num break-all", children: matchedCode }),
+          viaExtra && /* @__PURE__ */ jsxs("span", { className: "text-ink-2 block text-[12px]", children: [
+            "Extra SKU · main ",
+            current.barcode
+          ] })
         ] })
       ] })
     ] }),
-    /* @__PURE__ */ jsxs("dl", { className: "grid grid-cols-3 gap-2 m-0 mb-3 text-center", children: [
-      /* @__PURE__ */ jsx(Stat, { label: "On hand", value: String(onHand), strong: true }),
-      /* @__PURE__ */ jsx(Stat, { label: "Reorder at", value: String(product.reorderThreshold) }),
-      /* @__PURE__ */ jsx(Stat, { label: "Order up to", value: product.maxQty ? String(product.maxQty) : "—" }),
-      /* @__PURE__ */ jsx(Stat, { label: "Cost", value: product.unitCostCents ? `$${centsToDollars(product.unitCostCents)}` : "—" }),
-      /* @__PURE__ */ jsx(Stat, { label: "Retail", value: product.retailPriceCents ? `$${centsToDollars(product.retailPriceCents)}` : "—" }),
-      /* @__PURE__ */ jsx(Stat, { label: "Vendor", value: product.vendor || "—" })
+    /* @__PURE__ */ jsxs("div", { className: "grid grid-cols-2 gap-2 mb-2", children: [
+      /* @__PURE__ */ jsx(Input, { label: "Product name", value: details.name, onChange: set("name"), wide: true }),
+      /* @__PURE__ */ jsx(Input, { label: "Brand", value: details.brand, onChange: set("brand") }),
+      /* @__PURE__ */ jsx(Input, { label: "Size", value: details.size, onChange: set("size") }),
+      /* @__PURE__ */ jsxs("label", { className: "block", children: [
+        /* @__PURE__ */ jsx("span", { className: "text-[12px] text-ink-2", children: "Category" }),
+        /* @__PURE__ */ jsxs("select", { className: "field-input !py-2", value: details.category, onChange: set("category"), children: [
+          /* @__PURE__ */ jsx("option", { value: "", children: "No category" }),
+          categoryNames.map((c) => /* @__PURE__ */ jsx("option", { value: c, children: c }, c))
+        ] })
+      ] }),
+      /* @__PURE__ */ jsx(Input, { label: "Vendor", value: details.vendor, onChange: set("vendor") }),
+      /* @__PURE__ */ jsx(Input, { label: "Reorder at", value: details.reorderThreshold, onChange: set("reorderThreshold"), numeric: true }),
+      /* @__PURE__ */ jsx(Input, { label: "Order up to", value: details.maxQty, onChange: set("maxQty"), numeric: true, placeholder: "Back to par" }),
+      /* @__PURE__ */ jsx(Input, { label: "Cost $", value: details.cost, onChange: set("cost"), decimal: true }),
+      /* @__PURE__ */ jsx(Input, { label: "Retail $", value: details.retail, onChange: set("retail"), decimal: true })
     ] }),
-    /* @__PURE__ */ jsx("p", { className: "text-[12px] text-ink-2 mt-0 mb-4", children: lastCountedLabel(product) }),
-    /* @__PURE__ */ jsx("h3", { className: "text-[15px] font-bold m-0 mb-2", children: "Verify the count" }),
+    dirty && /* @__PURE__ */ jsx("button", { type: "button", className: "btn btn-tonal btn-sm w-full mb-2", disabled: savingDetails, onClick: saveDetails, children: savingDetails ? "Saving…" : "Save details" }),
+    /* @__PURE__ */ jsx("p", { className: "text-[12px] text-ink-2 mt-0 mb-4", children: lastCountedLabel(current) }),
+    /* @__PURE__ */ jsxs("h3", { className: "text-[15px] font-bold m-0 mb-2", children: [
+      "Verify the count ",
+      /* @__PURE__ */ jsxs("span", { className: "text-ink-2 font-normal text-sm", children: [
+        "· Bintro says ",
+        onHand
+      ] })
+    ] }),
     /* @__PURE__ */ jsxs("div", { className: "flex items-center gap-2 mb-3", children: [
       /* @__PURE__ */ jsx("button", { type: "button", "aria-label": "One fewer", className: "w-11 h-11 rounded-full border border-line bg-white grid place-items-center cursor-pointer", onClick: () => step(-1), children: /* @__PURE__ */ jsx(Minus, { size: 18 }) }),
       /* @__PURE__ */ jsx(
@@ -822,22 +943,39 @@ function CheckProductSheet({
     ] }),
     diff != null && diff !== 0 && /* @__PURE__ */ jsxs(Fragment, { children: [
       /* @__PURE__ */ jsx("p", { className: "text-[13px] font-semibold m-0 mb-1.5", children: "Why is it different?" }),
-      /* @__PURE__ */ jsx("div", { className: "flex flex-wrap gap-1.5 mb-1", children: COUNT_REASONS.map((r) => /* @__PURE__ */ jsx("button", { type: "button", className: "chip !text-[12px] !py-1", "aria-pressed": reason === r, onClick: () => setReason(r), children: r }, r)) })
+      /* @__PURE__ */ jsx("div", { className: "flex flex-wrap gap-1.5 mb-1", children: CHECK_REASONS.map((r) => /* @__PURE__ */ jsx("button", { type: "button", className: "chip !text-[13px]", "aria-pressed": reason === r, onClick: () => setReason(r), children: r }, r)) })
     ] }),
     /* @__PURE__ */ jsxs(SheetActions, { children: [
-      diff == null || diff === 0 ? /* @__PURE__ */ jsxs("button", { type: "button", className: "btn btn-primary", disabled: busy, onClick: () => save(onHand, ""), children: [
+      diff == null || diff === 0 ? /* @__PURE__ */ jsxs("button", { type: "button", className: "btn btn-primary", disabled: busy || savingDetails, onClick: () => saveCount(onHand, ""), children: [
         /* @__PURE__ */ jsx(BadgeCheck, { size: 17 }),
         " ",
         busy ? "Saving…" : `Count matches · ${onHand}`
-      ] }) : /* @__PURE__ */ jsx("button", { type: "button", className: "btn btn-primary", disabled: busy || !reason, onClick: () => save(n, reason), children: busy ? "Saving…" : reason ? `Save count · ${n}` : "Pick a reason" }),
-      /* @__PURE__ */ jsx("button", { type: "button", className: "btn btn-tonal", onClick: onClose, children: "Done" })
+      ] }) : /* @__PURE__ */ jsx("button", { type: "button", className: "btn btn-primary", disabled: busy || savingDetails || !reason, onClick: () => saveCount(n, reason), children: busy ? "Saving…" : reason ? `Save count · ${n}` : "Pick a reason" }),
+      /* @__PURE__ */ jsx("button", { type: "button", className: "btn btn-tonal", onClick: onClose, children: dirty ? "Close without saving" : "Done" })
     ] })
   ] });
 }
-function Stat({ label: label2, value, strong }) {
-  return /* @__PURE__ */ jsxs("div", { className: "bg-surface rounded-xl px-2 py-2 min-w-0", children: [
-    /* @__PURE__ */ jsx("dt", { className: "text-[11px] text-ink-2", children: label2 }),
-    /* @__PURE__ */ jsx("dd", { className: `m-0 num truncate ${strong ? "text-xl font-bold" : "text-sm font-semibold"}`, children: value })
+function Input({
+  label: label2,
+  value,
+  onChange,
+  wide,
+  numeric,
+  decimal,
+  placeholder
+}) {
+  return /* @__PURE__ */ jsxs("label", { className: `block min-w-0 ${wide ? "col-span-2" : ""}`, children: [
+    /* @__PURE__ */ jsx("span", { className: "text-[12px] text-ink-2", children: label2 }),
+    /* @__PURE__ */ jsx(
+      "input",
+      {
+        className: "field-input !py-2",
+        value,
+        onChange,
+        placeholder,
+        inputMode: numeric ? "numeric" : decimal ? "decimal" : void 0
+      }
+    )
   ] });
 }
 const READER_ID = "bintro-reader";
@@ -1148,11 +1286,11 @@ function median(values) {
 function predictPrices(products, field, ctx, limit = 6) {
   const groups = /* @__PURE__ */ new Map();
   for (const p of products) {
-    const cents = p[field];
-    if (p.id === ctx.excludeId || cents <= 0) continue;
+    const cents2 = p[field];
+    if (p.id === ctx.excludeId || cents2 <= 0) continue;
     const score = similarity(p, ctx);
-    const g = groups.get(cents);
-    if (!g) groups.set(cents, { total: 1 + score, count: 1, best: p, bestScore: score });
+    const g = groups.get(cents2);
+    if (!g) groups.set(cents2, { total: 1 + score, count: 1, best: p, bestScore: score });
     else {
       g.total += 1 + score;
       g.count += 1;
@@ -1162,8 +1300,8 @@ function predictPrices(products, field, ctx, limit = 6) {
       }
     }
   }
-  const options = Array.from(groups, ([cents, g]) => ({
-    cents,
+  const options = Array.from(groups, ([cents2, g]) => ({
+    cents: cents2,
     rank: g.total,
     hint: g.bestScore > 0 ? `Same as ${g.best.name}${g.count > 1 ? ` +${g.count - 1}` : ""}` : g.count > 1 ? `Used on ${g.count} products` : `From ${g.best.name}`
   }));
@@ -1174,16 +1312,16 @@ function predictPrices(products, field, ctx, limit = 6) {
     const ratio = median(basis.map((p) => p.retailPriceCents / p.unitCostCents));
     if (ratio > 1) {
       const raw = field === "retailPriceCents" ? ctx.otherCents * ratio : ctx.otherCents / ratio;
-      const cents = field === "retailPriceCents" ? Math.max(50, Math.round(raw / 50) * 50) : Math.round(raw);
-      const existing = options.find((o) => o.cents === cents);
+      const cents2 = field === "retailPriceCents" ? Math.max(50, Math.round(raw / 50) * 50) : Math.round(raw);
+      const existing = options.find((o) => o.cents === cents2);
       const hint = `Your usual ${ratio.toFixed(1)}× markup${alike.length >= 2 ? " for items like this" : ""}`;
       if (existing) {
         existing.rank = Number.POSITIVE_INFINITY;
         existing.hint = hint;
-      } else options.push({ cents, hint, rank: Number.POSITIVE_INFINITY });
+      } else options.push({ cents: cents2, hint, rank: Number.POSITIVE_INFINITY });
     }
   }
-  return options.sort((a, b) => b.rank - a.rank || a.cents - b.cents).slice(0, limit).map(({ cents, hint }) => ({ cents, hint }));
+  return options.sort((a, b) => b.rank - a.rank || a.cents - b.cents).slice(0, limit).map(({ cents: cents2, hint }) => ({ cents: cents2, hint }));
 }
 function rankSuggestions(query, options, limit = 6) {
   const fold2 = (v) => v.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -1425,53 +1563,6 @@ const PriceInput = forwardRef(function PriceInput2({ id, value, onChange, onPick
     )
   ] });
 });
-const BusinessContext = createContext({
-  profile: EMPTY_PROFILE,
-  type: businessTypeById(EMPTY_PROFILE.businessType),
-  name: displayBusinessName(EMPTY_PROFILE),
-  categories: [],
-  onCategories: () => {
-  },
-  account: null,
-  onAccount: () => {
-  },
-  plan: planById("free"),
-  can: () => true,
-  openPlans: () => {
-  }
-});
-function BusinessProvider({
-  profile,
-  categories,
-  onCategories,
-  account,
-  onAccount,
-  openPlans,
-  children
-}) {
-  const can = (feature) => account ? planHas(account.effectivePlan, feature) : true;
-  return /* @__PURE__ */ jsx(
-    BusinessContext.Provider,
-    {
-      value: {
-        profile,
-        type: businessTypeById(profile.businessType),
-        name: displayBusinessName(profile),
-        categories,
-        onCategories,
-        account,
-        onAccount,
-        plan: planById(account?.effectivePlan ?? "premium"),
-        can,
-        openPlans
-      },
-      children
-    }
-  );
-}
-function useBusiness() {
-  return useContext(BusinessContext);
-}
 const key = (v) => v.trim().toLowerCase();
 function CategorySetupSheet({
   open,
@@ -4478,6 +4569,10 @@ function ScanView({
         product: checking?.product ?? null,
         matchedCode: checking?.code ?? "",
         onClose: () => setChecking(null),
+        onUpdated: (p) => {
+          onProduct?.(p);
+          setChecking((c) => c ? { ...c, product: p } : c);
+        },
         onSave: async (p, counted, reason) => {
           const who = await confirmStaff("check");
           if (!who) return;
@@ -5326,7 +5421,7 @@ function CategoryList({ onChanged }) {
   ] });
 }
 const DRAFT_KEY$1 = "bintro.countDraft";
-const money$1 = (cents) => `${cents < 0 ? "−" : ""}$${centsToDollars(Math.abs(cents))}`;
+const money$1 = (cents2) => `${cents2 < 0 ? "−" : ""}$${centsToDollars(Math.abs(cents2))}`;
 function readDraft$1() {
   try {
     const raw = localStorage.getItem(DRAFT_KEY$1);
@@ -8873,8 +8968,8 @@ function ExpenseForm({
   }
   async function submit(e) {
     e.preventDefault();
-    const cents = Math.round((Number(amount) || 0) * 100);
-    if (cents <= 0) {
+    const cents2 = Math.round((Number(amount) || 0) * 100);
+    if (cents2 <= 0) {
       setError("Enter the amount spent.");
       return;
     }
@@ -8884,14 +8979,14 @@ function ExpenseForm({
     }
     setSaving(true);
     setError("");
-    const values = { spentOn, amountCents: cents, category: category.trim(), vendor: vendor.trim(), note: note.trim() };
+    const values = { spentOn, amountCents: cents2, category: category.trim(), vendor: vendor.trim(), note: note.trim() };
     try {
       if (expense) {
         await editExpense({ data: { id: expense.id, ...values } });
         onSaved("Expense updated");
       } else {
         await createExpense({ data: { ...values, staffName } });
-        onSaved(`$${centsToDollars(cents)} expense added`);
+        onSaved(`$${centsToDollars(cents2)} expense added`);
       }
     } catch {
       setError("Could not save. Check your connection and try again.");
@@ -9509,15 +9604,15 @@ const SOURCE_LABEL = {
 };
 function MoneyField({
   label: label2,
-  cents,
+  cents: cents2,
   source,
   was,
   onCents
 }) {
-  const [text, setText] = useState(cents ? centsToDollars(cents) : "");
+  const [text, setText] = useState(cents2 ? centsToDollars(cents2) : "");
   const parsed = Math.max(0, Math.round((Number(text) || 0) * 100));
-  if (parsed !== cents && !(cents === 0 && text === "")) {
-    setText(cents ? centsToDollars(cents) : "");
+  if (parsed !== cents2 && !(cents2 === 0 && text === "")) {
+    setText(cents2 ? centsToDollars(cents2) : "");
   }
   return /* @__PURE__ */ jsxs("label", { className: "text-[12px] font-semibold text-ink-2", children: [
     label2,
@@ -12633,11 +12728,11 @@ function writeStorage(key2, value) {
 function label(i) {
   return [i.brand, i.size].filter(Boolean).join(" · ");
 }
-function money(cents) {
-  return `$${centsToDollars(cents)}`;
+function money(cents2) {
+  return `$${centsToDollars(cents2)}`;
 }
-function signedShort(cents) {
-  return cents < 0 ? `−${dollarsShort(-cents)}` : dollarsShort(cents);
+function signedShort(cents2) {
+  return cents2 < 0 ? `−${dollarsShort(-cents2)}` : dollarsShort(cents2);
 }
 function weekMoney(b) {
   if (b.useKind === "used") return b.costCents ? `${dollarsShort(b.costCents)} of product` : "Used in services";

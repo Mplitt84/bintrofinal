@@ -552,6 +552,10 @@ export function ScanView({
         product={checking?.product ?? null}
         matchedCode={checking?.code ?? ''}
         onClose={() => setChecking(null)}
+        onUpdated={(p) => {
+          onProduct?.(p)
+          setChecking((c) => (c ? { ...c, product: p } : c))
+        }}
         onSave={async (p, counted, reason) => {
           const who = await confirmStaff('check')
           if (!who) return

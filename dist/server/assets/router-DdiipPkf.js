@@ -406,7 +406,7 @@ const squareSyncSales = createServerFn({
 const quickbooksPushMonth = createServerFn({
   method: "POST"
 }).middleware([requireUser]).inputValidator(MonthWindowSchema).handler(createSsrRpc("7fef2669d1d6f3e9fdccdfbabede084b9e0823ba1f054366dd5ae9501cff565b"));
-const $$splitComponentImporter$3 = () => import("./index-B9R5LbBh.js");
+const $$splitComponentImporter$3 = () => import("./index-Bh1An-ei.js");
 const Route$a = createFileRoute("/")({
   loader: async () => {
     const auth = await getAuthState();
@@ -935,17 +935,17 @@ export {
   searchProducts as h,
   lookupBarcode as i,
   scanMovement as j,
-  linkBarcodeToProduct as k,
+  undoMovement as k,
   lookupBarcodeDetails as l,
-  bulkUpdateProducts as m,
-  updateBusinessProfile as n,
-  mergeProducts as o,
-  deleteProduct as p,
-  updateProduct as q,
+  linkBarcodeToProduct as m,
+  bulkUpdateProducts as n,
+  updateBusinessProfile as o,
+  mergeProducts as p,
+  deleteProduct as q,
   removeProductCategories as r,
   saveProductCategories as s,
   bulkDeleteProducts as t,
-  undoMovement as u,
+  updateProduct as u,
   getMovementsSince as v,
   emailBelowPar as w,
   emailPurchaseOrder as x,

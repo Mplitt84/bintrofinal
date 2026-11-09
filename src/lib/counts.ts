@@ -11,6 +11,9 @@ export const COUNT_REASONS = [
   'Not sure',
 ] as const;
 
+/** The shorter list for a quick check from the Scan tab. */
+export const CHECK_REASONS = ['Recount', 'Damaged', 'Missing SKU', 'Theft'] as const;
+
 export type CountReason = (typeof COUNT_REASONS)[number];
 
 /** A difference big enough to ask for a recount before approving. */
