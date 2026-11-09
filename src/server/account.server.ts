@@ -130,6 +130,8 @@ async function settle(row: AccountRow): Promise<AccountRow> {
       }
     }
     if (pilotActive(row)) {
+      // A tester who locked in the founding rate has a Stripe subscription waiting for the pilot to end; leave it alone.
+      if (row.stripeSubscriptionId) return row;
       if (row.plan === "premium" && row.status === "active" && !row.trialEndsAt && !row.pausedUntil && !row.cancelAtPeriodEnd) return row;
       return saveAccount({
         plan: "premium",
@@ -141,7 +143,11 @@ async function settle(row: AccountRow): Promise<AccountRow> {
         cancelReason: "",
       });
     }
-    // The pilot ran out: move to Free once; from here the normal plans apply.
+    // The pilot ran out. A locked-in founding rate takes over (Stripe starts billing); otherwise move to Free once.
+    if (row.stripeSubscriptionId) {
+      await logEvent("upgrade", `Pilot ended after ${PILOT_MONTHS} months. Founding rate started: ${planById(row.plan).name}`);
+      return saveAccount({ pilotEndedAt: now });
+    }
     await logEvent("downgrade", `Pilot ended after ${PILOT_MONTHS} months. Moved to Free`);
     return saveAccount({
       plan: "free",
@@ -209,6 +215,11 @@ function summarize(row: AccountRow, usage: AccountSummary["usage"]): AccountSumm
     pilotPremium: pilotActive(row),
     pilotStartedAt: pilotActive(row) ? (row.pilotStartedAt?.toISOString() ?? null) : null,
     pilotEndsAt: pilotActive(row) ? (pilotEndsAt(row)?.toISOString() ?? null) : null,
+    founding: pilotPremium(),
+    lockedIn:
+      pilotActive(row) && row.stripeSubscriptionId && isPlanId(row.plan) && row.plan !== "free"
+        ? { plan: row.plan, interval: row.interval === "year" ? "year" : "month", startsAt: pilotEndsAt(row)?.toISOString() ?? null }
+        : null,
     memberSince: row.createdAt.toISOString(),
     usage,
   };
@@ -361,7 +372,15 @@ export async function resumeBilling(): Promise<BillingResult> {
 }
 
 export async function cancelPlan(reason: string): Promise<BillingResult> {
-  if (pilotActive(await loadAccount())) return { account: await getAccountSummary(), message: PILOT_MESSAGE };
+  const current = await loadAccount();
+  if (pilotActive(current)) {
+    if (!current.stripeSubscriptionId) return { account: await getAccountSummary(), message: PILOT_MESSAGE };
+    // Undo a founding-rate lock-in: nothing has been charged yet, so the waiting subscription is simply removed.
+    if (billingLive()) await stripe(`/v1/subscriptions/${current.stripeSubscriptionId}`, undefined, "DELETE");
+    await saveAccount({ stripeSubscriptionId: "", plan: "premium", status: "active", trialEndsAt: null, currentPeriodEnd: null, cancelAtPeriodEnd: false });
+    await logEvent("cancel", `Undid the founding rate lock-in${reason ? ` (${reason})` : ""}`);
+    return { account: await getAccountSummary(), message: "Lock-in undone. Your pilot carries on as before" };
+  }
   const row = await loadAccount();
   const name = planById(row.plan).name;
   if (row.plan === "free") throw new PlanLimitError("You're already on the Free plan.");
@@ -461,7 +480,7 @@ type StripeSubscription = {
 async function stripe<T = Record<string, unknown>>(
   path: string,
   params?: Record<string, string>,
-  method: "GET" | "POST" = "POST",
+  method: "GET" | "POST" | "DELETE" = "POST",
 ): Promise<T> {
   const res = await fetch(`https://api.stripe.com${path}`, {
     method,
@@ -539,6 +558,48 @@ async function changeStripePlan(
   return { account: await getAccountSummary(), redirect: session.url, message: "Opening secure checkout…" };
 }
 
+/**
+ * Pilot testers lock in the founding rate before their free months run out:
+ * Stripe Checkout saves the card and the subscription's trial runs to the pilot's
+ * end date, so nothing is charged until then. (On a pilot site the STRIPE_PRICE_*
+ * variables point at the founding prices.) Changing the locked plan just swaps the price.
+ */
+export async function lockInFoundingRate(target: Exclude<PlanId, "free">, interval: BillingInterval, origin: string): Promise<BillingResult> {
+  const row = await loadAccount();
+  if (!pilotActive(row)) throw new PlanLimitError("The founding rate lock-in is for pilot testers during their pilot.");
+  if (!billingLive()) throw new PlanLimitError("Payments aren't switched on for the pilot yet. The founding rate opens here before your pilot ends.");
+  const end = pilotEndsAt(row);
+  if (!end) throw new PlanLimitError(`Your ${PILOT_MONTHS} free months start with your first Scan In. Scan something in, then lock in your rate.`);
+  const price = stripePrice(target, interval);
+  const name = planById(target).name;
+  const when = end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+  if (row.stripeSubscriptionId) {
+    const sub = await stripe<StripeSubscription>(`/v1/subscriptions/${row.stripeSubscriptionId}`, undefined, "GET");
+    await stripe(`/v1/subscriptions/${sub.id}`, { "items[0][id]": sub.items.data[0].id, "items[0][price]": price, proration_behavior: "none" });
+    await syncSubscription(sub.id);
+    await logEvent("upgrade", `Changed the founding rate lock-in to ${name} (${interval}ly)`);
+    return { account: await getAccountSummary(), message: `Locked in ${name}. Nothing is charged until ${when}` };
+  }
+
+  const params: Record<string, string> = {
+    mode: "subscription",
+    "line_items[0][price]": price,
+    "line_items[0][quantity]": "1",
+    success_url: `${origin}/api/billing/return?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${origin}/?settings=account&billing=canceled`,
+    "metadata[plan]": target,
+    "metadata[founding]": "true",
+    "custom_text[submit][message]": `Founding rate for pilot testers. You won't be charged until your free pilot ends on ${when}.`,
+  };
+  if (row.stripeCustomerId) params.customer = row.stripeCustomerId;
+  else if (row.billingEmail) params.customer_email = row.billingEmail;
+  // Stripe needs a trial to end at least 48 hours out; a pilot ending sooner just starts billing now.
+  if (end.getTime() - Date.now() > 2 * DAY_MS) params["subscription_data[trial_end]"] = String(Math.floor(end.getTime() / 1000));
+  const session = await stripe<{ url: string }>("/v1/checkout/sessions", params);
+  return { account: await getAccountSummary(), redirect: session.url, message: "Opening secure checkout…" };
+}
+
 /** Stripe's hosted page for updating the card, billing address and receipts. */
 export async function paymentPortalUrl(origin: string) {
   if (!billingLive()) throw new PlanLimitError("Payment processing isn't set up on this site yet.");
@@ -607,7 +668,13 @@ export async function completeCheckout(sessionId: string) {
   await syncSubscription(session.subscription);
   const after = await loadAccount();
   if (before.stripeSubscriptionId !== after.stripeSubscriptionId) {
-    await logEvent("upgrade", `Subscribed to ${planById(after.plan).name} (${after.interval}ly)`);
+    const end = pilotActive(after) ? pilotEndsAt(after) : null;
+    await logEvent(
+      "upgrade",
+      end
+        ? `Locked in the founding rate: ${planById(after.plan).name} (${after.interval}ly), starting ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+        : `Subscribed to ${planById(after.plan).name} (${after.interval}ly)`,
+    );
   }
   return planById(after.plan).name;
 }
@@ -667,7 +734,7 @@ export async function stripeCheck(): Promise<StripeCheck> {
       const name = PRICE_ENV[plan][interval];
       const id = env(name);
       const p = planById(plan);
-      const expectedCents = interval === "year" ? p.yearlyCents : p.monthlyCents;
+      const expectedCents = priceFor(p, interval, pilotPremium());
       const row = { env: name, plan: p.name, interval, expectedCents, status: "missing" as StripeCheck["prices"][number]["status"], detail: "" };
       if (id && key && account) {
         try {

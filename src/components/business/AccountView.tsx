@@ -34,6 +34,7 @@ import { Field, Sheet, SheetActions } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
 import {
   cancelSubscription,
+  lockInFounding,
   getBillingHistory,
   openPaymentPortal,
   pausePlan,
@@ -125,6 +126,7 @@ export function AccountView({ panel, onPanel }: { panel: AccountPanel; onPanel: 
 
       {account.pilotPremium ? (
         <>
+          <FoundingOffer account={account} busy={busy} run={run} />
           <Usage account={account} />
           <IncludedFeatures account={account} />
           <AccountDetails account={account} />
@@ -160,7 +162,9 @@ function statusLine(account: AccountSummary): { tone: 'good' | 'warn' | 'bad' | 
     return {
       tone: left <= 30 ? 'warn' : 'good',
       label: left <= 30 ? `Pilot · ${left} day${left === 1 ? '' : 's'} left` : 'Pilot · included',
-      detail: `Thanks for testing Bintro. Every Premium feature, including everything in Plus, is free until ${fmtDate(account.pilotEndsAt)}, 18 months after your first Scan In. After that, pick a plan to keep them, or you'll move to Free.`,
+      detail: account.lockedIn
+        ? `Thanks for testing Bintro. Every Premium feature is free until ${fmtDate(account.pilotEndsAt)}. Then your founding rate for ${planById(account.lockedIn.plan).name} starts.`
+        : `Thanks for testing Bintro. Every Premium feature, including everything in Plus, is free until ${fmtDate(account.pilotEndsAt)}, 18 months after your first Scan In. Lock in your founding rate below to keep them, or you'll move to Free.`,
     }
   }
   if (account.status === 'trialing') {
@@ -191,7 +195,7 @@ function statusLine(account: AccountSummary): { tone: 'good' | 'warn' | 'bad' | 
   return {
     tone: 'good',
     label: 'Active',
-    detail: `Renews ${fmtDate(account.currentPeriodEnd)} for ${centsLabel(priceFor(plan, account.interval))}/${account.interval}.`,
+    detail: `Renews ${fmtDate(account.currentPeriodEnd)} for ${centsLabel(priceFor(plan, account.interval, account.founding))}/${account.interval}.`,
   }
 }
 
@@ -386,7 +390,7 @@ function PlanPicker({ account, busy, run }: { account: AccountSummary; busy: str
         {PLANS.map((p) => {
           const a = action(p)
           const isCurrent = p.id === account.plan
-          const price = priceFor(p, interval)
+          const price = priceFor(p, interval, account.founding)
           return (
             <article
               key={p.id}
@@ -413,7 +417,7 @@ function PlanPicker({ account, busy, run }: { account: AccountSummary; busy: str
                 {price > 0 && <span className="text-ink-2 text-sm">/{interval}</span>}
                 {price > 0 && interval === 'year' && (
                   <span className="block text-[12px] text-good font-semibold">
-                    {centsLabel(Math.round(p.yearlyCents / 12))}/mo, saves {centsLabel(p.monthlyCents * 12 - p.yearlyCents)}
+                    {centsLabel(Math.round(price / 12))}/mo, saves {centsLabel(priceFor(p, 'month', account.founding) * 12 - price)}
                   </span>
                 )}
               </p>
@@ -598,9 +602,9 @@ function Billing({ account, busy, run }: { account: AccountSummary; busy: string
   resumeDate.setMonth(resumeDate.getMonth() + months)
   const nextCharge =
     paid && account.status === 'active' && !account.cancelAtPeriodEnd
-      ? { amount: priceFor(plan, account.interval), on: account.currentPeriodEnd }
+      ? { amount: priceFor(plan, account.interval, account.founding), on: account.currentPeriodEnd }
       : trial && account.paymentMethod
-        ? { amount: priceFor(plan, account.interval), on: account.trialEndsAt }
+        ? { amount: priceFor(plan, account.interval, account.founding), on: account.trialEndsAt }
         : null
 
   return (
@@ -672,7 +676,7 @@ function Billing({ account, busy, run }: { account: AccountSummary; busy: string
             <p className="text-ink-2 text-[12px] m-0">Plan</p>
             <p className="m-0 font-semibold">
               {plan.name}
-              {paid && ` · ${centsLabel(priceFor(plan, account.interval))}/${account.interval}`}
+              {paid && ` · ${centsLabel(priceFor(plan, account.interval, account.founding))}/${account.interval}`}
             </p>
           </div>
         </div>
@@ -872,5 +876,116 @@ function Billing({ account, busy, run }: { account: AccountSummary; busy: string
         </SheetActions>
       </Sheet>
     </div>
+  )
+}
+
+/**
+ * Pilot testers: the founding rate (Plus $29/mo, Premium $69/mo, or yearly) is theirs for life.
+ * They can lock it in any time during the pilot; Stripe saves the card and charges nothing
+ * until the free months end. Shown loudest in the last 30 days.
+ */
+function FoundingOffer({ account, busy, run }: { account: AccountSummary; busy: string; run: RunFn }) {
+  const [interval, setInterval] = useState<BillingInterval>('month')
+  const left = account.pilotEndsAt ? daysUntil(account.pilotEndsAt) : null
+  const urgent = left !== null && left <= 30
+  const paid = PLANS.filter((p) => p.id !== 'free')
+
+  if (account.lockedIn) {
+    const plan = planById(account.lockedIn.plan)
+    return (
+      <section className="rounded-2xl border border-good bg-good-tint/60 p-4 mb-6">
+        <h3 className="m-0 text-[16px] font-extrabold flex items-center gap-1.5">
+          <Check size={18} className="text-good" /> Founding rate locked in
+        </h3>
+        <p className="m-0 mt-1 text-sm">
+          Bintro {plan.name} at <b>{centsLabel(priceFor(plan, account.lockedIn.interval, true))}/{account.lockedIn.interval}</b>, yours for life.
+          Nothing is charged until {fmtDate(account.lockedIn.startsAt)}.
+        </p>
+        <div className="flex flex-wrap gap-2 mt-3">
+          {paid
+            .filter((p) => p.id !== account.lockedIn!.plan)
+            .map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className="btn btn-tonal btn-sm"
+                disabled={!!busy}
+                onClick={() => run(`lock-${p.id}`, () => lockInFounding({ data: { plan: p.id as 'plus' | 'premium', interval: account.lockedIn!.interval } }) as Promise<BillingCall>)}
+              >
+                Switch to {p.name} ({centsLabel(priceFor(p, account.lockedIn!.interval, true))}/{account.lockedIn!.interval})
+              </button>
+            ))}
+          <button
+            type="button"
+            className="btn btn-text btn-sm"
+            disabled={!!busy}
+            onClick={() => run('unlock', () => cancelSubscription({ data: { reason: 'Undo founding rate lock-in' } }) as Promise<BillingCall>)}
+          >
+            {busy === 'unlock' ? 'Working…' : 'Undo lock-in'}
+          </button>
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className={`rounded-2xl border p-4 mb-6 ${urgent ? 'border-gold bg-gold-tint' : 'border-line bg-white'}`}>
+      <p className="m-0 text-[12px] font-bold uppercase tracking-wider text-gold-ink">Pilot tester founding rate</p>
+      <h3 className="m-0 mt-0.5 text-[18px] font-extrabold">
+        {urgent ? `Your free pilot ends ${fmtDate(account.pilotEndsAt)}. Keep your tools.` : 'Lock in your founding rate, for life'}
+      </h3>
+      <p className="m-0 mt-1 text-sm text-ink-2">
+        As a pilot tester you keep these prices as long as you stay subscribed. Everyone else pays the standard {centsLabel(planById('plus').monthlyCents)} and{' '}
+        {centsLabel(planById('premium').monthlyCents)} a month.
+        {account.pilotEndsAt ? ` Lock in now and nothing is charged until ${fmtDate(account.pilotEndsAt)}.` : ' Your 18 free months start with your first Scan In.'}
+      </p>
+
+      <div className="inline-flex p-1 rounded-full bg-surface mt-3" role="group" aria-label="Billing interval">
+        {(['month', 'year'] as const).map((i) => (
+          <button
+            key={i}
+            type="button"
+            aria-pressed={interval === i}
+            onClick={() => setInterval(i)}
+            className={`px-4 py-1.5 rounded-full border-0 text-sm font-semibold cursor-pointer ${interval === i ? 'bg-white text-ink shadow-card' : 'bg-transparent text-ink-2'}`}
+          >
+            {i === 'month' ? 'Monthly' : 'Yearly'}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid min-[520px]:grid-cols-2 gap-3 mt-3">
+        {paid.map((p) => {
+          const price = priceFor(p, interval, true)
+          const standard = priceFor(p, interval)
+          return (
+            <div key={p.id} className={`rounded-xl border p-3 ${p.id === 'premium' ? 'border-gold bg-white' : 'border-line bg-white'}`}>
+              <div className="font-extrabold flex items-center gap-1.5">
+                {p.id === 'premium' && <Crown size={16} className="text-gold-ink" />}
+                {p.name}
+              </div>
+              <div className="mt-1">
+                <span className="num text-[24px] font-extrabold text-royal">{centsLabel(price)}</span>
+                <span className="text-ink-2 text-sm">/{interval}</span>
+                <span className="ml-2 text-[13px] text-ink-2 line-through">{centsLabel(standard)}</span>
+              </div>
+              {account.billingLive && account.pilotEndsAt && (
+                <button
+                  type="button"
+                  className={`btn btn-sm mt-2 w-full ${p.id === 'premium' ? 'btn-gold' : 'btn-primary'}`}
+                  disabled={!!busy}
+                  onClick={() => run(`lock-${p.id}`, () => lockInFounding({ data: { plan: p.id as 'plus' | 'premium', interval } }) as Promise<BillingCall>)}
+                >
+                  {busy === `lock-${p.id}` ? 'Opening checkout…' : `Lock in ${p.name}`}
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {!account.billingLive && (
+        <p className="m-0 mt-3 text-[13px] text-ink-2">The lock-in button opens here before your pilot ends.</p>
+      )}
+    </section>
   )
 }

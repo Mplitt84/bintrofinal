@@ -140,7 +140,17 @@ export function planRank(plan: PlanId) {
   return PLANS.findIndex((p) => p.id === plan)
 }
 
-export function priceFor(plan: Plan, interval: BillingInterval) {
+/**
+ * Founding rate: pilot testers (pilot sites) keep these prices for life,
+ * instead of the standard Plus and Premium prices above.
+ */
+export const FOUNDING_CENTS: Record<'plus' | 'premium', Record<BillingInterval, number>> = {
+  plus: { month: 2900, year: 29000 },
+  premium: { month: 6900, year: 69000 },
+}
+
+export function priceFor(plan: Plan, interval: BillingInterval, founding = false) {
+  if (founding && plan.id !== 'free') return FOUNDING_CENTS[plan.id as 'plus' | 'premium'][interval]
   return interval === 'year' ? plan.yearlyCents : plan.monthlyCents
 }
 
@@ -178,6 +188,10 @@ export type AccountSummary = {
   pilotStartedAt: string | null
   /** When free pilot Premium ends (18 months after the first Scan In); null until the clock starts. */
   pilotEndsAt: string | null
+  /** Pilot site: every price shown and charged is the founding rate (FOUNDING_CENTS), for life. */
+  founding: boolean
+  /** During the pilot, the paid plan the tester has locked in at the founding rate; it starts when the pilot ends. */
+  lockedIn: { plan: PlanId; interval: BillingInterval; startsAt: string | null } | null
   memberSince: string
   usage: { products: number; team: number }
 }

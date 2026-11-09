@@ -1,5 +1,5 @@
 import { Lock, Sparkles } from 'lucide-react'
-import { FEATURE_INFO, centsLabel, planFor, type Feature } from '@/lib/plans'
+import { FEATURE_INFO, centsLabel, planFor, priceFor, type Feature } from '@/lib/plans'
 import { useBusiness } from '@/components/business/BusinessContext'
 
 /** Shows children when the plan includes `feature`; otherwise a card explaining what upgrading unlocks. */
@@ -41,7 +41,7 @@ export function UpgradeCard({ feature, compact = false }: { feature: Feature; co
         <p className="text-sm m-0 mb-5">Your plan is paused, so the account is on Free features until you resume.</p>
       ) : (
         <p className="text-sm m-0 mb-5">
-          {plan.name} is <b>{centsLabel(plan.monthlyCents)}/month</b> — or {centsLabel(plan.yearlyCents)}/year.
+          {plan.name} is <b>{centsLabel(priceFor(plan, 'month', account?.founding))}/month</b> — or {centsLabel(priceFor(plan, 'year', account?.founding))}/year.
         </p>
       )}
       <button type="button" className="btn btn-gold" onClick={openPlans}>
