@@ -6,6 +6,7 @@ import {
   cancelPlan,
   changePlan,
   getAccountSummary,
+  lockInFoundingRate,
   listBillingHistory,
   pauseBilling,
   paymentPortalUrl,
@@ -52,6 +53,13 @@ export const selectPlan = createServerFn({ method: "POST" })
   .inputValidator(z.object({ plan: z.enum(["free", "plus", "premium"]), interval: z.enum(["month", "year"]) }))
   .handler(async ({ data }) => {
     return attempt<BillingResult>(() => changePlan(data.plan, data.interval, origin()));
+  });
+
+/** Pilot testers: lock in the founding rate now; billing starts when the free pilot ends. */
+export const lockInFounding = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ plan: z.enum(["plus", "premium"]), interval: z.enum(["month", "year"]) }))
+  .handler(async ({ data }) => {
+    return attempt<BillingResult>(() => lockInFoundingRate(data.plan, data.interval, origin()));
   });
 
 export const pausePlan = createServerFn({ method: "POST" })
