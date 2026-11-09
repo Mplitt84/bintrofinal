@@ -14,6 +14,9 @@ export type Product = {
   packSize: number;
   /** "" = not set, "none" = doesn't expire, or YYYY-MM-DD. */
   expiresOn: string;
+  /** Last approved Count & reconcile that included this product, and who did it. */
+  lastCountedAt: string | Date | null;
+  lastCountedBy: string;
   unitCostCents: number;
   retailPriceCents: number;
   squareVariationId: string;

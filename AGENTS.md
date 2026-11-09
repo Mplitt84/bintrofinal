@@ -22,7 +22,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 
 ```
 ├── db
-│   ├── schema.ts   # Drizzle schema: products, movements, business_profile, team_members, expenses, budgets, integrations, square_outbox, product_categories, calendar_events, insight_reports, price_checks, account, billing_events, par_changes
+│   ├── schema.ts   # Drizzle schema: products, movements, business_profile, team_members, expenses, budgets, integrations, square_outbox, product_categories, calendar_events, insight_reports, price_checks, account, billing_events, par_changes, stock_counts, stock_count_lines
 │   └── index.ts    # Drizzle client (Netlify Database adapter)
 ├── drizzle.config.ts        # Drizzle Kit config; migrations output to netlify/database/migrations
 ├── netlify/database/migrations/  # Auto-applied SQL migrations (never hand-edit an applied one)
@@ -60,6 +60,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │       ├── MergePanel.tsx      # Edit sheet "Duplicate? Merge into another product": closest name matches first, then mergeProducts
 │   │       ├── VoiceInput.tsx      # SpeakDetails ("Speak product details" → AI fills the form) + per-field MicButton
 │   │       ├── InventoryView.tsx   # Products tab: stats, round tool buttons, search, filters, select mode + bulk bar, list, add/edit sheets
+│   │       ├── CountReconcileSheet.tsx # Count & reconcile: choose scope (blind), count, review differences with reasons/recount, approve, history
 │   │       ├── BulkEditSheet.tsx   # Bulk edit for selected products (category, vendor, brand, par, order up to, case pack, prices, expiry)
 │   │       ├── ActivityView.tsx    # Activity tab: usage/receipts by period, brand and staff
 │   │       ├── RestockView.tsx     # Restock tab: segmented "1 · Below par" / "2 · Build order"
@@ -85,6 +86,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   ├── purchase-order.ts      # PO grouping, totals, CSV
 │   │   ├── tidy.ts                # ParSuggestion / CategoryGroup / DuplicateGroup types (client-safe)
 │   │   ├── legal.ts               # LEGAL details (company, email, address, venue, effective date) + TERMS / PRIVACY / EULA text; [brackets] = draft banner
+│   │   ├── counts.ts              # COUNT_REASONS, needsRecount, lastCountedLabel, count history types (client-safe)
 │   │   ├── sales-report.ts        # SALES_REPORT_APPS, sales report line/result types, salesReportNote (client-safe)
 │   │   ├── orders.ts              # Saved order / delivery / vendor score types (client-safe)
 │   │   └── tax-categories.ts      # Tax groups (Schedule C line, QuickBooks account, why), category suggestions per business type, guessTaxGroup
@@ -106,6 +108,8 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   ├── business.functions.ts   # createServerFn wrappers for profile/team/categories/budget/expenses/AI/integrations
 │   │   ├── insights.server.ts      # computeInsights, runInsightReport (weekly | monthly | fast), price check records (server-only)
 │   │   ├── insights.functions.ts   # getInsights, getInsightSummary, sendInsightReportNow, checkWebPrice, applyWebPrice, confirmPrices
+│   │   ├── counts.server.ts        # approveCount (adjustments with reasons, history, last counted), recentCounts, countLines (server-only)
+│   │   ├── counts.functions.ts     # approveStockCount, getCountHistory, getCountLines
 │   │   ├── setup.functions.ts      # runSetupCheck (never returns key values), sendSetupTestEmail (to the business's own address)
 │   │   ├── calendar.server.ts      # Calendar event CRUD + secret feed token (server-only)
 │   │   └── calendar.functions.ts   # createServerFn wrappers: list/add/edit/remove events, getCalendarFeedPath
@@ -179,7 +183,7 @@ For booking apps Bintro can't connect to (Fresha, GlossGenius, Mangomint, Booksy
 ### Keeping the data trustworthy
 - **Reorder at / Order up to / Case pack**: each product has `reorderThreshold` (Reorder at — when it's Low), `maxQty` (Order up to — the most worth having on the shelf; 0 = order back to par) and `packSize` (units per case; 1 = singles). `suggestedOrderQty(product, onOrder)` in `inventory-defaults.ts` fills back to `orderUpTo()` minus open orders, in whole cases rounded *down* (at least one case) so the shelf never passes Order up to; Below par, Build order (± steps by a case), the restock email and the list totals all use it. All three are editable in the product form.
 - **Smart par** (Products chip, and Restock → Below par → Smart par): pace = units out per day, 65% last 30 days + 35% last 90; Reorder at = pace × the vendor's measured delivery days (Deliveries, else 7) + safety stock (1.65 × the weekly standard deviation × √(lead/7) with 4+ weeks of history, else half the lead time's use); Order up to = Reorder at + pace × the business's order cycle (`business_profile.orderEveryDays`, picked in the sheet: twice a week / weekly / every 2 weeks / monthly), rounded up to whole cases. Untouched for 90 days (and older than 30 days) → both 0, so it stops alerting. The sheet also lists overstock (on hand > 1.5 × Order up to) with days of stock and the cash tied up. Suggestions only; staff tick and apply (`setPars` writes par and max). Each apply is recorded in `par_changes` (old and new par/max per product, one `batchId`, history written before the updates) and can be undone from the toast or the "Last applied … Undo" bar at the top of the sheet (`undoPars` → `undoParChange`, which restores the old levels and stamps `undoneAt`). Smart par never touches on-hand counts.
-- **Count stock** (Products chips): scan into the box (repeat scans add one) or search, enter counted, save → `saveCounts` → `applyImportLines` in inventory mode (adjust movements, Square sales pulled first, counts sent to Square). No plan needed. "Fix N negative counts" opens it pre-filled with every product below zero.
+- **Count & reconcile** (Products round button; "Fix negatives" opens it scoped to negative counts): `CountReconcileSheet` in four steps. 1 Choose: everything, a category, a vendor, below par, negatives, or pick-as-you-go, plus **Blind count** (on by default; hides Bintro's number so staff count what's really there). 2 Count: scan (each scan adds 1) or search; progress "N of M"; grouped by category; each row shows "Last counted … by …"; the draft is kept on the device (`bintro.countDraft`) so a count can be paused and resumed. 3 Review: only differences, sorted by $ impact, with Match / Over / Short / Net value tiles; uncounted items are left alone unless "mark as 0" is ticked; differences flagged by `needsRecount` (3+ units, $25+, or 25%+ and 2+ units) must be recounted or confirmed; every difference needs a reason (`COUNT_REASONS`, with "Reason for the rest…"). 4 Approve → `approveStockCount` → `approveCount` (Square sales pulled first, one `adjust` movement per change with note `Count #id · reason`, Square follows; saves `stock_counts` + `stock_count_lines`; stamps `products.lastCountedAt` / `lastCountedBy` on every counted product). Count history lists each count (date, who, scope, blind, counted/adjusted, +over/−short, net $) and opens its lines with reasons. The product form shows "Last counted … by …". No plan needed.
 - **Fill missing costs** (Products chips): runs the AI price check two at a time over every product with no cost and saves what it finds; stops early if the AI service isn't answering.
 - **Find duplicates** (Products chips): same name + size + category spelling (`categoryKey`); retail/backbar copies differ in size or category so they're never offered; merging uses `mergeProducts`.
 - **Tidy up categories** (Settings → Categories): spellings with the same `categoryKey` (lower-cased words, sorted, joined: "Floor bar back" = "Floor Back bar") are offered as one; merging renames products and keeps the chosen spelling's tax group.

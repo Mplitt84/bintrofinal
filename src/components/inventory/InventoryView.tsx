@@ -5,7 +5,8 @@ import { bulkDeleteProducts, createProduct, deleteProduct, linkBarcodeToProduct,
 import { BulkEditSheet } from './BulkEditSheet'
 import { Sheet } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
-import { CountSheet, DuplicatesSheet, FillCostsSheet, SmartParSheet } from './TidyTools'
+import { DuplicatesSheet, FillCostsSheet, SmartParSheet } from './TidyTools'
+import { CountReconcileSheet } from './CountReconcileSheet'
 import { EmptyState, PageHead, StatGrid, StatTile, Thumb, centsToDollars, dollarsShort } from '@/components/ui/bits'
 import { ProductForm } from './ProductForm'
 import { ToolButton } from '@/components/ui/ToolButton'
@@ -122,7 +123,7 @@ export function InventoryView({
       </StatGrid>
 
       <div className="flex gap-4 overflow-x-auto pb-2 mb-3 -mx-1 px-1" role="group" aria-label="Keep your stock accurate">
-        <ToolButton icon={<ClipboardCheck size={24} />} color="bg-action" label="Count stock" onClick={() => setTool('count')} />
+        <ToolButton icon={<ClipboardCheck size={24} />} color="bg-action" label="Count & reconcile" onClick={() => setTool('count')} />
         <ToolButton icon={<Gauge size={24} />} color="bg-gold" label="Smart par" onClick={() => setTool('smartpar')} />
         {negativeIds.length > 0 && (
           <ToolButton icon={<CircleMinus size={24} />} color="bg-bad" label="Fix negatives" badge={negativeIds.length} onClick={() => setTool('negatives')} />
@@ -133,12 +134,12 @@ export function InventoryView({
         <ToolButton icon={<Copy size={24} />} color="bg-royal-2" label="Duplicates" onClick={() => setTool('duplicates')} />
       </div>
 
-      <CountSheet
+      <CountReconcileSheet
         open={tool === 'count' || tool === 'negatives'}
         onClose={() => setTool(null)}
         products={products}
         staffName={staffName}
-        prefillIds={tool === 'negatives' ? negativeIds : undefined}
+        initialScope={tool === 'negatives' ? 'negatives' : undefined}
         onDone={onChanged}
       />
       <SmartParSheet open={tool === 'smartpar'} onClose={() => setTool(null)} onDone={onChanged} />
