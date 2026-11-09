@@ -7,7 +7,7 @@ import { W as WEEK_DAYS, S as SLOW_WINDOW_DAYS, d as daysBetween, P as PRICE_STA
 import { f as findCategory, g as guessTaxGroup, c as categorySuggestionsFor } from "./business-types-DKNVcfJE.js";
 import { b as sendInsightReportEmail } from "./email.server-2uKsRAsj.js";
 import { w as writeInsightSummary, f as findWebPrice } from "./product-lookup.server-C6LGgHTN.js";
-import { g as findProductById, o as markPricesChecked } from "./inventory.server-s1_t35IV.js";
+import { g as findProductById, o as markPricesChecked } from "./inventory.server-CSgjh4TC.js";
 import { a as hasFeature } from "./account.server-IhIPs_LL.js";
 import { c as createServerRpc } from "./createServerRpc-D_-6bKnO.js";
 import "node:async_hooks";

@@ -7,7 +7,7 @@ import { M as MAX_ORDER_QTY } from "./inventory-defaults-BnRHgx1T.js";
 import { T as TAX_GROUPS, d as displayBusinessName } from "./business-types-DKNVcfJE.js";
 import { i as isCalendarToken, f as findCalendarEvents } from "./calendar.server-Ao_GjwJ3.js";
 import { f as findBusinessProfile } from "./business.server-CHGYL_45.js";
-import { PROVIDERS, completeAuthorization, StateMismatchError, isConfigured, buildAuthorizeUrl } from "./integrations.server-v9usGWZc.js";
+import { PROVIDERS, completeAuthorization, StateMismatchError, isConfigured, buildAuthorizeUrl } from "./integrations.server-DFcAtpTT.js";
 const Route$9 = createRootRoute({
   head: () => ({
     meta: [
@@ -382,7 +382,7 @@ const squareSyncSales = createServerFn({
 const quickbooksPushMonth = createServerFn({
   method: "POST"
 }).inputValidator(MonthWindowSchema).handler(createSsrRpc("7fef2669d1d6f3e9fdccdfbabede084b9e0823ba1f054366dd5ae9501cff565b"));
-const $$splitComponentImporter$3 = () => import("./index-Xw_3S9R_.js");
+const $$splitComponentImporter$3 = () => import("./index-Cnmutk78.js");
 const Route$8 = createFileRoute("/")({
   loader: async () => {
     const [products, recent, profile, team, categories, account] = await Promise.all([listProducts(), getRecentMovements({

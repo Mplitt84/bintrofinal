@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { eq, asc, sql, inArray } from "drizzle-orm";
 import { d as db, n as integrations, l as squareOutbox, a as products, r as expenses } from "./index-CaPewqP7.js";
-import { d as findProductByBarcode, h as applyMovement, S as SQUARE_STAFF_NAME } from "./inventory.server-s1_t35IV.js";
+import { d as findProductByBarcode, h as applyMovement, S as SQUARE_STAFF_NAME } from "./inventory.server-CSgjh4TC.js";
 import { b as findProductCategories, u as upsertProductCategories, h as findExpensesForMonth, n as inventorySpend } from "./business.server-CHGYL_45.js";
 import "drizzle-orm/netlify-db";
 import "drizzle-orm/pg-core";
@@ -632,16 +632,33 @@ async function qbCreatePurchase(row, p) {
   });
   return data.Purchase?.Id ?? "";
 }
+function isStaleAccount(error) {
+  return error instanceof Error && /invalid reference|inactive|deleted|object not found|does not exist/i.test(error.message);
+}
 async function pushMonthToQuickBooks(window) {
   let row = await activeIntegration("quickbooks");
-  const accounts = await qbAccounts(row);
+  let accounts = await qbAccounts(row);
   row = { ...row, meta: accounts };
+  const send = async (kind, p) => {
+    const attempt = () => qbCreatePurchase(row, {
+      ...p,
+      bankAccountId: accounts.bankAccountId,
+      accountId: kind === "cogs" ? accounts.cogsAccountId : accounts.expenseAccountId
+    });
+    try {
+      return await attempt();
+    } catch (error) {
+      if (!isStaleAccount(error)) throw error;
+      const { bankAccountId: _b, expenseAccountId: _e, cogsAccountId: _c, ...rest } = accounts;
+      accounts = await qbAccounts({ ...row, meta: rest });
+      row = { ...row, meta: accounts };
+      return attempt();
+    }
+  };
   let sentExpenses = 0;
   for (const e of await findExpensesForMonth(window.key)) {
     if (e.quickbooksId || e.amountCents <= 0) continue;
-    const id = await qbCreatePurchase(row, {
-      bankAccountId: accounts.bankAccountId,
-      accountId: /inventory|stock/i.test(e.category) ? accounts.cogsAccountId : accounts.expenseAccountId,
+    const id = await send(/inventory|stock/i.test(e.category) ? "cogs" : "expense", {
       date: e.spentOn,
       cents: e.amountCents,
       description: [e.category, e.vendor, e.note].filter(Boolean).join(" · ") || "Expense",
@@ -660,17 +677,15 @@ async function pushMonthToQuickBooks(window) {
       const key = `${window.key}|${v.vendor}`;
       const cents = Number(v.cents);
       if (pushed[key] || cents <= 0) continue;
-      pushed[key] = await qbCreatePurchase(row, {
-        bankAccountId: accounts.bankAccountId,
-        accountId: accounts.cogsAccountId,
+      pushed[key] = await send("cogs", {
         date,
         cents,
         description: `Inventory received from ${v.vendor} (${Number(v.units)} units)`,
         memo: `Stock scanned in with Bintro during ${window.key}`
       });
+      await saveIntegration("quickbooks", { meta: { ...accounts, pushedInventory: pushed } });
       sentVendors++;
     }
-    await saveIntegration("quickbooks", { meta: { ...accounts, pushedInventory: pushed } });
   }
   await saveIntegration("quickbooks", { lastSyncAt: /* @__PURE__ */ new Date() });
   return { sentExpenses, sentVendors, monthClosed };
