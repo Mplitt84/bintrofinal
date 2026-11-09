@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
-import { CircleMinus, ClipboardCheck, Copy, Gauge, Pencil, Search, Tag } from 'lucide-react'
+import { CheckSquare, CircleMinus, ClipboardCheck, Copy, Gauge, Pencil, Search, Tag, Trash2, X } from 'lucide-react'
 import type { Product, Stats } from './types'
-import { createProduct, deleteProduct, linkBarcodeToProduct, mergeProducts, updateProduct } from '@/server/inventory.functions'
+import { bulkDeleteProducts, createProduct, deleteProduct, linkBarcodeToProduct, mergeProducts, updateProduct } from '@/server/inventory.functions'
+import { BulkEditSheet } from './BulkEditSheet'
 import { Sheet } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
 import { CountSheet, DuplicatesSheet, FillCostsSheet, SmartParSheet } from './TidyTools'
@@ -35,6 +36,12 @@ export function InventoryView({
   const [adding, setAdding] = useState(false)
   // Clean-up tools: count a shelf, fix negatives, duplicates, missing costs.
   const [tool, setTool] = useState<null | 'count' | 'negatives' | 'duplicates' | 'costs' | 'smartpar'>(null)
+  // Bulk edit: select products, then edit or delete them together.
+  const [selecting, setSelecting] = useState(false)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [deleteArmed, setDeleteArmed] = useState(false)
+  const [bulkBusy, setBulkBusy] = useState(false)
   const expiringCount = useMemo(() => products.filter((p) => ['soon', 'expired'].includes(expiryState(p.expiresOn))).length, [products])
   const negativeIds = useMemo(() => products.filter((p) => p.qty < 0).map((p) => p.id), [products])
   const missingCosts = useMemo(() => products.filter((p) => !p.unitCostCents).length, [products])
@@ -57,8 +64,46 @@ export function InventoryView({
     return true
   })
 
+  const selectedProducts = products.filter((p) => selected.has(p.id))
+  const allFilteredSelected = filtered.length > 0 && filtered.every((p) => selected.has(p.id))
+
+  function toggle(id: number) {
+    setDeleteArmed(false)
+    setSelected((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function stopSelecting() {
+    setSelecting(false)
+    setSelected(new Set())
+    setDeleteArmed(false)
+  }
+
+  async function deleteSelected() {
+    if (!deleteArmed) {
+      setDeleteArmed(true)
+      return
+    }
+    setBulkBusy(true)
+    try {
+      const r = await bulkDeleteProducts({ data: { productIds: [...selected] } })
+      toast(`Deleted ${r.deleted} product${r.deleted === 1 ? '' : 's'}`)
+      stopSelecting()
+      await onChanged()
+    } catch {
+      toast("Couldn't delete those. Check your connection and try again.")
+    } finally {
+      setBulkBusy(false)
+      setDeleteArmed(false)
+    }
+  }
+
   return (
-    <div>
+    <div className={selecting ? 'pb-24' : ''}>
       <PageHead
         title="Products"
         lead="Everything on the shelf, and everything Bintro recognizes when you scan."
@@ -113,6 +158,15 @@ export function InventoryView({
       </label>
 
       <div className="flex gap-2 overflow-x-auto pb-1 mb-4 items-center">
+        <button
+          type="button"
+          className="chip !bg-royal !text-white"
+          aria-pressed={selecting}
+          onClick={() => (selecting ? stopSelecting() : setSelecting(true))}
+        >
+          {selecting ? <X size={14} /> : <CheckSquare size={14} />}
+          {selecting ? 'Done selecting' : 'Select'}
+        </button>
         {(['all', 'below', 'out', 'expiring'] as const)
           .filter((f) => f !== 'expiring' || expiringCount > 0)
           .map((f) => (
@@ -156,10 +210,22 @@ export function InventoryView({
             const out = status === 'out'
             const low = status === 'low'
             return (
-              <li key={p.id} className="flex items-center gap-3 py-3 border-b border-line last:border-b-0">
+              <li
+                key={p.id}
+                className={`flex items-center gap-3 py-3 border-b border-line last:border-b-0 ${selecting && selected.has(p.id) ? 'bg-action-tint/50 -mx-2 px-2 rounded-xl' : ''}`}
+              >
+                {selecting && (
+                  <input
+                    type="checkbox"
+                    checked={selected.has(p.id)}
+                    onChange={() => toggle(p.id)}
+                    aria-label={`Select ${p.name}`}
+                    className="w-5 h-5 accent-[var(--color-action)] cursor-pointer shrink-0"
+                  />
+                )}
                 <Thumb imageUrl={p.imageUrl} label={p.brand || p.name} />
                 <button
-                  onClick={() => setEditing(p)}
+                  onClick={() => (selecting ? toggle(p.id) : setEditing(p))}
                   className="flex-1 min-w-0 text-left border-0 bg-transparent p-0 cursor-pointer"
                 >
                   <div className="font-semibold truncate">{p.name}</div>
@@ -198,6 +264,48 @@ export function InventoryView({
           })}
         </ul>
       )}
+
+      {selecting && (
+        <div className="fixed left-0 right-0 bottom-[76px] z-30 px-3 pointer-events-none">
+          <div className="pointer-events-auto max-w-[760px] mx-auto bg-white border border-line rounded-2xl shadow-lift px-3 py-2.5 flex items-center gap-2 flex-wrap">
+            <b className="text-sm mr-1">{selected.size} selected</b>
+            <button
+              type="button"
+              className="btn btn-text btn-sm"
+              onClick={() => {
+                setDeleteArmed(false)
+                setSelected(allFilteredSelected ? new Set() : new Set([...selected, ...filtered.map((p) => p.id)]))
+              }}
+            >
+              {allFilteredSelected ? 'Clear' : `Select all ${filtered.length}`}
+            </button>
+            <span className="flex-1" />
+            <button type="button" className="btn btn-primary btn-sm" disabled={selected.size === 0 || bulkBusy} onClick={() => setBulkOpen(true)}>
+              <Pencil size={15} />
+              Edit {selected.size || ''}
+            </button>
+            <button type="button" className="btn btn-danger btn-sm" disabled={selected.size === 0 || bulkBusy} onClick={deleteSelected}>
+              <Trash2 size={15} />
+              {bulkBusy ? 'Deleting…' : deleteArmed ? `Tap again to delete ${selected.size}` : 'Delete'}
+            </button>
+          </div>
+          {deleteArmed && (
+            <p className="pointer-events-auto max-w-[760px] mx-auto mt-1 text-center text-[12px] text-bad font-semibold bg-white/90 rounded-lg py-1">
+              Deleting removes these products and their scan history for good. Tap again to confirm.
+            </p>
+          )}
+        </div>
+      )}
+
+      <BulkEditSheet
+        open={bulkOpen}
+        products={selectedProducts}
+        onClose={() => setBulkOpen(false)}
+        onDone={async () => {
+          await onChanged()
+          stopSelecting()
+        }}
+      />
 
       <Sheet
         open={editing !== null}
