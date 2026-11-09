@@ -59,7 +59,8 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │       ├── ProductForm.tsx     # Shared add/edit form: word prediction, quick chips, barcode lookup, AI label photo, AI price check, talk-to-text
 │   │       ├── MergePanel.tsx      # Edit sheet "Duplicate? Merge into another product": closest name matches first, then mergeProducts
 │   │       ├── VoiceInput.tsx      # SpeakDetails ("Speak product details" → AI fills the form) + per-field MicButton
-│   │       ├── InventoryView.tsx   # Products tab: stats, search, filters, list, add/edit sheets
+│   │       ├── InventoryView.tsx   # Products tab: stats, round tool buttons, search, filters, select mode + bulk bar, list, add/edit sheets
+│   │       ├── BulkEditSheet.tsx   # Bulk edit for selected products (category, vendor, brand, par, order up to, case pack, prices, expiry)
 │   │       ├── ActivityView.tsx    # Activity tab: usage/receipts by period, brand and staff
 │   │       ├── RestockView.tsx     # Restock tab: segmented "1 · Below par" / "2 · Build order"
 │   │       ├── BelowParView.tsx    # Restock step 1: below-par list, email button, "Build vendor order"
@@ -182,6 +183,9 @@ For booking apps Bintro can't connect to (Fresha, GlossGenius, Mangomint, Booksy
 - **Fill missing costs** (Products chips): runs the AI price check two at a time over every product with no cost and saves what it finds; stops early if the AI service isn't answering.
 - **Find duplicates** (Products chips): same name + size + category spelling (`categoryKey`); retail/backbar copies differ in size or category so they're never offered; merging uses `mergeProducts`.
 - **Tidy up categories** (Settings → Categories): spellings with the same `categoryKey` (lower-cased words, sorted, joined: "Floor bar back" = "Floor Back bar") are offered as one; merging renames products and keeps the chosen spelling's tax group.
+
+### Bulk edit (Products)
+The **Select** chip on Products turns on select mode: rows get checkboxes (tapping a row toggles it), and a bar above the tab bar shows the count, **Select all N** (everything in the current search / filter / category) or Clear, **Edit** and **Delete**. Edit opens `BulkEditSheet`: category, vendor, brand (with suggestions from the selection), Reorder at, Order up to, Case pack, cost, retail and expiry (18/24/36 months, No expiration, Clear expiry, or a date). Blank fields are left alone and counts are never touched; it calls `bulkUpdateProducts` (same `updateProductFields` path, 10 at a time). Delete is two-tap and calls `bulkDeleteProducts` (each product and its history, like a single delete).
 
 ### Expiry
 Each product has `expiresOn`: "" (not set), "none" (doesn't expire) or a YYYY-MM-DD date. The product form offers 18 / 24 / 36 months (counted from today, `monthsFromToday`), No expiration, or a typed date; helpers live in `src/lib/expiry.ts`. Product rows show an amber "Expires in Nd" tag within `EXPIRY_WARN_DAYS` (60) and red "Expired" after, and Products gets an "Expiring N" filter chip when any are due.

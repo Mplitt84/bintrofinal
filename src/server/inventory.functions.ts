@@ -340,3 +340,44 @@ export const recordProductMovement = createServerFn({ method: "POST" })
       note: data.captured ? `Photo: ${data.captured === "sku" ? "SKU / barcode" : "full label"}` : undefined,
     });
   });
+
+const BulkChangesSchema = z
+  .object({
+    category: z.string().trim().max(80),
+    vendor: z.string().trim().max(120),
+    brand: z.string().trim().max(160),
+    reorderThreshold: z.number().int().min(0).max(100_000),
+    maxQty: z.number().int().min(0).max(100_000),
+    packSize: z.number().int().min(1).max(1000),
+    expiresOn: z.union([z.literal(""), z.literal("none"), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)]),
+    unitCostCents: z.number().int().min(0).max(100_000_00),
+    retailPriceCents: z.number().int().min(0).max(100_000_00),
+  })
+  .partial();
+
+/**
+ * Bulk edit: applies the same changes to every selected product (only the fields
+ * sent; counts are never touched). Runs a few products at a time.
+ */
+export const bulkUpdateProducts = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ productIds: z.array(z.number().int().positive()).min(1).max(2000), changes: BulkChangesSchema }))
+  .handler(async ({ data }) => {
+    const changes = Object.fromEntries(Object.entries(data.changes).filter(([, v]) => v !== undefined));
+    if (Object.keys(changes).length === 0) return { updated: 0 };
+    let updated = 0;
+    for (let i = 0; i < data.productIds.length; i += 10) {
+      const chunk = data.productIds.slice(i, i + 10);
+      const rows = await Promise.all(chunk.map((id) => updateProductFields(id, changes)));
+      updated += rows.filter(Boolean).length;
+    }
+    return { updated };
+  });
+
+/** Bulk delete: removes the selected products and their history (same as deleting one at a time). */
+export const bulkDeleteProducts = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ productIds: z.array(z.number().int().positive()).min(1).max(2000) }))
+  .handler(async ({ data }) => {
+    let deleted = 0;
+    for (const id of data.productIds) if (await deleteProductById(id)) deleted++;
+    return { deleted };
+  });
