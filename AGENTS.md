@@ -225,6 +225,9 @@ Tiers live in `src/lib/plans.ts` (prices, product/team limits, `Feature` ids). F
 ### Setup check
 Settings → Setup check (`?settings=setup`) runs `runSetupCheck`: `pingAI` (a 5-token Claude call through `postToClaude`, with hints for a rejected key or no credit), `stripeCheck` (key mode test/live from its prefix, `/v1/account`, each `STRIPE_PRICE_*` fetched and compared with the plan's price and interval in `plans.ts` — GET only), `emailSetup` (Resend / SendGrid / none, custom sender) with a "Send me a test email" button to the profile email, Square/QuickBooks app keys present, and whether the site is a pilot. It never returns a key's value.
 
+### Help & support
+Settings shows a **Help & support** card on every panel (`HelpSupport` in `SettingsView.tsx`): "Email support" opens a mail draft to `LEGAL.supportEmail` with the business name, site, device and time filled in, and points to the integration error-log download. Until `supportEmail` is set (still `[support email]`) the card says so instead of showing the button.
+
 ### Legal pages
 `/terms`, `/privacy` and `/eula` are public pages (needed for Intuit's QuickBooks production review and app marketplaces), linked at the bottom of Settings. All text lives in `src/lib/legal.ts`; company name, email, address, venue and effective date are in `LEGAL`, and any value still in [brackets] shows a "Draft" banner. The Privacy Policy lists the real processors (Netlify, Anthropic, Stripe, Resend/SendGrid, barcode lookups, Square/QuickBooks when connected) — update it when a new service gets data. The 30-day post-closure deletion and export-on-request promises are policy, carried out by hand today.
 

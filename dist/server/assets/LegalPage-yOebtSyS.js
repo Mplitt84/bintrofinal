@@ -5,6 +5,8 @@ const LEGAL = {
   product: "Bintro",
   /** Where customers send legal and privacy requests. */
   email: "[legal or privacy email]",
+  /** Where customers get help from inside the app (Settings → Help & support). */
+  supportEmail: "[support email]",
   /** Mailing address for legal notices. */
   address: "[Mailing address]",
   /** State whose law governs the Terms. */
@@ -269,5 +271,6 @@ export {
   LINKS as L,
   PRIVACY as P,
   TERMS as T,
-  LegalPage as a
+  LEGAL as a,
+  LegalPage as b
 };

@@ -5,6 +5,7 @@ import { ImportView } from '@/components/business/ImportView'
 import { SetupCheck } from '@/components/business/SetupCheck'
 import { ConnectionDirectory } from '@/components/business/ConnectionDirectory'
 import { LEGAL_LINKS } from '@/components/legal/LegalPage'
+import { LEGAL } from '@/lib/legal'
 import { AppearanceSettings } from '@/components/business/AppearanceSettings'
 import { ScannerSettings } from '@/components/business/ScannerSettings'
 import { AccountView, type AccountPanel } from '@/components/business/AccountView'
@@ -145,7 +146,8 @@ export function SettingsView({
           <ConnectionDirectory />
         </>
       )}
-      <nav className="mt-10 pt-4 border-t border-line flex flex-wrap gap-x-4 gap-y-1 text-[13px]" aria-label="Legal">
+      <HelpSupport />
+      <nav className="mt-6 pt-4 border-t border-line flex flex-wrap gap-x-4 gap-y-1 text-[13px]" aria-label="Legal">
         {LEGAL_LINKS.map((l) => (
           <a key={l.href} href={l.href} target="_blank" rel="noreferrer" className="text-ink-2 font-semibold no-underline">
             {l.label}
@@ -864,5 +866,45 @@ function ErrorLogLink({ provider, name }: { provider: IntegrationStatus['provide
     >
       {busy ? 'Preparing…' : 'Download error log'}
     </button>
+  )
+}
+
+/** Settings → Help & support: emails Bintro support with the details support needs already filled in. */
+function HelpSupport() {
+  const { name } = useBusiness()
+  const ready = !LEGAL.supportEmail.includes('[')
+  const href = () => {
+    const body = [
+      'What happened (and what you expected):',
+      '',
+      '',
+      '— Details for Bintro support —',
+      `Business: ${name}`,
+      `Site: ${window.location.host}`,
+      `Device: ${navigator.userAgent}`,
+      `Time: ${new Date().toString()}`,
+      'If this is about Square or QuickBooks, attach the error log from Settings → Connections → Download error log.',
+    ].join('\n')
+    const params = new URLSearchParams({ subject: `Bintro help: ${name}`, body }).toString().replace(/\+/g, '%20')
+    return `mailto:${LEGAL.supportEmail}?${params}`
+  }
+  return (
+    <section className="mt-10 bg-white border border-line rounded-2xl p-4">
+      <h3 className="m-0 mb-1 text-[17px] font-bold flex items-center gap-2">
+        <Mail size={18} className="text-ink-2" />
+        Help &amp; support
+      </h3>
+      <p className="text-ink-2 text-sm mt-0 mb-3">
+        Something not working, or a question? Email us and we’ll get back to you.
+      </p>
+      {ready ? (
+        <a className="btn btn-primary btn-sm no-underline" href={href()} onClick={(e) => (e.currentTarget.href = href())}>
+          Email support
+        </a>
+      ) : (
+        <p className="text-sm m-0 text-warn">Support email isn’t set yet (LEGAL.supportEmail in src/lib/legal.ts).</p>
+      )}
+      {ready && <p className="text-ink-2 text-[13px] mt-2 mb-0">{LEGAL.supportEmail}</p>}
+    </section>
   )
 }
