@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowDownToLine, ArrowUpFromLine, Camera, Check, FileSpreadsheet, PackagePlus, Plus, ScanBarcode, X } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpFromLine, Camera, ScanSearch, Check, FileSpreadsheet, PackagePlus, Plus, ScanBarcode, X } from 'lucide-react'
 import type { MovementRow, Product } from './types'
 import {
   scanMovement,
+  lookupBarcode,
   createProduct,
   linkBarcodeToProduct,
   searchProducts,
@@ -12,6 +13,8 @@ import { Sheet, Field, SheetActions } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
 import { Thumb } from '@/components/ui/bits'
 import { ScanOverview } from '@/components/inventory/ScanOverview'
+import { CheckProductSheet } from '@/components/inventory/CheckProductSheet'
+import { approveStockCount } from '@/server/counts.functions'
 import { CameraScanner } from './CameraScanner'
 import { PhotoStockSheet } from './PhotoStockSheet'
 import { SalesReportSheet } from './SalesReportSheet'
@@ -21,11 +24,12 @@ import { STAFF_IDLE_MINUTES, getStaffAskMode, type StaffPrompt } from './StaffPi
 import { onBluetoothCode } from '@/lib/bluetooth-scanner'
 import { checkUnknownScan, type ScanCheck } from '@/lib/barcodes'
 
-type Mode = 'in' | 'out'
+/** out / in change stock; check only looks a SKU up and verifies its count. */
+type Mode = 'in' | 'out' | 'check'
 
 type Orb =
   | { kind: 'idle' }
-  | { kind: 'in' | 'out'; title: string; sub: string }
+  | { kind: 'in' | 'out' | 'check'; title: string; sub: string }
   | { kind: 'warn'; title: string; sub: string }
   | { kind: 'bad'; title: string; sub: string }
 
@@ -119,6 +123,8 @@ export function ScanView({
   const [orb, setOrb] = useState<Orb>({ kind: 'idle' })
   const [bump, setBump] = useState(0)
   const [busy, setBusy] = useState(false)
+  // Check mode: the SKU just scanned, shown in CheckProductSheet.
+  const [checking, setChecking] = useState<{ product: Product; code: string } | null>(null)
   const [cameraOpen, setCameraOpen] = useState(false)
   const [salesOpen, setSalesOpen] = useState(false)
   const [typing, setTyping] = useState(false)
@@ -174,7 +180,7 @@ export function ScanView({
     async (direction: Mode) => {
       const fresh = Date.now() - staffConfirmedAt < STAFF_IDLE_MINUTES * 60_000
       if (getStaffAskMode() === 'idle' && staffName.trim() && fresh) return staffName.trim()
-      const who = await askStaff({ direction })
+      const who = await askStaff({ direction: direction === 'check' ? undefined : direction })
       if (who) staffConfirmedAt = Date.now()
       return who
     },
@@ -188,6 +194,28 @@ export function ScanView({
       setPartialCode(null)
       scanWho.current = who
       setBusy(true)
+      if (direction === 'check') {
+        try {
+          const found = await lookupBarcode({ data: { barcode: trimmed } })
+          if (!found) {
+            beep(true)
+            showOrb({ kind: 'warn', title: 'Not in Bintro', sub: 'Save it once and Bintro knows it' })
+            setUnknownTab('new')
+            setLinkQuery('')
+            setUnknownBarcode(trimmed)
+            return
+          }
+          beep(true)
+          showOrb({ kind: 'check', title: 'SKU found', sub: `${found.name} · ${found.qty} on hand` })
+          setChecking({ product: found as Product, code: trimmed })
+        } catch {
+          beep(false)
+          showOrb({ kind: 'bad', title: 'Check failed', sub: 'Check your connection and try again' })
+        } finally {
+          setBusy(false)
+        }
+        return
+      }
       let result: Awaited<ReturnType<typeof scanMovement>>
       try {
         result = await scanMovement({ data: { barcode: trimmed, type: direction, qty, staffName: who } })
@@ -261,6 +289,7 @@ export function ScanView({
   const scanFromDevice = useCallback(
     async (code: string) => {
       if (rejectIfPartial(code)) return
+      if (mode === 'check') return submitScan(code, 'check')
       const who = await confirmStaff(mode)
       if (who) await submitScan(code, mode, who)
     },
@@ -279,11 +308,13 @@ export function ScanView({
     const code = partialCode
     if (!code) return
     setPartialCode(null)
+    if (mode === 'check') return submitScan(code, 'check')
     const who = await confirmStaff(mode)
     if (who) await submitScan(code, mode, who)
   }
 
   async function startCamera() {
+    if (mode === 'check') return setCameraOpen(true)
     const who = await confirmStaff(mode)
     if (!who) return
     scanWho.current = who
@@ -306,15 +337,15 @@ export function ScanView({
       setPhoto(file)
       return
     }
-    const who = await confirmStaff(mode)
+    const who = await confirmStaff(mode === 'check' ? 'out' : mode)
     if (!who) return
     setPhotoWho(who)
     setPhoto(file)
   }
 
   async function startTyping() {
-    const who = await confirmStaff(mode)
-    if (!who) return
+    const who = mode === 'check' ? staffName : await confirmStaff(mode)
+    if (who == null) return
     scanWho.current = who
     setTypedCode('')
     setTyping(true)
@@ -393,9 +424,9 @@ export function ScanView({
   return (
     <div className="grid gap-6 min-[900px]:grid-cols-[1.1fr_0.9fr] min-[900px]:items-start">
       <div className="bg-surface rounded-[24px] px-5 pt-5 pb-6 flex flex-col items-center text-center">
-        <div role="radiogroup" aria-label="Scan direction" className="flex w-full max-w-[360px] bg-white rounded-full p-1 mb-6 shadow-card">
-          {(['out', 'in'] as const).map((m) => {
-            const Icon = m === 'in' ? ArrowDownToLine : ArrowUpFromLine
+        <div role="radiogroup" aria-label="Scan mode" className="flex w-full max-w-[420px] bg-white rounded-full p-1 mb-6 shadow-card">
+          {(['out', 'in', 'check'] as const).map((m) => {
+            const Icon = m === 'in' ? ArrowDownToLine : m === 'check' ? ScanSearch : ArrowUpFromLine
             const active = mode === m
             return (
               <button
@@ -404,11 +435,11 @@ export function ScanView({
                 aria-checked={active}
                 onClick={() => setMode(m)}
                 className={`flex-1 flex items-center justify-center gap-2 rounded-full border-0 py-2.5 text-[15px] font-semibold cursor-pointer transition-colors ${
-                  active ? (m === 'in' ? 'bg-good text-white' : 'bg-action text-white') : 'bg-transparent text-ink-2'
+                  active ? (m === 'in' ? 'bg-good text-white' : m === 'check' ? 'bg-ink text-white' : 'bg-action text-white') : 'bg-transparent text-ink-2'
                 }`}
               >
                 <Icon size={18} />
-                {m === 'in' ? 'Scan in' : 'Scan out'}
+                {m === 'in' ? 'Scan in' : m === 'check' ? 'Check' : 'Scan out'}
               </button>
             )
           })}
@@ -425,14 +456,14 @@ export function ScanView({
             size={44}
             strokeWidth={2}
             className={
-              orb.kind === 'in' ? 'text-good' : orb.kind === 'warn' ? 'text-warn' : orb.kind === 'bad' ? 'text-bad' : 'text-action'
+              orb.kind === 'in' ? 'text-good' : orb.kind === 'check' ? 'text-ink' : orb.kind === 'warn' ? 'text-warn' : orb.kind === 'bad' ? 'text-bad' : 'text-action'
             }
           />
           <span className="text-2xl font-bold tracking-tight">
-            {orb.kind === 'idle' ? (busy ? 'Scanning…' : 'Tap to scan') : orb.title}
+            {orb.kind === 'idle' ? (busy ? (mode === 'check' ? 'Checking…' : 'Scanning…') : mode === 'check' ? 'Tap to check' : 'Tap to scan') : orb.title}
           </span>
           <span className="text-sm text-ink-2 max-w-[78%] line-clamp-2">
-            {orb.kind === 'idle' ? (mode === 'in' ? 'Receiving stock onto the shelf' : IDLE_SUB) : orb.sub}
+            {orb.kind === 'idle' ? (mode === 'in' ? 'Receiving stock onto the shelf' : mode === 'check' ? 'Look up a SKU and verify its count. Stock doesn’t change.' : IDLE_SUB) : orb.sub}
           </span>
         </button>
 
@@ -445,7 +476,7 @@ export function ScanView({
           </p>
         )}
 
-        <div className="flex items-center gap-3 mt-5">
+        <div className={`flex items-center gap-3 mt-5 ${mode === 'check' ? 'hidden' : ''}`}>
           <span className="text-sm font-semibold text-ink-2">Qty per scan</span>
           <div className="flex items-center bg-white rounded-full shadow-card">
             <button
@@ -517,6 +548,28 @@ export function ScanView({
         onChanged={safeRefresh}
       />
 
+      <CheckProductSheet
+        product={checking?.product ?? null}
+        matchedCode={checking?.code ?? ''}
+        onClose={() => setChecking(null)}
+        onSave={async (p, counted, reason) => {
+          const who = await confirmStaff('check')
+          if (!who) return
+          try {
+            await approveStockCount({ data: { scope: 'Spot check', blind: false, staffName: who, lines: [{ productId: p.id, counted, reason }] } })
+          } catch {
+            toast('Couldn’t save the count. Try again.')
+            return
+          }
+          setChecking(null)
+          beep(true)
+          const changed = counted !== p.qty
+          showOrb({ kind: 'check', title: changed ? 'Count updated' : 'Verified', sub: `${p.name} · ${counted} on hand` })
+          toast(changed ? `${p.name}: ${p.qty} → ${counted}. Saved to Count history.` : `${p.name} verified at ${counted}.`)
+          await safeRefresh()
+        }}
+      />
+
       <CameraScanner
         open={cameraOpen}
         onClose={() => setCameraOpen(false)}
@@ -542,7 +595,7 @@ export function ScanView({
 
       <PhotoStockSheet
         file={photo}
-        initialMode={mode}
+        initialMode={mode === 'check' ? 'out' : mode}
         staffName={photoWho}
         products={products}
         onClose={() => setPhoto(null)}
@@ -594,7 +647,7 @@ export function ScanView({
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={!typedCode.trim()}>
-              {mode === 'in' ? 'Scan in' : 'Scan out'}
+              {mode === 'in' ? 'Scan in' : mode === 'check' ? 'Check' : 'Scan out'}
             </button>
           </SheetActions>
         </form>
@@ -628,7 +681,7 @@ export function ScanView({
             autoLookup
             products={products}
             qtyLabel="Already on shelf"
-            saveLabel={mode === 'in' ? 'Save and scan in' : 'Save and scan out'}
+            saveLabel={mode === 'in' ? 'Save and scan in' : mode === 'check' ? 'Save and check' : 'Save and scan out'}
             onCancel={closeUnknown}
             onSave={async (values) => {
               await createProduct({ data: values })

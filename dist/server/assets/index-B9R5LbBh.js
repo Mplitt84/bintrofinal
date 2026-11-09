@@ -1,7 +1,7 @@
 import { jsxs, jsx, Fragment } from "react/jsx-runtime";
 import { useRef, useId, useEffect, useState, useCallback, createContext, useContext, useMemo, forwardRef } from "react";
-import { X, RotateCcw, ChevronRight, ClipboardCheck, Undo2, ShoppingBag, Sparkles, ArrowDownToLine, Trash2, Check, Plus, Search, Copy, Mic, Lock, Square, GitMerge, Camera, Tags, ExternalLink, Wand2, ArrowUpFromLine, FileSpreadsheet, AlertTriangle, Users, UserPlus, ScanBarcode, PackagePlus, EyeOff, History, Gauge, CircleMinus, Tag, CheckSquare, Pencil, ClipboardList, Mail, RefreshCw, Download, Printer, FileText, CheckCheck, PackageCheck, Truck, CalendarPlus, ChevronLeft, Landmark, Repeat, CalendarDays, CheckCircle2, Send, FileUp, TriangleAlert, Plug, ShieldCheck, LogOut, Lightbulb, Boxes, Leaf, CalendarClock, PiggyBank, ArrowRight, Palette, BluetoothConnected, Bluetooth, Crown, PlayCircle, CreditCard, XCircle, PauseCircle, Receipt, Flame, TrendingUp, TrendingDown, Globe, Settings, Store, Wallet, Activity } from "lucide-react";
-import { c as createSsrRpc, s as saveProductCategories, r as removeProductCategories, l as lookupBarcodeDetails, a as readSpokenProduct, b as readLabelPhoto, d as suggestProduct, e as readStockPhotoFn, f as createProduct, g as recordProductMovement, h as searchProducts, i as scanMovement, u as undoMovement, j as linkBarcodeToProduct, k as bulkUpdateProducts, m as updateBusinessProfile, n as mergeProducts, o as deleteProduct, p as updateProduct, q as bulkDeleteProducts, t as getMovementsSince, v as emailBelowPar, w as emailPurchaseOrder, x as toDay, y as parseDay, z as occurrences, A as eventKind, E as EVENT_KINDS, B as formatTime, R as REPEATS, C as estimatedTaxDates, D as googleCalendarUrl, F as outlookCalendarUrl, G as subscribeUrls, H as buildIcs, I as getBudgetOverview, J as listExpenses, K as getIntegrations, L as quickbooksPushMonth, M as editExpense, N as createExpense, O as readReceiptPhoto, P as removeExpense, Q as saveMonthBudget, S as getAccessList, T as signOut, U as removeAccess, V as addAccess, W as resumePlan, X as lockInFounding, Y as cancelSubscription, Z as getBillingHistory, _ as saveAccountDetails, $ as selectPlan, a0 as openPaymentPortal, a1 as pausePlan, a2 as addTeamMember, a3 as removeTeamMember, a4 as getSquareRetailCategories, a5 as disconnect, a6 as getIntegrationErrorLog, a7 as setSquareRetailCategories, a8 as squareImportCatalog, a9 as squareSyncSales, aa as squareSendCounts, ab as Route, ac as listProducts, ad as getRecentMovements, ae as getAccount, af as getAuthState } from "./router-D6jggM5-.js";
+import { X, RotateCcw, ChevronRight, ClipboardCheck, Undo2, ShoppingBag, Sparkles, ArrowDownToLine, BadgeCheck, Minus, Plus, Trash2, Check, Search, Copy, Mic, Lock, Square, GitMerge, Camera, Tags, ExternalLink, Wand2, ArrowUpFromLine, FileSpreadsheet, AlertTriangle, Users, UserPlus, ScanBarcode, ScanSearch, PackagePlus, EyeOff, History, Gauge, CircleMinus, Tag, CheckSquare, Pencil, ClipboardList, Mail, RefreshCw, Download, Printer, FileText, CheckCheck, PackageCheck, Truck, CalendarPlus, ChevronLeft, Landmark, Repeat, CalendarDays, CheckCircle2, Send, FileUp, TriangleAlert, Plug, ShieldCheck, LogOut, Lightbulb, Boxes, Leaf, CalendarClock, PiggyBank, ArrowRight, Palette, BluetoothConnected, Bluetooth, Crown, PlayCircle, CreditCard, XCircle, PauseCircle, Receipt, Flame, TrendingUp, TrendingDown, Globe, Settings, Store, Wallet, Activity } from "lucide-react";
+import { c as createSsrRpc, s as saveProductCategories, r as removeProductCategories, l as lookupBarcodeDetails, a as readSpokenProduct, b as readLabelPhoto, d as suggestProduct, e as readStockPhotoFn, f as createProduct, g as recordProductMovement, h as searchProducts, i as lookupBarcode, j as scanMovement, u as undoMovement, k as linkBarcodeToProduct, m as bulkUpdateProducts, n as updateBusinessProfile, o as mergeProducts, p as deleteProduct, q as updateProduct, t as bulkDeleteProducts, v as getMovementsSince, w as emailBelowPar, x as emailPurchaseOrder, y as toDay, z as parseDay, A as occurrences, B as eventKind, E as EVENT_KINDS, C as formatTime, R as REPEATS, D as estimatedTaxDates, F as googleCalendarUrl, G as outlookCalendarUrl, H as subscribeUrls, I as buildIcs, J as getBudgetOverview, K as listExpenses, L as getIntegrations, M as quickbooksPushMonth, N as editExpense, O as createExpense, P as readReceiptPhoto, Q as removeExpense, S as saveMonthBudget, T as getAccessList, U as signOut, V as removeAccess, W as addAccess, X as resumePlan, Y as lockInFounding, Z as cancelSubscription, _ as getBillingHistory, $ as saveAccountDetails, a0 as selectPlan, a1 as openPaymentPortal, a2 as pausePlan, a3 as addTeamMember, a4 as removeTeamMember, a5 as getSquareRetailCategories, a6 as disconnect, a7 as getIntegrationErrorLog, a8 as setSquareRetailCategories, a9 as squareImportCatalog, aa as squareSyncSales, ab as squareSendCounts, ac as Route, ad as listProducts, ae as getRecentMovements, af as getAccount, ag as getAuthState } from "./router-DSGXFFjO.js";
 import { createPortal } from "react-dom";
 import { c as createServerFn } from "../server.js";
 import { z } from "zod";
@@ -744,6 +744,100 @@ function ActivityChart({ data }) {
         i
       );
     }) })
+  ] });
+}
+function CheckProductSheet({
+  product,
+  matchedCode,
+  onClose,
+  onSave
+}) {
+  const [counted, setCounted] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setCounted("");
+    setReason("");
+    setBusy(false);
+  }, [product?.id, matchedCode]);
+  if (!product) return /* @__PURE__ */ jsx(Sheet, { open: false, onClose, title: "", children: null });
+  const onHand = product.qty;
+  const n = counted.trim() === "" ? null : Math.max(0, Math.trunc(Number(counted)));
+  const diff = n == null || Number.isNaN(n) ? null : n - onHand;
+  const viaExtra = matchedCode && matchedCode !== product.barcode;
+  const save = async (value, why) => {
+    setBusy(true);
+    try {
+      await onSave(product, value, why);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const step = (d) => setCounted(String(Math.max(0, (n ?? onHand) + d)));
+  return /* @__PURE__ */ jsxs(Sheet, { open: true, onClose, title: "Check SKU", subtitle: "Nothing changes until you save a count.", children: [
+    /* @__PURE__ */ jsxs("div", { className: "flex items-center gap-3 mb-3", children: [
+      /* @__PURE__ */ jsx(Thumb, { imageUrl: product.imageUrl, label: product.brand || product.name, size: "lg" }),
+      /* @__PURE__ */ jsxs("div", { className: "min-w-0", children: [
+        /* @__PURE__ */ jsx("div", { className: "font-bold text-[17px] leading-tight", children: product.name }),
+        /* @__PURE__ */ jsx("div", { className: "text-[13px] text-ink-2 truncate", children: [product.brand, product.size, product.category].filter(Boolean).join(" · ") })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxs("div", { className: "bg-good-tint text-good rounded-xl px-3.5 py-2 text-sm flex items-center gap-2 mb-3", children: [
+      /* @__PURE__ */ jsx(BadgeCheck, { size: 17 }),
+      /* @__PURE__ */ jsxs("span", { children: [
+        "SKU matches ",
+        /* @__PURE__ */ jsx("b", { className: "num", children: matchedCode }),
+        viaExtra && /* @__PURE__ */ jsxs("span", { className: "text-ink-2", children: [
+          " (extra SKU; main ",
+          product.barcode,
+          ")"
+        ] })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxs("dl", { className: "grid grid-cols-3 gap-2 m-0 mb-3 text-center", children: [
+      /* @__PURE__ */ jsx(Stat, { label: "On hand", value: String(onHand), strong: true }),
+      /* @__PURE__ */ jsx(Stat, { label: "Reorder at", value: String(product.reorderThreshold) }),
+      /* @__PURE__ */ jsx(Stat, { label: "Order up to", value: product.maxQty ? String(product.maxQty) : "—" }),
+      /* @__PURE__ */ jsx(Stat, { label: "Cost", value: product.unitCostCents ? `$${centsToDollars(product.unitCostCents)}` : "—" }),
+      /* @__PURE__ */ jsx(Stat, { label: "Retail", value: product.retailPriceCents ? `$${centsToDollars(product.retailPriceCents)}` : "—" }),
+      /* @__PURE__ */ jsx(Stat, { label: "Vendor", value: product.vendor || "—" })
+    ] }),
+    /* @__PURE__ */ jsx("p", { className: "text-[12px] text-ink-2 mt-0 mb-4", children: lastCountedLabel(product) }),
+    /* @__PURE__ */ jsx("h3", { className: "text-[15px] font-bold m-0 mb-2", children: "Verify the count" }),
+    /* @__PURE__ */ jsxs("div", { className: "flex items-center gap-2 mb-3", children: [
+      /* @__PURE__ */ jsx("button", { type: "button", "aria-label": "One fewer", className: "w-11 h-11 rounded-full border border-line bg-white grid place-items-center cursor-pointer", onClick: () => step(-1), children: /* @__PURE__ */ jsx(Minus, { size: 18 }) }),
+      /* @__PURE__ */ jsx(
+        "input",
+        {
+          className: "field-input num text-center text-xl !w-28",
+          inputMode: "numeric",
+          placeholder: String(onHand),
+          "aria-label": "How many are on the shelf",
+          value: counted,
+          onChange: (e) => setCounted(e.target.value.replace(/[^\d]/g, ""))
+        }
+      ),
+      /* @__PURE__ */ jsx("button", { type: "button", "aria-label": "One more", className: "w-11 h-11 rounded-full border border-line bg-white grid place-items-center cursor-pointer", onClick: () => step(1), children: /* @__PURE__ */ jsx(Plus, { size: 18 }) }),
+      /* @__PURE__ */ jsx("span", { className: "text-sm text-ink-2 ml-1", children: diff == null ? "on the shelf" : diff === 0 ? "Matches" : `${diff > 0 ? "+" : ""}${diff} vs Bintro` })
+    ] }),
+    diff != null && diff !== 0 && /* @__PURE__ */ jsxs(Fragment, { children: [
+      /* @__PURE__ */ jsx("p", { className: "text-[13px] font-semibold m-0 mb-1.5", children: "Why is it different?" }),
+      /* @__PURE__ */ jsx("div", { className: "flex flex-wrap gap-1.5 mb-1", children: COUNT_REASONS.map((r) => /* @__PURE__ */ jsx("button", { type: "button", className: "chip !text-[12px] !py-1", "aria-pressed": reason === r, onClick: () => setReason(r), children: r }, r)) })
+    ] }),
+    /* @__PURE__ */ jsxs(SheetActions, { children: [
+      diff == null || diff === 0 ? /* @__PURE__ */ jsxs("button", { type: "button", className: "btn btn-primary", disabled: busy, onClick: () => save(onHand, ""), children: [
+        /* @__PURE__ */ jsx(BadgeCheck, { size: 17 }),
+        " ",
+        busy ? "Saving…" : `Count matches · ${onHand}`
+      ] }) : /* @__PURE__ */ jsx("button", { type: "button", className: "btn btn-primary", disabled: busy || !reason, onClick: () => save(n, reason), children: busy ? "Saving…" : reason ? `Save count · ${n}` : "Pick a reason" }),
+      /* @__PURE__ */ jsx("button", { type: "button", className: "btn btn-tonal", onClick: onClose, children: "Done" })
+    ] })
+  ] });
+}
+function Stat({ label: label2, value, strong }) {
+  return /* @__PURE__ */ jsxs("div", { className: "bg-surface rounded-xl px-2 py-2 min-w-0", children: [
+    /* @__PURE__ */ jsx("dt", { className: "text-[11px] text-ink-2", children: label2 }),
+    /* @__PURE__ */ jsx("dd", { className: `m-0 num truncate ${strong ? "text-xl font-bold" : "text-sm font-semibold"}`, children: value })
   ] });
 }
 const READER_ID = "bintro-reader";
@@ -4002,6 +4096,7 @@ function ScanView({
   const [orb, setOrb] = useState({ kind: "idle" });
   const [bump, setBump] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [salesOpen, setSalesOpen] = useState(false);
   const [typing, setTyping] = useState(false);
@@ -4045,7 +4140,7 @@ function ScanView({
     async (direction) => {
       const fresh = Date.now() - staffConfirmedAt < STAFF_IDLE_MINUTES * 6e4;
       if (getStaffAskMode() === "idle" && staffName.trim() && fresh) return staffName.trim();
-      const who = await askStaff({ direction });
+      const who = await askStaff({ direction: direction === "check" ? void 0 : direction });
       if (who) staffConfirmedAt = Date.now();
       return who;
     },
@@ -4058,6 +4153,28 @@ function ScanView({
       setPartialCode(null);
       scanWho.current = who;
       setBusy(true);
+      if (direction === "check") {
+        try {
+          const found = await lookupBarcode({ data: { barcode: trimmed } });
+          if (!found) {
+            beep(true);
+            showOrb({ kind: "warn", title: "Not in Bintro", sub: "Save it once and Bintro knows it" });
+            setUnknownTab("new");
+            setLinkQuery("");
+            setUnknownBarcode(trimmed);
+            return;
+          }
+          beep(true);
+          showOrb({ kind: "check", title: "SKU found", sub: `${found.name} · ${found.qty} on hand` });
+          setChecking({ product: found, code: trimmed });
+        } catch {
+          beep(false);
+          showOrb({ kind: "bad", title: "Check failed", sub: "Check your connection and try again" });
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
       let result;
       try {
         result = await scanMovement({ data: { barcode: trimmed, type: direction, qty, staffName: who } });
@@ -4121,6 +4238,7 @@ function ScanView({
   const scanFromDevice = useCallback(
     async (code) => {
       if (rejectIfPartial(code)) return;
+      if (mode === "check") return submitScan(code, "check");
       const who = await confirmStaff(mode);
       if (who) await submitScan(code, mode, who);
     },
@@ -4137,10 +4255,12 @@ function ScanView({
     const code = partialCode;
     if (!code) return;
     setPartialCode(null);
+    if (mode === "check") return submitScan(code, "check");
     const who = await confirmStaff(mode);
     if (who) await submitScan(code, mode, who);
   }
   async function startCamera() {
+    if (mode === "check") return setCameraOpen(true);
     const who = await confirmStaff(mode);
     if (!who) return;
     scanWho.current = who;
@@ -4159,14 +4279,14 @@ function ScanView({
       setPhoto(file);
       return;
     }
-    const who = await confirmStaff(mode);
+    const who = await confirmStaff(mode === "check" ? "out" : mode);
     if (!who) return;
     setPhotoWho(who);
     setPhoto(file);
   }
   async function startTyping() {
-    const who = await confirmStaff(mode);
-    if (!who) return;
+    const who = mode === "check" ? staffName : await confirmStaff(mode);
+    if (who == null) return;
     scanWho.current = who;
     setTypedCode("");
     setTyping(true);
@@ -4232,8 +4352,8 @@ function ScanView({
   const OrbIcon = orb.kind === "idle" ? ScanBarcode : orb.kind === "bad" ? X : orb.kind === "warn" ? Plus : Check;
   return /* @__PURE__ */ jsxs("div", { className: "grid gap-6 min-[900px]:grid-cols-[1.1fr_0.9fr] min-[900px]:items-start", children: [
     /* @__PURE__ */ jsxs("div", { className: "bg-surface rounded-[24px] px-5 pt-5 pb-6 flex flex-col items-center text-center", children: [
-      /* @__PURE__ */ jsx("div", { role: "radiogroup", "aria-label": "Scan direction", className: "flex w-full max-w-[360px] bg-white rounded-full p-1 mb-6 shadow-card", children: ["out", "in"].map((m) => {
-        const Icon = m === "in" ? ArrowDownToLine : ArrowUpFromLine;
+      /* @__PURE__ */ jsx("div", { role: "radiogroup", "aria-label": "Scan mode", className: "flex w-full max-w-[420px] bg-white rounded-full p-1 mb-6 shadow-card", children: ["out", "in", "check"].map((m) => {
+        const Icon = m === "in" ? ArrowDownToLine : m === "check" ? ScanSearch : ArrowUpFromLine;
         const active = mode === m;
         return /* @__PURE__ */ jsxs(
           "button",
@@ -4241,10 +4361,10 @@ function ScanView({
             role: "radio",
             "aria-checked": active,
             onClick: () => setMode(m),
-            className: `flex-1 flex items-center justify-center gap-2 rounded-full border-0 py-2.5 text-[15px] font-semibold cursor-pointer transition-colors ${active ? m === "in" ? "bg-good text-white" : "bg-action text-white" : "bg-transparent text-ink-2"}`,
+            className: `flex-1 flex items-center justify-center gap-2 rounded-full border-0 py-2.5 text-[15px] font-semibold cursor-pointer transition-colors ${active ? m === "in" ? "bg-good text-white" : m === "check" ? "bg-ink text-white" : "bg-action text-white" : "bg-transparent text-ink-2"}`,
             children: [
               /* @__PURE__ */ jsx(Icon, { size: 18 }),
-              m === "in" ? "Scan in" : "Scan out"
+              m === "in" ? "Scan in" : m === "check" ? "Check" : "Scan out"
             ]
           },
           m
@@ -4263,11 +4383,11 @@ function ScanView({
               {
                 size: 44,
                 strokeWidth: 2,
-                className: orb.kind === "in" ? "text-good" : orb.kind === "warn" ? "text-warn" : orb.kind === "bad" ? "text-bad" : "text-action"
+                className: orb.kind === "in" ? "text-good" : orb.kind === "check" ? "text-ink" : orb.kind === "warn" ? "text-warn" : orb.kind === "bad" ? "text-bad" : "text-action"
               }
             ),
-            /* @__PURE__ */ jsx("span", { className: "text-2xl font-bold tracking-tight", children: orb.kind === "idle" ? busy ? "Scanning…" : "Tap to scan" : orb.title }),
-            /* @__PURE__ */ jsx("span", { className: "text-sm text-ink-2 max-w-[78%] line-clamp-2", children: orb.kind === "idle" ? mode === "in" ? "Receiving stock onto the shelf" : IDLE_SUB : orb.sub })
+            /* @__PURE__ */ jsx("span", { className: "text-2xl font-bold tracking-tight", children: orb.kind === "idle" ? busy ? mode === "check" ? "Checking…" : "Scanning…" : mode === "check" ? "Tap to check" : "Tap to scan" : orb.title }),
+            /* @__PURE__ */ jsx("span", { className: "text-sm text-ink-2 max-w-[78%] line-clamp-2", children: orb.kind === "idle" ? mode === "in" ? "Receiving stock onto the shelf" : mode === "check" ? "Look up a SKU and verify its count. Stock doesn’t change." : IDLE_SUB : orb.sub })
           ]
         },
         bump
@@ -4279,7 +4399,7 @@ function ScanView({
         " ",
         /* @__PURE__ */ jsx("button", { type: "button", className: "border-0 bg-transparent p-0 text-action font-semibold cursor-pointer", onClick: acceptPartialCode, children: "That's the full code — use it" })
       ] }),
-      /* @__PURE__ */ jsxs("div", { className: "flex items-center gap-3 mt-5", children: [
+      /* @__PURE__ */ jsxs("div", { className: `flex items-center gap-3 mt-5 ${mode === "check" ? "hidden" : ""}`, children: [
         /* @__PURE__ */ jsx("span", { className: "text-sm font-semibold text-ink-2", children: "Qty per scan" }),
         /* @__PURE__ */ jsxs("div", { className: "flex items-center bg-white rounded-full shadow-card", children: [
           /* @__PURE__ */ jsx(
@@ -4353,6 +4473,30 @@ function ScanView({
       }
     ),
     /* @__PURE__ */ jsx(
+      CheckProductSheet,
+      {
+        product: checking?.product ?? null,
+        matchedCode: checking?.code ?? "",
+        onClose: () => setChecking(null),
+        onSave: async (p, counted, reason) => {
+          const who = await confirmStaff("check");
+          if (!who) return;
+          try {
+            await approveStockCount({ data: { scope: "Spot check", blind: false, staffName: who, lines: [{ productId: p.id, counted, reason }] } });
+          } catch {
+            toast("Couldn’t save the count. Try again.");
+            return;
+          }
+          setChecking(null);
+          beep(true);
+          const changed = counted !== p.qty;
+          showOrb({ kind: "check", title: changed ? "Count updated" : "Verified", sub: `${p.name} · ${counted} on hand` });
+          toast(changed ? `${p.name}: ${p.qty} → ${counted}. Saved to Count history.` : `${p.name} verified at ${counted}.`);
+          await safeRefresh();
+        }
+      }
+    ),
+    /* @__PURE__ */ jsx(
       CameraScanner,
       {
         open: cameraOpen,
@@ -4383,7 +4527,7 @@ function ScanView({
       PhotoStockSheet,
       {
         file: photo,
-        initialMode: mode,
+        initialMode: mode === "check" ? "out" : mode,
         staffName: photoWho,
         products,
         onClose: () => setPhoto(null),
@@ -4434,7 +4578,7 @@ function ScanView({
           ) }),
           /* @__PURE__ */ jsxs(SheetActions, { children: [
             /* @__PURE__ */ jsx("button", { type: "button", className: "btn btn-tonal", onClick: () => setTyping(false), children: "Cancel" }),
-            /* @__PURE__ */ jsx("button", { type: "submit", className: "btn btn-primary", disabled: !typedCode.trim(), children: mode === "in" ? "Scan in" : "Scan out" })
+            /* @__PURE__ */ jsx("button", { type: "submit", className: "btn btn-primary", disabled: !typedCode.trim(), children: mode === "in" ? "Scan in" : mode === "check" ? "Check" : "Scan out" })
           ] })
         ]
       }
@@ -4463,7 +4607,7 @@ function ScanView({
               autoLookup: true,
               products,
               qtyLabel: "Already on shelf",
-              saveLabel: mode === "in" ? "Save and scan in" : "Save and scan out",
+              saveLabel: mode === "in" ? "Save and scan in" : mode === "check" ? "Save and check" : "Save and scan out",
               onCancel: closeUnknown,
               onSave: async (values) => {
                 await createProduct({ data: values });
