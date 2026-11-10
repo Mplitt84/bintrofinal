@@ -419,3 +419,28 @@ body {
   .bin-buddy-eyes { animation: none; }
   .bin-buddy-button:hover { transform: none; }
 }
+
+/* Snap & log: "What are you snapping?" choices. Icon colors are fixed tool tones. */
+.snap-choice {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--color-line);
+  background: #fff;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+.snap-choice:hover { background: var(--color-surface); }
+.snap-choice-icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+}

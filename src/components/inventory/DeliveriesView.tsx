@@ -34,12 +34,13 @@ export function DeliveriesView({
   staffName: string
   onChanged: () => void | Promise<void>
   /** Open the "Receive a delivery" sheet straight away (from the Scan tab button). */
-  autoReceive?: boolean
+  /** true, or a receipt photo from Snap & log to read right away. */
+  autoReceive?: boolean | File
   onAutoReceiveHandled?: () => void
 }) {
   const toast = useToast()
   const [data, setData] = useState<OrdersOverview | null>(null)
-  const [receiving, setReceiving] = useState<{ order: SavedOrder | null } | null>(null)
+  const [receiving, setReceiving] = useState<{ order: SavedOrder | null; file?: File | null } | null>(null)
   const [armedCancel, setArmedCancel] = useState<number | null>(null)
 
   const load = useCallback(async () => {
@@ -56,7 +57,7 @@ export function DeliveriesView({
 
   useEffect(() => {
     if (autoReceive) {
-      setReceiving({ order: null })
+      setReceiving({ order: null, file: autoReceive instanceof File ? autoReceive : null })
       onAutoReceiveHandled?.()
     }
   }, [autoReceive, onAutoReceiveHandled])
@@ -184,6 +185,7 @@ export function DeliveriesView({
       <ReceiveDeliverySheet
         open={receiving !== null}
         order={receiving?.order ?? null}
+        initialFile={receiving?.file ?? null}
         products={products}
         staffName={staffName}
         onClose={() => setReceiving(null)}
