@@ -1,3 +1,7 @@
 # Local Netlify folder
 .netlify
 src/routeTree.gen.ts
+
+# Dependencies and local caches (never commit)
+node_modules/
+dist/
