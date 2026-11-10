@@ -415,7 +415,7 @@ const squareSyncSales = createServerFn({
 const quickbooksPushMonth = createServerFn({
   method: "POST"
 }).middleware([requireUser]).inputValidator(MonthWindowSchema).handler(createSsrRpc("7fef2669d1d6f3e9fdccdfbabede084b9e0823ba1f054366dd5ae9501cff565b"));
-const $$splitComponentImporter$3 = () => import("./index-BM8ipaEs.js");
+const $$splitComponentImporter$3 = () => import("./index-CrMa4E3X.js");
 const Route$a = createFileRoute("/")({
   loader: async () => {
     const auth = await getAuthState();

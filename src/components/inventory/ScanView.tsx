@@ -700,6 +700,7 @@ export function ScanView({
             initialBarcode={unknownBarcode}
             barcodeLocked
             autoLookup
+            autoOfferCopy={false}
             products={products}
             qtyLabel="Already on shelf"
             saveLabel={mode === 'in' ? 'Save and scan in' : mode === 'check' ? 'Save and check' : 'Save and scan out'}

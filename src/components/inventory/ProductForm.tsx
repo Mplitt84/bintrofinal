@@ -66,6 +66,7 @@ export function ProductForm({
   initialDetails,
   barcodeLocked = false,
   autoLookup = false,
+  autoOfferCopy = true,
   products,
   saveLabel,
   qtyLabel = 'On hand',
@@ -80,6 +81,8 @@ export function ProductForm({
   initialDetails?: { brand?: string; name?: string; size?: string; category?: string }
   barcodeLocked?: boolean
   autoLookup?: boolean
+  /** Pop "Copy a previous entry?" up by itself. Off where the screen already offers a choice (new-barcode sheet). */
+  autoOfferCopy?: boolean
   products: Product[]
   saveLabel: string
   qtyLabel?: string
@@ -250,7 +253,7 @@ export function ProductForm({
 
   /** Pops the copy prompt up once per new product, unless staff turned it off. */
   function offerCopy() {
-    if (!canCopy || offeredCopy.current) return
+    if (!canCopy || !autoOfferCopy || offeredCopy.current) return
     offeredCopy.current = true
     try {
       if (localStorage.getItem(COPY_PROMPT_OFF_KEY) === '1') return
