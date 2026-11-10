@@ -14,9 +14,10 @@ export function SignInScreen({ auth }: { auth: AuthState }) {
   }, []);
 
   return (
-    <main className="relative min-h-dvh bg-[#fcda5c] lg:grid lg:grid-cols-2">
-      {/* Brand photo: fills the phone screen; on wider screens it sits beside the sign-in card, never cropped. */}
-      <picture>
+    <main className="h-dvh overflow-hidden bg-[#fdde55] flex flex-col lg:grid lg:grid-cols-2">
+      {/* Brand photo, always shown whole. Phones/tablets: it takes the space above the sign-in strip.
+          Wide screens: left half, with the sign-in card on the right. */}
+      <picture className="flex-1 min-h-0 flex justify-center pt-[env(safe-area-inset-top)] lg:h-dvh">
         <source
           type="image/webp"
           srcSet="/signin-720.webp 720w, /signin-1152.webp 1152w"
@@ -28,43 +29,43 @@ export function SignInScreen({ auth }: { auth: AuthState }) {
           width={1152}
           height={2048}
           fetchPriority="high"
-          className="absolute inset-0 w-full h-full object-contain object-top lg:static lg:h-dvh lg:object-center lg:[mask-image:linear-gradient(to_right,transparent,black_8%,black_92%,transparent)]"
+          className="h-full w-full object-contain object-bottom lg:object-center lg:[mask-image:linear-gradient(to_right,transparent,black_8%,black_92%,transparent)]"
         />
       </picture>
-      <div className="relative z-10 min-h-dvh flex items-end lg:items-center justify-center px-4 pt-4 pb-[max(16px,env(safe-area-inset-bottom))] lg:p-8">
-        <div className="w-full max-w-[380px] bg-white/95 backdrop-blur border border-white rounded-3xl px-6 py-5 lg:p-7 text-center shadow-lg">
-          <h1 className="m-0 text-[22px] lg:text-[24px] font-black text-[#002CB7]">
+      <div className="shrink-0 flex justify-center px-4 pt-2 pb-[max(14px,env(safe-area-inset-bottom))] lg:items-center lg:p-8">
+        <div className="w-full max-w-[380px] text-center lg:bg-white/95 lg:border lg:border-white lg:rounded-3xl lg:p-7 lg:shadow-lg">
+          <h1 className="hidden lg:block m-0 text-[24px] font-black text-[#002CB7]">
             Sign in to Bintro
           </h1>
-          <p className="text-ink-2 text-sm mt-1 mb-4 lg:mb-6">
+          <p className="hidden lg:block text-ink-2 text-sm mt-1 mb-6">
             Use the Google account your business added you with.
           </p>
           {error && (
-            <div className="bg-bad-tint text-bad rounded-xl px-3.5 py-2.5 text-sm mb-4 text-left">
+            <div className="bg-bad-tint text-bad rounded-xl px-3.5 py-2.5 text-sm mb-3 text-left">
               {error}
             </div>
           )}
           {!auth.ownerConfigured && (
-            <div className="bg-warn-tint rounded-xl px-3.5 py-2.5 text-sm mb-4 text-left">
+            <div className="bg-warn-tint rounded-xl px-3.5 py-2.5 text-sm mb-3 text-left">
               No owner is set up yet. Add <code>BINTRO_OWNER_EMAIL</code> in
               Netlify, redeploy, then sign in with that Google account.
             </div>
           )}
           <a
             href="/api/auth/google/start"
-            className="flex items-center justify-center gap-3 w-full rounded-full border border-line bg-white px-5 py-3 font-semibold text-ink no-underline hover:bg-surface"
+            className="flex items-center justify-center gap-3 w-full rounded-full border border-[#002CB7]/15 bg-white px-5 py-3 font-semibold text-ink no-underline shadow-md hover:bg-surface lg:shadow-none lg:border-line"
           >
             <GoogleMark />
             Continue with Google
           </a>
-          <p className="text-ink-2 text-[12px] mt-4 mb-0 flex items-center justify-center gap-1.5">
-            <ShieldCheck size={14} /> Protected by Google 2-Step Verification
-          </p>
-          <p className="text-[12px] mt-2 mb-0">
-            <a href="/terms" className="text-ink-2 no-underline mr-3">
+          <p className="text-[#002CB7]/80 lg:text-ink-2 text-[12px] mt-2.5 lg:mt-4 mb-0 flex items-center justify-center gap-1.5 flex-wrap">
+            <ShieldCheck size={14} /> Google 2-Step Verification
+            <span aria-hidden="true">·</span>
+            <a href="/terms" className="text-inherit no-underline">
               Terms
             </a>
-            <a href="/privacy" className="text-ink-2 no-underline">
+            <span aria-hidden="true">·</span>
+            <a href="/privacy" className="text-inherit no-underline">
               Privacy
             </a>
           </p>
