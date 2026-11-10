@@ -187,7 +187,7 @@ Restock lists and purchase orders send through Resend (`RESEND_API_KEY`) or Send
 `useBusiness()` exposes the profile, the matching `BusinessType` (categories, sizes, expense categories, item noun used in AI prompts and chips) and the display name. Never hardcode the business name — use `displayBusinessName` / `useBusiness().name`.
 
 ### Sign-in screen
-`SignInScreen.tsx` shows the brand photo (`public/signin-720.webp`, `signin-1152.webp`, `signin-720.jpg` fallback; source is 1152×2048 portrait) on mustard `#fcda5c`. Phones and tablets: photo fit to width/height and top-aligned (`object-contain object-top`) so the headline and "Bintro." logo are never cropped, with the sign-in card at the bottom. `lg` and up: two columns, photo left (edges faded with a mask), card centered right.
+`SignInScreen.tsx` shows the brand ad photo (`public/signin-720.webp`, `signin-1152.webp`, `signin-720.jpg` fallback; source 1152×2048 portrait, already includes the "Bintro." logo) on yellow `#fdde55`, always whole (`object-contain`). Phones and tablets: the page is one screen tall; the photo takes the space above a slim sign-in strip (Continue with Google + 2-Step · Terms · Privacy), so the button never covers it. `lg` and up: photo left (edges faded with a mask), white sign-in card right.
 
 ### Budget & expenses
 Monthly spend = stock received (positive `in`/`receive` movements × current `unitCostCents`, grouped by vendor) + rows in `expenses`. `computeBudgetOverview` returns this per month; month windows are computed on the client (`monthRange`) so boundaries follow the device's local time.
