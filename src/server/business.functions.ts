@@ -55,6 +55,7 @@ const ProfileSchema = z.object({
   fastMoverAlertEmail: z.boolean().optional(),
   palette: z.string().max(40).optional(),
   orderEveryDays: z.number().int().min(1).max(90).optional(),
+  taxState: z.string().max(2).optional(),
 });
 
 export const updateBusinessProfile = createServerFn({ method: "POST" }).middleware([requireUser])

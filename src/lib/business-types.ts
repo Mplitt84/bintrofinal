@@ -171,6 +171,8 @@ export type BusinessProfile = {
   palette: string
   /** How often orders are placed, in days (Smart par's order cycle). */
   orderEveryDays: number
+  /** Two-letter US state for tax dates; '' = not chosen. */
+  taxState: string
 }
 
 export const EMPTY_PROFILE: BusinessProfile = {
@@ -187,6 +189,7 @@ export const EMPTY_PROFILE: BusinessProfile = {
   fastMoverAlertEmail: true,
   palette: 'burgundy-olive',
   orderEveryDays: 7,
+  taxState: '',
 }
 
 export function displayBusinessName(profile: { name: string } | null | undefined) {

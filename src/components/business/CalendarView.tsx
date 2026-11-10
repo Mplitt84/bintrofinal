@@ -21,7 +21,6 @@ import {
   EVENT_KINDS,
   REPEATS,
   buildIcs,
-  estimatedTaxDates,
   eventKind,
   formatTime,
   googleCalendarUrl,
@@ -41,6 +40,7 @@ import { Sheet, Field, SheetActions } from '@/components/ui/Sheet'
 import { EmptyState, PageHead } from '@/components/ui/bits'
 import { useToast } from '@/components/ui/Toast'
 import { useBusiness } from './BusinessContext'
+import { StateTaxDates } from './StateTaxDates'
 import {
   addCalendarEvents,
   editCalendarEvent,
@@ -146,31 +146,12 @@ export function CalendarView({ belowPar, staffName }: { belowPar: Product[]; sta
     }
   }
 
-  const hasTaxDates = (events ?? []).some((e) => e.kind === 'tax' && /estimated tax/i.test(e.title))
   const hasCount = (events ?? []).some((e) => e.kind === 'count' && e.repeat !== 'none')
   const hasPriceCheck = (events ?? []).some((e) => e.kind === 'task' && /price check/i.test(e.title))
   const hasReorderDay = (events ?? []).some((e) => e.kind === 'reorder' && e.repeat === 'weekly')
 
   const base = { startTime: '', durationMinutes: 60, notes: '', staffName, repeat: 'none' as Repeat }
   const starters = [
-    !hasTaxDates && {
-      key: 'tax',
-      Icon: Landmark,
-      title: 'Estimated tax dates',
-      sub: 'The four US quarterly due dates, every year',
-      run: () =>
-        quickAdd(
-          estimatedTaxDates().map((t) => ({
-            ...base,
-            kind: 'tax' as const,
-            title: t.title,
-            date: t.date,
-            repeat: 'yearly' as const,
-            notes: 'Federal estimated tax (Form 1040-ES). Check your state’s dates with your accountant.',
-          })),
-          'Added the quarterly tax dates',
-        ),
-    },
     !hasCount && {
       key: 'count',
       Icon: ClipboardCheck,
@@ -375,6 +356,14 @@ export function CalendarView({ belowPar, staffName }: { belowPar: Product[]; sta
             )}
           </section>
 
+          {events !== null && (
+            <StateTaxDates
+              existingTitles={new Set(events.map((e) => e.title))}
+              staffName={staffName}
+              onAdd={(items, message) => quickAdd(items, message)}
+            />
+          )}
+
           {events !== null && starters.length > 0 && (
             <section aria-label="Suggestions" className="rounded-2xl border border-line p-3.5">
               <h2 className="m-0 text-[15px] font-bold">Quick start</h2>
@@ -522,7 +511,7 @@ function EventDetails({
         )}
         {event.staffName && <span className="text-[12px] px-2 py-0.5 rounded-full bg-surface text-ink-2">Added by {event.staffName}</span>}
       </div>
-      {event.notes && <p className="whitespace-pre-line text-sm bg-surface rounded-2xl p-3 m-0 mb-4">{event.notes}</p>}
+      {event.notes && <p className="whitespace-pre-line text-sm bg-surface rounded-2xl p-3 m-0 mb-4 break-words">{linkify(event.notes)}</p>}
 
       <h3 className="text-[13px] font-semibold text-ink-2 m-0 mb-2">Add to your calendar</h3>
       <div className="grid grid-cols-2 gap-2">
@@ -820,5 +809,18 @@ function OutlookMark() {
       <path fill="#fff" d="M8.5 8c-2 0-3.2 1.7-3.2 4s1.2 4 3.2 4 3.2-1.7 3.2-4-1.2-4-3.2-4zm0 6.3c-.9 0-1.4-1-1.4-2.3s.5-2.3 1.4-2.3 1.4 1 1.4 2.3-.5 2.3-1.4 2.3z" />
       <path fill="#28A8EA" d="M15 7h6a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-6z" />
     </svg>
+  )
+}
+
+/** Notes text with web addresses as tappable links (opens in a new tab). */
+function linkify(text: string) {
+  return text.split(/(https?:\/\/[^\s)]+)/g).map((part, i) =>
+    /^https?:\/\//.test(part) ? (
+      <a key={i} href={part} target="_blank" rel="noreferrer" className="text-action font-semibold">
+        {part.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}
+      </a>
+    ) : (
+      part
+    ),
   )
 }

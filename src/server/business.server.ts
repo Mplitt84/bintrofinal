@@ -24,6 +24,7 @@ export async function findBusinessProfile(): Promise<BusinessProfile> {
     fastMoverAlertEmail: row.fastMoverAlertEmail,
     palette: row.palette,
     orderEveryDays: row.orderEveryDays,
+    taxState: row.taxState,
   };
 }
 

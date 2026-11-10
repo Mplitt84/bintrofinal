@@ -1,0 +1,1 @@
+ALTER TABLE "business_profile" ADD COLUMN "tax_state" text DEFAULT '' NOT NULL;
