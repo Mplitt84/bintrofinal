@@ -30,7 +30,7 @@ export function RestockView({
   staffName: string
   onChanged: () => void | Promise<void>
   /** Open "Receive a delivery" as soon as Deliveries shows (from the Scan tab). */
-  autoReceive?: boolean
+  autoReceive?: boolean | File
   onAutoReceiveHandled?: () => void
 }) {
   // Units already on open orders, shown on Below par so nothing gets ordered twice.

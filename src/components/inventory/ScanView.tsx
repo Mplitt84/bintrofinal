@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowDownToLine, ArrowUpFromLine, Camera, ScanSearch, Check, FileSpreadsheet, PackagePlus, Plus, ScanBarcode, X } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpFromLine, Camera, ScanSearch, Check, FileSpreadsheet, PackagePlus, Plus, ReceiptText, ScanBarcode, Tag, X } from 'lucide-react'
 import type { MovementRow, Product } from './types'
 import {
   scanMovement,
@@ -14,6 +14,9 @@ import { useToast } from '@/components/ui/Toast'
 import { Thumb } from '@/components/ui/bits'
 import { ScanOverview } from '@/components/inventory/ScanOverview'
 import { CheckProductSheet } from '@/components/inventory/CheckProductSheet'
+import { LiveCamera } from '@/components/inventory/LiveCamera'
+
+type SnapKind = 'label' | 'receipt'
 import { approveStockCount } from '@/server/counts.functions'
 import { CameraScanner } from './CameraScanner'
 import { PhotoStockSheet } from './PhotoStockSheet'
@@ -115,7 +118,8 @@ export function ScanView({
   onChanged: () => void | Promise<void>
   onOpenRestock?: () => void
   /** Opens Restock › Deliveries with the receive-a-delivery sheet. */
-  onReceiveDelivery?: () => void
+  /** Opens delivery check-in; with a receipt photo from Snap & log, reads it right away. */
+  onReceiveDelivery?: (file?: File) => void
 }) {
   const toast = useToast()
   const [mode, setMode] = useState<Mode>('out')
@@ -140,6 +144,9 @@ export function ScanView({
   const [partialCode, setPartialCode] = useState<string | null>(null)
   // Quick stock photo (SKU or full label) for staff in a hurry.
   const photoInput = useRef<HTMLInputElement>(null)
+  const snapKind = useRef<SnapKind>('label')
+  const [snapChooser, setSnapChooser] = useState(false)
+  const [liveCamera, setLiveCamera] = useState<SnapKind | null>(null)
   const [photo, setPhoto] = useState<File | null>(null)
   const [photoWho, setPhotoWho] = useState('')
   // Who the scan in progress belongs to (also used after saving a new barcode).
@@ -328,17 +335,44 @@ export function ScanView({
     setCameraOpen(true)
   }
 
-  /** Opens the phone camera right away (iPhones only allow it straight from the tap). */
+  /** Snap & log: first ask what's being snapped (a label / SKU, or an itemized receipt). */
   function startPhoto() {
     setCameraOpen(false)
-    if (photoInput.current) {
-      photoInput.current.value = ''
-      photoInput.current.click()
-    }
+    setSnapChooser(true)
+  }
+
+  /**
+   * Opens a camera for that kind of photo. Phones and tablets use their own camera
+   * through the file input (it must open straight from the tap); computers, whose
+   * browsers show the Downloads folder instead, get Bintro's live camera.
+   */
+  function openCamera(kind: SnapKind) {
+    snapKind.current = kind
+    setSnapChooser(false)
+    const touch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
+    if (touch) pickPhotoFile(kind)
+    else setLiveCamera(kind)
+  }
+
+  function pickPhotoFile(kind: SnapKind) {
+    snapKind.current = kind
+    const input = photoInput.current
+    if (!input) return
+    input.accept = kind === 'receipt' ? 'image/*,application/pdf' : 'image/*'
+    input.value = ''
+    input.click()
   }
 
   async function onPhotoPicked(file: File | undefined) {
     if (!file) return
+    setLiveCamera(null)
+    // An itemized receipt / invoice goes to delivery check-in: AI reads each line,
+    // staff review, then stock goes up and costs update (new items get created).
+    if (snapKind.current === 'receipt') {
+      if (onReceiveDelivery) onReceiveDelivery(file)
+      else toast('Receipts are checked in from Restock → Deliveries.')
+      return
+    }
     // A retake keeps the same person; only a fresh photo asks who's logging it.
     if (photo && photoWho) {
       setPhoto(file)
@@ -530,12 +564,12 @@ export function ScanView({
         <ToolRow label="More ways to log stock" className="justify-center mt-4">
           <ToolButton icon={<Camera size={24} />} tone="garnet" label="Snap & log" onClick={startPhoto} />
           {onReceiveDelivery && (
-            <ToolButton icon={<PackagePlus size={24} />} tone="green" label="Check in delivery" onClick={onReceiveDelivery} />
+            <ToolButton icon={<PackagePlus size={24} />} tone="green" label="Check in delivery" onClick={() => onReceiveDelivery()} />
           )}
           <ToolButton icon={<FileSpreadsheet size={24} />} tone="teal" label="Sales report" onClick={() => setSalesOpen(true)} />
         </ToolRow>
         <p className="m-0 text-[12px] text-ink-2 text-center max-w-[420px] mx-auto">
-          Snap a photo of the SKU or label, check a delivery in from its invoice, or upload sales from another booking app.
+          Snap a label, SKU or itemized receipt for AI to read, check a delivery in, or upload sales from another booking app.
         </p>
         <input
           ref={photoInput}
@@ -563,6 +597,42 @@ export function ScanView({
         onUndo={undo}
         staffName={staffName}
         onChanged={safeRefresh}
+      />
+
+      <Sheet open={snapChooser} onClose={() => setSnapChooser(false)} title="What are you snapping?" subtitle="Bintro’s AI reads the photo for you.">
+        <div className="grid gap-2.5">
+          <button type="button" className="snap-choice" onClick={() => openCamera('label')}>
+            <span className="snap-choice-icon bg-[#8B1A2F]">
+              <Tag size={22} />
+            </span>
+            <span className="min-w-0">
+              <b className="block text-[16px]">Product label or SKU</b>
+              <span className="text-[13px] text-ink-2">Log one product in or out. Show the whole barcode number or the front label.</span>
+            </span>
+          </button>
+          <button type="button" className="snap-choice" onClick={() => openCamera('receipt')}>
+            <span className="snap-choice-icon bg-[#11804A]">
+              <ReceiptText size={22} />
+            </span>
+            <span className="min-w-0">
+              <b className="block text-[16px]">Itemized receipt or invoice</b>
+              <span className="text-[13px] text-ink-2">Add everything on it to your stock and update costs. You check it before anything saves.</span>
+            </span>
+          </button>
+        </div>
+      </Sheet>
+
+      <LiveCamera
+        open={liveCamera !== null}
+        title={liveCamera === 'receipt' ? 'Snap the receipt' : 'Snap the label or SKU'}
+        hint={liveCamera === 'receipt' ? 'Fit the whole receipt in the picture, flat and in good light.' : 'Show the whole barcode number or the front label.'}
+        onClose={() => setLiveCamera(null)}
+        onPhoto={(file) => onPhotoPicked(file)}
+        onChooseFile={() => {
+          const kind = liveCamera ?? 'label'
+          setLiveCamera(null)
+          pickPhotoFile(kind)
+        }}
       />
 
       <CheckProductSheet
@@ -620,7 +690,7 @@ export function ScanView({
         staffName={photoWho}
         products={products}
         onClose={() => setPhoto(null)}
-        onRetake={startPhoto}
+        onRetake={() => openCamera('label')}
         onLogged={async (p, movementId, direction, n) => {
           setPhoto(null)
           onProduct?.(p)

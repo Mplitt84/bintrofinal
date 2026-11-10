@@ -104,7 +104,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
   const [categories, setCategories] = useState<ProductCategory[]>(initial.categories as ProductCategory[])
   const [restockMode, setRestockMode] = useState<RestockMode>('below-par')
   // Set by the Scan tab's "Receive a delivery" button so Deliveries opens the receive sheet.
-  const [autoReceive, setAutoReceive] = useState(false)
+  const [autoReceive, setAutoReceive] = useState<boolean | File>(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile')
   const [accountPanel, setAccountPanel] = useState<AccountPanel>('account')
   const [account, setAccount] = useState<AccountSummary>(initial.account as AccountSummary)
@@ -496,9 +496,9 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                 setRestockMode('below-par')
                 selectTab('restock')
               }}
-              onReceiveDelivery={() => {
+              onReceiveDelivery={(file?: File) => {
                 setRestockMode('deliveries')
-                setAutoReceive(true)
+                setAutoReceive(file ?? true)
                 selectTab('restock')
               }}
             />

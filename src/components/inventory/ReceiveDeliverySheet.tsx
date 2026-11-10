@@ -80,7 +80,10 @@ export function ReceiveDeliverySheet({
   staffName,
   onClose,
   onDone,
+  initialFile,
 }: {
+  /** A receipt / invoice photo taken with Snap & log: read it straight away. */
+  initialFile?: File | null
   open: boolean
   /** The saved order this delivery is for, or null for a delivery with no order in Bintro. */
   order: SavedOrder | null
@@ -98,8 +101,10 @@ export function ReceiveDeliverySheet({
     if (open) {
       setStage({ kind: 'start' })
       setRows([])
+      if (initialFile) readFile(initialFile)
     }
-  }, [open, order?.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, order?.id, initialFile])
 
   async function readFile(file: File | undefined) {
     if (!file) return
