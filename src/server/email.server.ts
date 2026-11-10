@@ -63,7 +63,7 @@ function buildText(items: Product[], staffName: string) {
   const lines = items.map((p) => {
     const bits = [p.brand, p.size].filter(Boolean).join(" ");
     const label = bits ? `${p.name} (${bits})` : p.name;
-    return `- ${label} — on hand ${p.qty}, reorder at ${p.reorderThreshold}, order ${suggestedOrderQty(p)}`;
+    return `- ${label} — on hand ${p.qty}, order at ${p.reorderThreshold}, order ${suggestedOrderQty(p)}`;
   });
 
   return [

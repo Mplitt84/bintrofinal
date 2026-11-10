@@ -164,8 +164,8 @@ export function CheckProductSheet({
           </select>
         </label>
         <Input label="Vendor" value={details.vendor} onChange={set('vendor')} />
-        <Input label="Reorder at" value={details.reorderThreshold} onChange={set('reorderThreshold')} numeric />
-        <Input label="Order up to" value={details.maxQty} onChange={set('maxQty')} numeric placeholder="Back to par" />
+        <Input label="Order at" value={details.reorderThreshold} onChange={set('reorderThreshold')} numeric />
+        <Input label="Fill to" value={details.maxQty} onChange={set('maxQty')} numeric placeholder="Same as Order at" />
         <Input label="Cost $" value={details.cost} onChange={set('cost')} decimal />
         <Input label="Retail $" value={details.retail} onChange={set('retail')} decimal />
       </div>

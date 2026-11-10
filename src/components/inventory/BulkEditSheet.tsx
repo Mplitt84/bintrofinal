@@ -137,8 +137,8 @@ export function BulkEditSheet({
           {text('bulk-brand', 'Brand', brand, setBrand, options.brand)}
         </div>
         <div className="grid grid-cols-3 gap-3">
-          {num('bulk-par', 'Reorder at', par, setPar)}
-          {num('bulk-max', 'Order up to', maxQty, setMaxQty)}
+          {num('bulk-par', 'Order at', par, setPar)}
+          {num('bulk-max', 'Fill to', maxQty, setMaxQty)}
           {num('bulk-pack', 'Case pack', pack, setPack)}
         </div>
         <div className="grid grid-cols-2 gap-3">
