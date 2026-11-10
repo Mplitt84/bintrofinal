@@ -15,7 +15,7 @@ export type ParSuggestion = {
   packSize: number;
   /** Average units used or sold per day. */
   perDay: number;
-  /** Plain-language reason, e.g. "≈ 1.4 a day · 5-day delivery from SalonCentric · steady". */
+  /** Plain words (third-grade level), e.g. "You use about 1 a day · orders from SalonCentric take about 5 days · you use about the same each week". */
   reason: string;
 };
 

@@ -284,12 +284,9 @@ export function ProductForm({
       setBrand((v) => v || r.brand)
       setSize((v) => v || r.size)
       setCategory((v) => v || r.category)
-      if (r.unitCostCents) setCost((v) => (force || !v ? centsToDollars(r.unitCostCents) : v))
-      if (r.retailPriceCents) setRetail((v) => (force || !v ? centsToDollars(r.retailPriceCents) : v))
-      setPrice({
-        kind: 'done',
-        note: r.unitCostCents || r.retailPriceCents ? r.note || 'AI estimate. Adjust to your invoice.' : 'No confident price for this one. Enter it from your invoice.',
-      })
+      // Details only: model price guesses were too often wrong, so cost comes from the
+      // invoice or "AI price check" (real listings), and retail is always the business's own.
+      setPrice({ kind: 'idle' })
     } catch {
       setPrice({ kind: 'error', message: 'Price estimate failed. Check your connection.' })
     }
@@ -311,7 +308,6 @@ export function ProductForm({
       })
       if (result.ok) {
         if (result.unitCostCents) setCost(centsToDollars(result.unitCostCents))
-        if (result.retailPriceCents) setRetail(centsToDollars(result.retailPriceCents))
       }
       setWebPrice({ kind: 'done', result })
     } catch {

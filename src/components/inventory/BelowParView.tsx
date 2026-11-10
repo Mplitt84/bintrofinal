@@ -225,8 +225,8 @@ export function BelowParView({
       )}
 
       <p className="text-ink-2 text-[13px] mt-5 leading-relaxed">
-        Out means none on hand; Low means 1 or more but at or under the product's reorder point. "To order" refills to the product's Order up to level (or its reorder point), minus anything already on order, in full cases. Smart par sets these from how fast you really use things. Products with no reorder point only show here once they run out. The email is sent from the server, so
-        it goes out even if this device has no mail app set up. Build a vendor order from these items in step 2.
+        <b>Out</b> means you have none. <b>Low</b> means you are close to running out. “To order” is how many to buy to fill the shelf back up, minus what you already ordered.
+        Tap <b>Smart par</b> and Bintro picks these numbers for you from how much you really use. The email sends even if this device has no mail app. Make your order in step 2.
       </p>
       <SmartParSheet open={smartOpen} onClose={() => setSmartOpen(false)} onDone={onChanged} />
     </div>

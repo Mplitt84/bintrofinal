@@ -910,7 +910,7 @@ type Block = { type: string; name?: string; input?: Record<string, unknown> };
  * (Claude web search through the AI Gateway). Only the manufacturer's own
  * site, authorised professional distributors and Amazon (sold by Amazon or the
  * brand's official storefront) count; resale and marketplace sites are blocked.
- * Falls back to a clearly-labelled AI estimate when web search isn't available.
+ * Never guesses: returns not-found unless a real listed cost was found. Retail is never returned.
  */
 export async function findWebPrice(
   fields: WebPriceFields,
@@ -990,45 +990,29 @@ When done, call record_price once.`;
           return false;
         }
       })();
-      if (record.found && (retail || cost) && !isResaleUrl(url) && !blockedHost) {
+      void retail;
+      // Cost only: Bintro never fills retail from a lookup (the business sets its own retail),
+      // and only a real listed price counts — no model guesses.
+      if (record.found && cost && !isResaleUrl(url) && !blockedHost) {
         return {
           ok: true,
           unitCostCents: cost,
-          retailPriceCents: retail,
+          retailPriceCents: 0,
           sourceName: clean(record.source_name, 120),
           sourceUrl: /^https?:\/\//.test(url) ? url : "",
           sourceType,
           note: clean(record.note, 240),
         };
       }
-      if (!record.found) {
-        const estimate = await webPriceFallback(fields, business);
-        if (estimate.ok) {
-          return { ...estimate, note: `No listing found at your supplier, pro distributors or the brand's site. ${estimate.note}`.trim() };
-        }
-        return { ok: false, message: clean(record.note, 240) || "No reliable listing found for this product." };
-      }
+      return {
+        ok: false,
+        message: clean(record.note, 240) || "No listed cost found at your supplier, pro distributors or the brand's site.",
+      };
     }
   } catch (error) {
     console.error("AI web price error", error);
   }
-  return webPriceFallback(fields, business);
-}
-
-/** Model-only estimate, used when web search isn't available. Always labelled as an estimate. */
-async function webPriceFallback(fields: WebPriceFields, business: { itemNoun: string; categories: string[] }): Promise<WebPriceLookup> {
-  const r = await suggestProductDetails(fields, business);
-  if (!r.ok) return { ok: false, message: "Couldn't check prices online just now. Try again in a moment." };
-  if (!r.unitCostCents && !r.retailPriceCents) return { ok: false, message: "No reliable price found for this product." };
-  return {
-    ok: true,
-    unitCostCents: r.unitCostCents,
-    retailPriceCents: r.retailPriceCents,
-    sourceName: "AI estimate",
-    sourceUrl: "",
-    sourceType: "estimate",
-    note: `Not verified on a live listing. ${r.note}`.trim(),
-  };
+  return { ok: false, message: "Couldn't check prices online just now. Try again in a moment." };
 }
 
 // --- Insight summaries -------------------------------------------------------
