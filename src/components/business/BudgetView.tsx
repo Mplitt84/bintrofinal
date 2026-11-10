@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Camera, CheckCircle2, ChevronLeft, ChevronRight, Download, Pencil, Plus, Send } from 'lucide-react'
+import { AlertTriangle, Camera, CheckCircle2, ChevronLeft, ChevronRight, Download, Pencil, Plus, ReceiptText, Send } from 'lucide-react'
+import { LiveCamera } from '@/components/inventory/LiveCamera'
 import type { Expense, IntegrationStatus, MonthSpend, MovementRow } from '@/components/inventory/types'
 import { dayKey, monthKey, monthLabel, monthRange, recentMonths } from '@/lib/business-types'
 import { shrinkImage } from '@/lib/images'
@@ -14,6 +15,7 @@ import {
   createExpense,
   editExpense,
   getBudgetOverview,
+  getExpenseReceipt,
   getIntegrations,
   listExpenses,
   quickbooksPushMonth,
@@ -120,12 +122,16 @@ export function BudgetView({
         toast(r.message)
         return
       }
-      const { sentExpenses, sentVendors, monthClosed } = r.result
+      const { sentExpenses, sentVendors, sentReceipts = 0, receiptErrors = 0, monthClosed } = r.result
       const total = sentExpenses + sentVendors
+      const photos = sentReceipts ? ` with ${sentReceipts} receipt photo${sentReceipts === 1 ? '' : 's'}` : ''
       toast(
-        total === 0
+        (total === 0 && !sentReceipts
           ? 'QuickBooks is already up to date for this month'
-          : `Sent ${total} entr${total === 1 ? 'y' : 'ies'} to QuickBooks${monthClosed ? '' : '. Stock purchases go once the month ends'}`,
+          : total === 0
+            ? `Attached ${sentReceipts} receipt photo${sentReceipts === 1 ? '' : 's'} in QuickBooks`
+            : `Sent ${total} entr${total === 1 ? 'y' : 'ies'} to QuickBooks${photos}${monthClosed ? '' : '. Stock purchases go once the month ends'}`) +
+          (receiptErrors ? `. ${receiptErrors} receipt photo${receiptErrors === 1 ? '' : 's'} didn’t attach; they’ll try again next time.` : ''),
       )
       reload()
     } catch {
@@ -350,6 +356,11 @@ export function BudgetView({
                 <div className="text-right whitespace-nowrap">
                   <b className="num block">${centsToDollars(e.amountCents)}</b>
                   {e.quickbooksId && <span className="text-[11px] font-semibold text-good">In QuickBooks</span>}
+                  {e.hasReceipt && (
+                    <span className="flex items-center justify-end gap-1 text-[11px] text-ink-2">
+                      <ReceiptText size={12} /> {e.quickbooksReceiptId ? 'Receipt attached' : 'Receipt'}
+                    </span>
+                  )}
                 </div>
               </button>
             </li>
@@ -566,16 +577,44 @@ function ExpenseForm({
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  // The receipt photo kept with this expense (and attached in QuickBooks when the month is sent).
+  const [receipt, setReceipt] = useState<{ data: string; preview: string } | null>(null)
+  const [savedReceipt, setSavedReceipt] = useState<string | null>(null)
+  const [removeReceipt, setRemoveReceipt] = useState(false)
+  const [liveCamera, setLiveCamera] = useState(false)
+  const hasOldReceipt = Boolean(expense?.hasReceipt) && !removeReceipt
+
+  function openCamera() {
+    const touch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
+    if (touch) {
+      if (fileRef.current) fileRef.current.value = ''
+      fileRef.current?.click()
+    } else setLiveCamera(true)
+  }
+
+  async function viewSavedReceipt() {
+    if (!expense) return
+    try {
+      const r = await getExpenseReceipt({ data: { id: expense.id } })
+      setSavedReceipt(r?.url ?? null)
+      if (!r) setError('That receipt photo couldn’t be found.')
+    } catch {
+      setError('Couldn’t load the receipt. Try again.')
+    }
+  }
 
   async function onReceipt(file: File) {
+    setLiveCamera(false)
     setReading(true)
     setError('')
     setInfo('')
     try {
       const image = await shrinkImage(file, 1600)
+      setReceipt({ data: image, preview: `data:image/jpeg;base64,${image}` })
+      setRemoveReceipt(false)
       const r = await readReceiptPhoto({ data: { image, mediaType: 'image/jpeg' } })
       if (!r.ok) {
-        setError(r.message)
+        setInfo(`Photo saved with this expense. ${r.message} Type in the total yourself.`)
         return
       }
       setAmount(centsToDollars(r.amountCents))
@@ -615,12 +654,13 @@ function ExpenseForm({
     setSaving(true)
     setError('')
     const values = { spentOn, amountCents: cents, category: category.trim(), vendor: vendor.trim(), note: note.trim() }
+    const photo = receipt ? { receipt: { data: receipt.data, mediaType: 'image/jpeg' as const } } : {}
     try {
       if (expense) {
-        await editExpense({ data: { id: expense.id, ...values } })
+        await editExpense({ data: { id: expense.id, ...values, ...photo, removeReceipt: removeReceipt && !receipt } })
         onSaved('Expense updated')
       } else {
-        await createExpense({ data: { ...values, staffName } })
+        await createExpense({ data: { ...values, staffName, ...photo } })
         onSaved(`$${centsToDollars(cents)} expense added`)
       }
     } catch {
@@ -647,14 +687,62 @@ function ExpenseForm({
         type="button"
         className="btn btn-tonal w-full mb-2"
         disabled={reading}
-        onClick={() => {
+        onClick={openCamera}
+      >
+        <Camera size={18} />
+        {reading ? 'Reading the receipt…' : receipt || hasOldReceipt ? 'Retake the receipt photo' : 'Snap the receipt'}
+      </button>
+      <LiveCamera
+        open={liveCamera}
+        title="Snap the receipt"
+        hint="Fit the whole receipt in the picture, flat and in good light."
+        onClose={() => setLiveCamera(false)}
+        onPhoto={(file) => onReceipt(file)}
+        onChooseFile={() => {
+          setLiveCamera(false)
           if (fileRef.current) fileRef.current.value = ''
           fileRef.current?.click()
         }}
-      >
-        <Camera size={18} />
-        {reading ? 'Reading the receipt…' : 'Fill in from a receipt photo'}
-      </button>
+      />
+      {(receipt || hasOldReceipt) && (
+        <div className="flex items-center gap-3 rounded-xl bg-surface p-2.5 mb-2">
+          {receipt ? (
+            <img src={receipt.preview} alt="Receipt photo" className="w-14 h-14 object-cover rounded-lg border border-line" />
+          ) : savedReceipt ? (
+            <a href={savedReceipt} target="_blank" rel="noreferrer">
+              <img src={savedReceipt} alt="Saved receipt photo" className="w-14 h-14 object-cover rounded-lg border border-line" />
+            </a>
+          ) : (
+            <span className="w-14 h-14 rounded-lg bg-white grid place-items-center border border-line">
+              <ReceiptText size={22} className="text-ink-2" />
+            </span>
+          )}
+          <span className="flex-1 min-w-0 text-[13px]">
+            <b className="block">{receipt ? 'Receipt photo ready' : 'Receipt photo saved'}</b>
+            <span className="text-ink-2">
+              {expense?.quickbooksReceiptId && !receipt ? 'Attached in QuickBooks.' : 'It goes to QuickBooks with this expense.'}
+            </span>
+          </span>
+          <span className="flex flex-col items-end gap-1">
+            {!receipt && hasOldReceipt && !savedReceipt && (
+              <button type="button" className="btn btn-text btn-sm !py-0" onClick={viewSavedReceipt}>
+                View
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-text btn-sm !py-0 !text-bad"
+              onClick={() => {
+                setReceipt(null)
+                setSavedReceipt(null)
+                if (expense?.hasReceipt) setRemoveReceipt(true)
+              }}
+            >
+              Remove
+            </button>
+          </span>
+        </div>
+      )}
       <input
         ref={fileRef}
         type="file"

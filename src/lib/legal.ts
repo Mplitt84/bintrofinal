@@ -135,7 +135,7 @@ export const PRIVACY: LegalSection[] = [
       'Staff names: the names your team picks before scanning, used to show who logged each change.',
       'Sign-in: the name, email address and Google account ID of each person you allow to sign in, when they last signed in, and a sign-in session record for each browser. We never see Google passwords.',
       'Account and billing: plan, billing email and owner name. Card details are handled by our payment processor (Stripe); we only see the card brand and last 4 digits.',
-      'Files you upload: invoices, receipts, sales reports, stock lists and product photos, used to read the information you asked for.',
+      'Files you upload: invoices, receipts, sales reports, stock lists and product photos, used to read the information you asked for. Receipt photos you add to an expense are kept with that expense (and attached to it in QuickBooks if you send it there) until you remove the photo or delete the expense.',
       'Connected services: if you connect Square or QuickBooks, the access tokens they issue and the data needed for the connection (catalog items, inventory counts, sales, expenses).',
       'Device settings: a few preferences (such as the last staff name, palette and tip settings) are saved in your browser on that device only.',
     ],

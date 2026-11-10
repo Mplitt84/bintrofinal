@@ -14,7 +14,7 @@ import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { expenses, integrationLogs, integrations, products, squareOutbox } from "../../db/schema.js";
 import { SQUARE_STAFF_NAME, applyMovement, findProductByBarcode } from "./inventory.server.js";
-import { findExpensesForMonth, findInventorySpend, findProductCategories, upsertProductCategories, type MonthWindow } from "./business.server.js";
+import { findExpenseReceipt, findExpensesForMonth, findInventorySpend, findProductCategories, upsertProductCategories, type MonthWindow } from "./business.server.js";
 
 export type Provider = "square" | "quickbooks";
 export const PROVIDERS: Provider[] = ["square", "quickbooks"];
@@ -925,6 +925,38 @@ async function qbCreatePurchase(
   return data.Purchase?.Id ?? "";
 }
 
+/**
+ * Attaches a receipt photo to a Purchase (QuickBooks Attachable upload, multipart).
+ * Returns the Attachable id.
+ */
+async function qbAttachReceipt(row: Integration, purchaseId: string, receipt: { mediaType: string; data: string }, fileBase: string) {
+  const boundary = `bintro-${randomBytes(12).toString("hex")}`;
+  const ext = receipt.mediaType === "image/png" ? "png" : receipt.mediaType === "image/webp" ? "webp" : "jpg";
+  const fileName = `${fileBase.replace(/[^\w.-]+/g, "-").slice(0, 80) || "receipt"}.${ext}`;
+  const meta = JSON.stringify({
+    AttachableRef: [{ EntityRef: { type: "Purchase", value: purchaseId }, IncludeOnSend: false }],
+    FileName: fileName,
+    ContentType: receipt.mediaType,
+  });
+  const body = Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file_metadata_01"; filename="attachment.json"\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n` +
+        `--${boundary}\r\nContent-Disposition: form-data; name="file_content_01"; filename="${fileName}"\r\nContent-Type: ${receipt.mediaType}\r\n\r\n`,
+    ),
+    Buffer.from(receipt.data, "base64"),
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  const data = await qbFetch<{ AttachableResponse?: { Attachable?: { Id: string }; Fault?: { Error?: { Message?: string; Detail?: string }[] } }[] }>(
+    row,
+    "/upload",
+    { method: "POST", body, headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` } },
+  );
+  const first = data.AttachableResponse?.[0];
+  const fault = first?.Fault?.Error?.[0];
+  if (fault || !first?.Attachable?.Id) throw new Error(fault?.Detail || fault?.Message || "QuickBooks didn't accept the receipt photo.");
+  return first.Attachable.Id;
+}
+
 /** QuickBooks rejected an account we cached (deleted, made inactive, or gone after a plan change). */
 function isStaleAccount(error: unknown) {
   return error instanceof Error && /invalid reference|inactive|deleted|object not found|does not exist/i.test(error.message);
@@ -961,16 +993,36 @@ export async function pushMonthToQuickBooks(window: MonthWindow) {
   };
 
   let sentExpenses = 0;
+  let sentReceipts = 0;
+  let receiptErrors = 0;
   for (const e of await findExpensesForMonth(window.key)) {
-    if (e.quickbooksId || e.amountCents <= 0) continue;
-    const id = await send(/inventory|stock/i.test(e.category) ? "cogs" : "expense", {
-      date: e.spentOn,
-      cents: e.amountCents,
-      description: [e.category, e.vendor, e.note].filter(Boolean).join(" · ") || "Expense",
-      memo: `Logged in Bintro${e.staffName ? ` by ${e.staffName}` : ""}`,
-    });
-    await db.update(expenses).set({ quickbooksId: id }).where(eq(expenses.id, e.id));
-    sentExpenses++;
+    if (e.amountCents <= 0) continue;
+    let purchaseId = e.quickbooksId;
+    if (!purchaseId) {
+      purchaseId = await send(/inventory|stock/i.test(e.category) ? "cogs" : "expense", {
+        date: e.spentOn,
+        cents: e.amountCents,
+        description: [e.category, e.vendor, e.note].filter(Boolean).join(" · ") || "Expense",
+        memo: `Logged in Bintro${e.staffName ? ` by ${e.staffName}` : ""}`,
+      });
+      await db.update(expenses).set({ quickbooksId: purchaseId }).where(eq(expenses.id, e.id));
+      sentExpenses++;
+    }
+    // The receipt photo goes with it (also for expenses sent before the photo was added).
+    if (e.hasReceipt && !e.quickbooksReceiptId && purchaseId) {
+      try {
+        const receipt = await findExpenseReceipt(e.id);
+        if (receipt) {
+          const attachId = await qbAttachReceipt(row, purchaseId, receipt, `receipt-${e.spentOn}-${e.vendor || e.category || e.id}`);
+          await db.update(expenses).set({ quickbooksReceiptId: attachId }).where(eq(expenses.id, e.id));
+          sentReceipts++;
+        }
+      } catch (error) {
+        // The expense is in QuickBooks; only the photo didn't go. It's tried again on the next send.
+        console.error("QuickBooks receipt attach failed", error);
+        receiptErrors++;
+      }
+    }
   }
 
   let sentVendors = 0;
@@ -996,5 +1048,5 @@ export async function pushMonthToQuickBooks(window: MonthWindow) {
   }
 
   await saveIntegration("quickbooks", { lastSyncAt: new Date() });
-  return { sentExpenses, sentVendors, monthClosed };
+  return { sentExpenses, sentVendors, sentReceipts, receiptErrors, monthClosed };
 }

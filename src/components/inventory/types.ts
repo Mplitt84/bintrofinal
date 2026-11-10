@@ -40,6 +40,10 @@ export type Expense = {
   note: string;
   staffName: string;
   quickbooksId: string;
+  /** QuickBooks attachment id once the receipt photo went with it. */
+  quickbooksReceiptId?: string;
+  /** A receipt photo is saved with this expense. */
+  hasReceipt?: boolean;
   createdAt: string | Date;
 };
 

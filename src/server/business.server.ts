@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gt, gte, inArray, like, lt, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { budgets, businessProfile, expenses, movements, productCategories, products, teamMembers } from "../../db/schema.js";
+import { budgets, businessProfile, expenseReceipts, expenses, movements, productCategories, products, teamMembers } from "../../db/schema.js";
 import { EMPTY_PROFILE, businessTypeById, type BusinessProfile, type BusinessType } from "../lib/business-types.js";
 import { DEFAULT_TAX_GROUP, isTaxGroupId, type ProductCategory, type TaxGroupId } from "../lib/tax-categories.js";
 
@@ -127,15 +127,44 @@ export async function updateExpense(id: number, data: Partial<ExpenseInput>) {
 }
 
 export async function deleteExpense(id: number) {
+  await db.delete(expenseReceipts).where(eq(expenseReceipts.expenseId, id));
   await db.delete(expenses).where(eq(expenses.id, id));
 }
 
 export async function findExpensesForMonth(month: string) {
-  return db
+  const rows = await db
     .select()
     .from(expenses)
     .where(like(expenses.spentOn, `${month}-%`))
     .orderBy(desc(expenses.spentOn), desc(expenses.id));
+  const withReceipt = await expenseIdsWithReceipt(rows.map((r) => r.id));
+  return rows.map((r) => ({ ...r, hasReceipt: withReceipt.has(r.id) }));
+}
+
+// --- Receipt photos ---------------------------------------------------------
+
+export async function expenseIdsWithReceipt(ids: number[]) {
+  if (!ids.length) return new Set<number>();
+  const rows = await db.select({ id: expenseReceipts.expenseId }).from(expenseReceipts).where(inArray(expenseReceipts.expenseId, ids));
+  return new Set(rows.map((r) => r.id));
+}
+
+/** Saves (or replaces) the receipt photo for an expense. A new photo is attached to QuickBooks again. */
+export async function saveExpenseReceipt(expenseId: number, mediaType: string, data: string) {
+  await db
+    .insert(expenseReceipts)
+    .values({ expenseId, mediaType, data })
+    .onConflictDoUpdate({ target: expenseReceipts.expenseId, set: { mediaType, data, createdAt: new Date() } });
+  await db.update(expenses).set({ quickbooksReceiptId: "" }).where(eq(expenses.id, expenseId));
+}
+
+export async function findExpenseReceipt(expenseId: number) {
+  const [row] = await db.select().from(expenseReceipts).where(eq(expenseReceipts.expenseId, expenseId));
+  return row ?? null;
+}
+
+export async function deleteExpenseReceipt(expenseId: number) {
+  await db.delete(expenseReceipts).where(eq(expenseReceipts.expenseId, expenseId));
 }
 
 export async function findExpensesByIds(ids: number[]) {
