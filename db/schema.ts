@@ -95,6 +95,17 @@ export const expenses = pgTable("expenses", {
   staffName: text("staff_name").notNull().default(""),
   /** QuickBooks Purchase id once pushed, so it's never sent twice. */
   quickbooksId: text("quickbooks_id").notNull().default(""),
+  /** QuickBooks Attachable id once the receipt photo is attached to that Purchase. */
+  quickbooksReceiptId: text("quickbooks_receipt_id").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** Receipt photo kept with an expense (shrunk JPEG, base64), sent to QuickBooks as an attachment. */
+export const expenseReceipts = pgTable("expense_receipts", {
+  id: serial().primaryKey(),
+  expenseId: integer("expense_id").notNull().unique(),
+  mediaType: text("media_type").notNull().default("image/jpeg"),
+  data: text().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

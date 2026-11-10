@@ -12,6 +12,9 @@ import {
   findExpensesForMonth,
   findTeamMembers,
   insertExpense,
+  saveExpenseReceipt,
+  findExpenseReceipt,
+  deleteExpenseReceipt,
   insertTeamMember,
   saveBusinessProfile,
   setMonthBudget,
@@ -133,18 +136,40 @@ const ExpenseSchema = z.object({
   staffName: z.string().max(60).optional(),
 });
 
+/** A receipt photo kept with the expense (shrunk JPEG, base64, under ~4 MB). */
+const ReceiptSchema = z.object({
+  data: z.string().min(100).max(5_500_000),
+  mediaType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+});
+
 export const createExpense = createServerFn({ method: "POST" }).middleware([requireUser])
-  .inputValidator(ExpenseSchema)
+  .inputValidator(ExpenseSchema.extend({ receipt: ReceiptSchema.optional() }))
   .handler(async ({ data }) => {
     await assertFeature("budget");
-    return insertExpense(data);
+    const { receipt, ...values } = data;
+    const row = await insertExpense(values);
+    if (receipt && row) await saveExpenseReceipt(row.id, receipt.mediaType, receipt.data);
+    return row;
   });
 
 export const editExpense = createServerFn({ method: "POST" }).middleware([requireUser])
-  .inputValidator(ExpenseSchema.partial().extend({ id: z.number().int() }))
+  .inputValidator(
+    ExpenseSchema.partial().extend({ id: z.number().int(), receipt: ReceiptSchema.optional(), removeReceipt: z.boolean().optional() }),
+  )
   .handler(async ({ data }) => {
-    const { id, ...rest } = data;
-    return updateExpense(id, rest);
+    const { id, receipt, removeReceipt, ...rest } = data;
+    const row = await updateExpense(id, rest);
+    if (receipt) await saveExpenseReceipt(id, receipt.mediaType, receipt.data);
+    else if (removeReceipt) await deleteExpenseReceipt(id);
+    return row;
+  });
+
+/** The receipt photo saved with an expense, as a data URL for viewing. */
+export const getExpenseReceipt = createServerFn({ method: "GET" }).middleware([requireUser])
+  .inputValidator(z.object({ id: z.number().int() }))
+  .handler(async ({ data }) => {
+    const r = await findExpenseReceipt(data.id);
+    return r ? { url: `data:${r.mediaType};base64,${r.data}` } : null;
   });
 
 export const removeExpense = createServerFn({ method: "POST" }).middleware([requireUser])
