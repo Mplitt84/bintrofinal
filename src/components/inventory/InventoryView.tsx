@@ -5,7 +5,8 @@ import { bulkDeleteProducts, createProduct, deleteProduct, mergeProducts, setPro
 import { BulkEditSheet } from './BulkEditSheet'
 import { Sheet } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
-import { DuplicatesSheet, FillCostsSheet, SmartParSheet } from './TidyTools'
+import { DuplicatesSheet, SmartParSheet } from './TidyTools'
+import { MissingCostsSheet } from './MissingCostsSheet'
 import { CountReconcileSheet } from './CountReconcileSheet'
 import { EmptyState, PageHead, StatGrid, StatTile, Thumb, centsToDollars, dollarsShort } from '@/components/ui/bits'
 import { ProductForm } from './ProductForm'
@@ -144,7 +145,7 @@ export function InventoryView({
       />
       <SmartParSheet open={tool === 'smartpar'} onClose={() => setTool(null)} onDone={onChanged} />
       <DuplicatesSheet open={tool === 'duplicates'} onClose={() => setTool(null)} onDone={onChanged} />
-      <FillCostsSheet open={tool === 'costs'} onClose={() => setTool(null)} products={products} onDone={onChanged} />
+      <MissingCostsSheet open={tool === 'costs'} onClose={() => setTool(null)} products={products} onDone={onChanged} />
 
       <label className="flex items-center gap-2.5 bg-surface rounded-full px-4 mb-3.5">
         <Search size={20} className="text-ink-2 shrink-0" />
