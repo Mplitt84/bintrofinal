@@ -1104,3 +1104,32 @@ export async function pingAI(): Promise<{ ok: boolean; route: string; detail: st
     routes,
   };
 }
+
+// --- Ask Bintro (data Q&A) ---------------------------------------------------
+
+/**
+ * A plain chat turn for "Ask Bintro". The caller supplies the system prompt
+ * (with the business's data) and the conversation; returns the reply text.
+ */
+export async function chatWithClaude(
+  system: string,
+  messages: { role: "user" | "assistant"; content: string }[],
+  maxTokens = 900,
+): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
+  if (anthropicEndpoints().length === 0) return { ok: false, message: "AI isn't set up on this site yet." };
+  const res = await postToClaude({ model: LABEL_MODEL, max_tokens: maxTokens, system, messages }, 60_000, "ask");
+  if (!res || !res.ok) {
+    const status = res?.status ?? 0;
+    return {
+      ok: false,
+      message: status === 402 || status === 400 ? "The AI service needs attention (credit or key). Check Settings → Setup check." : "Bintro couldn't answer just now. Try again in a moment.",
+    };
+  }
+  const data = (await res.json().catch(() => ({}))) as { content?: { type: string; text?: string }[] };
+  const text = (data.content ?? [])
+    .filter((c) => c.type === "text")
+    .map((c) => c.text ?? "")
+    .join("")
+    .trim();
+  return text ? { ok: true, text } : { ok: false, message: "Bintro didn't have an answer. Try asking another way." };
+}
