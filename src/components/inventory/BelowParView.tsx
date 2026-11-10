@@ -61,7 +61,7 @@ export function BelowParView({
         '',
         ...items.map((p) => {
           const bits = [p.brand, p.size].filter(Boolean).join(' ')
-          return `- ${bits ? `${p.name} (${bits})` : p.name} — on hand ${p.qty}, reorder at ${p.reorderThreshold}, order ${toOrder(p)}`
+          return `- ${bits ? `${p.name} (${bits})` : p.name} — on hand ${p.qty}, order at ${p.reorderThreshold}, order ${toOrder(p)}`
         }),
         '',
         staffName ? `Sent by ${staffName} from Bintro.` : 'Sent from Bintro.',
@@ -166,7 +166,7 @@ export function BelowParView({
                       {STOCK_STATUS_LABEL[status]}
                     </span>
                     <div className="num mt-0.5">
-                      {Math.max(0, onHandQty(p))} on hand · reorder at {p.reorderThreshold}
+                      {Math.max(0, onHandQty(p))} on hand · order at {p.reorderThreshold}
                       {orderUpTo(p) > p.reorderThreshold ? ` · up to ${orderUpTo(p)}` : ''}
                     </div>
                   </div>

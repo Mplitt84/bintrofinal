@@ -834,7 +834,7 @@ export function ProductForm({
             onChange={(e) => setQty(e.target.value)}
           />
         </Field>
-        <Field label="Reorder at" htmlFor="pf-par">
+        <Field label="Order at" htmlFor="pf-par">
           <input
             id="pf-par"
             className="field-input num"
@@ -848,14 +848,14 @@ export function ProductForm({
       </div>
       {product && <p className="m-0 -mt-1 text-[12px] text-ink-2">{lastCountedLabel(product)}</p>}
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Order up to" htmlFor="pf-max">
+        <Field label="Fill to" htmlFor="pf-max">
           <input
             id="pf-max"
             className="field-input num"
             type="number"
             inputMode="numeric"
             min={0}
-            placeholder="Same as reorder"
+            placeholder="Same as Order at"
             value={maxQty}
             onChange={(e) => setMaxQty(e.target.value)}
           />
@@ -936,7 +936,7 @@ export function ProductForm({
         </span>
       </Field>
       <p className="m-0 -mt-1 text-[12px] text-ink-2">
-        Reorder at: when to order. Order up to: the most worth having on your shelf, so orders refill to here. Case pack: how many come in a case (e.g. 12 wine, 24 sparkling water); orders round up to full cases. Smart par can set these for you.
+        Order at: order more when you get down to this many. Fill to: how many to have after the order comes. Case pack: how many come in one box (like 12 wine or 24 sparkling water); orders come in full boxes. Smart par can pick these for you.
       </p>
       {barcodeLocked ? (
         <p className="text-ink-2 text-sm m-0">Barcode {barcode}</p>
