@@ -72,6 +72,8 @@ export const businessProfile = pgTable("business_profile", {
   palette: text().notNull().default("burgundy-olive"),
   /** How often the business places orders, in days. Smart par keeps about this much stock above the reorder point. */
   orderEveryDays: integer("order_every_days").notNull().default(7),
+  /** Two-letter US state the business files taxes in (Calendar → state tax dates); "" = not chosen. */
+  taxState: text("tax_state").notNull().default(""),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
