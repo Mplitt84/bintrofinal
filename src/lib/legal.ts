@@ -124,7 +124,7 @@ export const PRIVACY: LegalSection[] = [
   {
     heading: 'Summary',
     paragraphs: [
-      `${product} stores the business data you put in so the app can work. We don't sell your data and we don't use it for advertising. Photos you send to the AI readers are processed and not kept.`,
+      `${product} stores the business data you put in so the app can work. We don't sell your data and we don't use it for advertising. Photos you send to the AI readers are processed and not kept, unless you save one with a record (such as a receipt on an expense).`,
     ],
   },
   {
