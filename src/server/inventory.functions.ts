@@ -85,11 +85,33 @@ export const createProduct = createServerFn({ method: "POST" }).middleware([requ
     return insertProduct(data);
   });
 
-export const linkBarcodeToProduct = createServerFn({ method: "POST" }).middleware([requireUser])
-  .inputValidator((data: { productId: number; barcode: string }) => data)
+/** Edit product → change its main barcode (throws "duplicate…" when another product has it). */
+export const setProductBarcode = createServerFn({ method: "POST" }).middleware([requireUser])
+  .inputValidator(z.object({ productId: z.number().int().positive(), barcode: z.string().trim().min(1).max(64) }))
   .handler(async ({ data }) => {
-    await assertBarcodeFree(data.barcode.trim(), data.productId);
-    return updateProductBarcode(data.productId, data.barcode.trim());
+    await assertBarcodeFree(data.barcode, data.productId);
+    return updateProductBarcode(data.productId, data.barcode);
+  });
+
+/**
+ * "Link to an existing product" from the new-barcode sheet. The scanned code is
+ * added as another SKU, so the product's own barcode keeps scanning; it only
+ * becomes the main barcode when the product has none or a made-up one (BT- / SQ-).
+ */
+export const linkBarcodeToProduct = createServerFn({ method: "POST" }).middleware([requireUser])
+  .inputValidator(z.object({ productId: z.number().int().positive(), barcode: z.string().trim().min(1).max(64) }))
+  .handler(async ({ data }) => {
+    const code = data.barcode;
+    const product = await findProductById(data.productId);
+    if (!product) return { ok: false as const, message: "That product isn't in Bintro any more." };
+    const owner = await findBarcodeOwner(code, data.productId);
+    if (owner) return { ok: false as const, message: `${code} already belongs to ${owner.name}.` };
+    if (product.barcode === code || (product.extraBarcodes ?? []).includes(code)) return { ok: true as const, product };
+    const placeholder = !product.barcode || /^(BT|SQ)-/i.test(product.barcode);
+    const updated = placeholder
+      ? await updateProductBarcode(data.productId, code)
+      : await updateProductFields(data.productId, { extraBarcodes: [...(product.extraBarcodes ?? []), code] });
+    return { ok: true as const, product: updated };
   });
 
 const UpdateProductSchema = z.object({

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
+import { lockScroll } from '@/lib/scroll-lock'
 
 /**
  * Bintro bottom sheet. Slides up from the bottom on phones and turns into a
@@ -37,22 +38,25 @@ export function Sheet({
     }
   }, [open])
 
+  // Page scroll is locked only while open (not re-run when onClose changes identity).
+  useEffect(() => {
+    if (!open) return
+    return lockScroll()
+  }, [open])
+
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
   useEffect(() => {
     if (!open) return
     function onKey(e: KeyboardEvent) {
       if (e.key !== 'Escape') return
       // With a sheet stacked on another (e.g. a pop-up over a form), Escape closes only the top one.
       const dialogs = document.querySelectorAll('[role="dialog"][aria-modal="true"]')
-      if (dialogs[dialogs.length - 1] === panelRef.current) onClose()
+      if (dialogs[dialogs.length - 1] === panelRef.current) closeRef.current()
     }
     document.addEventListener('keydown', onKey)
-    const overflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = overflow
-    }
-  }, [open, onClose])
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open])
 
   if (!open || typeof document === 'undefined') return null
 

@@ -1,7 +1,7 @@
 import { r as requireUser } from "./auth.middleware-2uPScvPU.js";
 import { c as createServerFn } from "../server.js";
 import { z } from "zod";
-import { f as findAllProducts, c as computeStats, a as findRecentMovements, b as findMovementsSince, d as findProductByBarcode, s as searchProductsByText, i as insertProduct, u as updateProductBarcode, e as findBarcodeOwner, g as findProductById, h as applyMovement, j as updateProductFields, k as deleteProductById, m as mergeProductsInto, r as reverseAndDeleteMovement, l as findBelowParProducts, n as buildPurchaseOrderLines } from "./inventory.server-DdbWwcaj.js";
+import { f as findAllProducts, c as computeStats, a as findRecentMovements, b as findMovementsSince, d as findProductByBarcode, s as searchProductsByText, i as insertProduct, u as updateProductBarcode, e as findProductById, g as findBarcodeOwner, h as updateProductFields, j as applyMovement, k as deleteProductById, m as mergeProductsInto, r as reverseAndDeleteMovement, l as findBelowParProducts, n as buildPurchaseOrderLines } from "./inventory.server-XXvTatuj.js";
 import { s as sendRestockEmail, a as sendPurchaseOrderEmail } from "./email.server-2uKsRAsj.js";
 import { l as lookupBarcodeOnline, r as readProductLabel, p as parseSpokenProduct, a as readStockPhoto } from "./product-lookup.server-C6LGgHTN.js";
 import { f as findBusinessProfile, a as findBusinessContext } from "./business.server-WsLDvovH.js";
@@ -120,6 +120,22 @@ const createProduct = createServerFn({
   await assertBarcodeFree(data.barcode.trim());
   return insertProduct(data);
 });
+const setProductBarcode_createServerFn_handler = createServerRpc({
+  id: "d2530cbd9cf4196a817df2ec129f5b7e9901bde43bd5becc2cd7159707f2f3a1",
+  name: "setProductBarcode",
+  filename: "src/server/inventory.functions.ts"
+}, (opts) => setProductBarcode.__executeServer(opts));
+const setProductBarcode = createServerFn({
+  method: "POST"
+}).middleware([requireUser]).inputValidator(z.object({
+  productId: z.number().int().positive(),
+  barcode: z.string().trim().min(1).max(64)
+})).handler(setProductBarcode_createServerFn_handler, async ({
+  data
+}) => {
+  await assertBarcodeFree(data.barcode, data.productId);
+  return updateProductBarcode(data.productId, data.barcode);
+});
 const linkBarcodeToProduct_createServerFn_handler = createServerRpc({
   id: "04be2dc3eebc2a4becde65112b9afb13adb203a17735c09bba4c8e90f72e118e",
   name: "linkBarcodeToProduct",
@@ -127,11 +143,35 @@ const linkBarcodeToProduct_createServerFn_handler = createServerRpc({
 }, (opts) => linkBarcodeToProduct.__executeServer(opts));
 const linkBarcodeToProduct = createServerFn({
   method: "POST"
-}).middleware([requireUser]).inputValidator((data) => data).handler(linkBarcodeToProduct_createServerFn_handler, async ({
+}).middleware([requireUser]).inputValidator(z.object({
+  productId: z.number().int().positive(),
+  barcode: z.string().trim().min(1).max(64)
+})).handler(linkBarcodeToProduct_createServerFn_handler, async ({
   data
 }) => {
-  await assertBarcodeFree(data.barcode.trim(), data.productId);
-  return updateProductBarcode(data.productId, data.barcode.trim());
+  const code = data.barcode;
+  const product = await findProductById(data.productId);
+  if (!product) return {
+    ok: false,
+    message: "That product isn't in Bintro any more."
+  };
+  const owner = await findBarcodeOwner(code, data.productId);
+  if (owner) return {
+    ok: false,
+    message: `${code} already belongs to ${owner.name}.`
+  };
+  if (product.barcode === code || (product.extraBarcodes ?? []).includes(code)) return {
+    ok: true,
+    product
+  };
+  const placeholder = !product.barcode || /^(BT|SQ)-/i.test(product.barcode);
+  const updated = placeholder ? await updateProductBarcode(data.productId, code) : await updateProductFields(data.productId, {
+    extraBarcodes: [...product.extraBarcodes ?? [], code]
+  });
+  return {
+    ok: true,
+    product: updated
+  };
 });
 const UpdateProductSchema = z.object({
   productId: z.number().int(),
@@ -186,7 +226,7 @@ const updateProduct = createServerFn({
       try {
         const {
           syncSquareSalesIfConnected
-        } = await import("./integrations.server-Bt4S1L6u.js");
+        } = await import("./integrations.server-G7imLk5v.js");
         await syncSquareSalesIfConnected();
         current = await findProductById(productId);
       } catch (error) {
@@ -548,6 +588,7 @@ export {
   recordProductMovement_createServerFn_handler,
   scanMovement_createServerFn_handler,
   searchProducts_createServerFn_handler,
+  setProductBarcode_createServerFn_handler,
   undoMovement_createServerFn_handler,
   updateProduct_createServerFn_handler
 };

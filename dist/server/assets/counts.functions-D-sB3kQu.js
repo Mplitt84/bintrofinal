@@ -2,7 +2,7 @@ import { h as db, p as products, y as stockCounts, z as stockCountLines, r as re
 import { c as createServerFn } from "../server.js";
 import { z } from "zod";
 import { inArray, desc, eq, and, isNull, ne } from "drizzle-orm";
-import { h as applyMovement, p as flushSquareSoon } from "./inventory.server-DdbWwcaj.js";
+import { j as applyMovement, p as flushSquareSoon } from "./inventory.server-XXvTatuj.js";
 import { c as createServerRpc } from "./createServerRpc-D_-6bKnO.js";
 import "node:crypto";
 import "drizzle-orm/netlify-db";
@@ -16,7 +16,7 @@ import "@tanstack/react-router/ssr/server";
 import "./inventory-defaults-BnRHgx1T.js";
 async function approveCount(params) {
   try {
-    const { syncSquareSalesIfConnected } = await import("./integrations.server-Bt4S1L6u.js");
+    const { syncSquareSalesIfConnected } = await import("./integrations.server-G7imLk5v.js");
     await syncSquareSalesIfConnected();
   } catch (error) {
     console.error("Square sales sync before count failed", error);

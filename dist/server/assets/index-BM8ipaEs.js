@@ -1,7 +1,7 @@
 import { jsxs, jsx, Fragment } from "react/jsx-runtime";
 import { useRef, useId, useEffect, useState, useCallback, createContext, useContext, useMemo, forwardRef } from "react";
 import { X, RotateCcw, ChevronRight, ClipboardCheck, Undo2, ShoppingBag, Sparkles, ArrowDownToLine, BadgeCheck, Minus, Plus, Trash2, Check, Search, Copy, Mic, Lock, Square, GitMerge, Camera, Tags, ExternalLink, Wand2, ArrowUpFromLine, FileSpreadsheet, AlertTriangle, Users, UserPlus, ScanBarcode, ScanSearch, PackagePlus, EyeOff, History, Gauge, CircleMinus, Tag, CheckSquare, Pencil, ClipboardList, Mail, RefreshCw, Download, Printer, FileText, CheckCheck, PackageCheck, Truck, CalendarPlus, ChevronLeft, Landmark, Repeat, CalendarDays, CheckCircle2, Send, FileUp, TriangleAlert, Plug, ShieldCheck, LogOut, Lightbulb, Boxes, Leaf, CalendarClock, PiggyBank, ArrowRight, Palette, BluetoothConnected, Bluetooth, Crown, PlayCircle, CreditCard, XCircle, PauseCircle, Receipt, Flame, TrendingUp, TrendingDown, Globe, Settings, Store, Wallet, Activity } from "lucide-react";
-import { c as createSsrRpc, u as updateProduct, s as saveProductCategories, r as removeProductCategories, l as lookupBarcodeDetails, a as readSpokenProduct, b as readLabelPhoto, d as suggestProduct, e as readStockPhotoFn, f as createProduct, g as recordProductMovement, h as searchProducts, i as lookupBarcode, j as scanMovement, k as undoMovement, m as linkBarcodeToProduct, n as bulkUpdateProducts, o as updateBusinessProfile, p as mergeProducts, q as deleteProduct, t as bulkDeleteProducts, v as getMovementsSince, w as emailBelowPar, x as emailPurchaseOrder, y as toDay, z as parseDay, A as occurrences, B as eventKind, E as EVENT_KINDS, C as formatTime, R as REPEATS, D as estimatedTaxDates, F as googleCalendarUrl, G as outlookCalendarUrl, H as subscribeUrls, I as buildIcs, J as getBudgetOverview, K as listExpenses, L as getIntegrations, M as quickbooksPushMonth, N as editExpense, O as createExpense, P as readReceiptPhoto, Q as removeExpense, S as saveMonthBudget, T as getAccessList, U as signOut, V as removeAccess, W as addAccess, X as resumePlan, Y as lockInFounding, Z as cancelSubscription, _ as getBillingHistory, $ as saveAccountDetails, a0 as selectPlan, a1 as openPaymentPortal, a2 as pausePlan, a3 as addTeamMember, a4 as removeTeamMember, a5 as getSquareRetailCategories, a6 as disconnect, a7 as getIntegrationErrorLog, a8 as setSquareRetailCategories, a9 as squareImportCatalog, aa as squareSyncSales, ab as squareSendCounts, ac as Route, ad as listProducts, ae as getRecentMovements, af as getAccount, ag as getAuthState } from "./router-DdiipPkf.js";
+import { c as createSsrRpc, u as updateProduct, s as saveProductCategories, r as removeProductCategories, l as lookupBarcodeDetails, a as readSpokenProduct, b as readLabelPhoto, d as suggestProduct, e as readStockPhotoFn, f as createProduct, g as recordProductMovement, h as searchProducts, i as lookupBarcode, j as scanMovement, k as undoMovement, m as linkBarcodeToProduct, n as bulkUpdateProducts, o as updateBusinessProfile, p as mergeProducts, q as deleteProduct, t as setProductBarcode, v as bulkDeleteProducts, w as getMovementsSince, x as emailBelowPar, y as emailPurchaseOrder, z as toDay, A as parseDay, B as occurrences, C as eventKind, E as EVENT_KINDS, D as formatTime, R as REPEATS, F as estimatedTaxDates, G as googleCalendarUrl, H as outlookCalendarUrl, I as subscribeUrls, J as buildIcs, K as getBudgetOverview, L as listExpenses, M as getIntegrations, N as quickbooksPushMonth, O as editExpense, P as createExpense, Q as readReceiptPhoto, S as removeExpense, T as saveMonthBudget, U as getAccessList, V as signOut, W as removeAccess, X as addAccess, Y as resumePlan, Z as lockInFounding, _ as cancelSubscription, $ as getBillingHistory, a0 as saveAccountDetails, a1 as selectPlan, a2 as openPaymentPortal, a3 as pausePlan, a4 as addTeamMember, a5 as removeTeamMember, a6 as getSquareRetailCategories, a7 as disconnect, a8 as getIntegrationErrorLog, a9 as setSquareRetailCategories, aa as squareImportCatalog, ab as squareSyncSales, ac as squareSendCounts, ad as Route, ae as listProducts, af as getRecentMovements, ag as getAccount, ah as getAuthState } from "./router-C7CFtD62.js";
 import { createPortal } from "react-dom";
 import { c as createServerFn } from "../server.js";
 import { z } from "zod";
@@ -18,13 +18,25 @@ import "./calendar.server-sixfPSg0.js";
 import "drizzle-orm";
 import "node:crypto";
 import "./business.server-WsLDvovH.js";
-import "./integrations.server-Bt4S1L6u.js";
-import "./inventory.server-DdbWwcaj.js";
+import "./integrations.server-G7imLk5v.js";
+import "./inventory.server-XXvTatuj.js";
 import "node:async_hooks";
 import "node:stream";
 import "@tanstack/react-router/ssr/server";
 import "drizzle-orm/netlify-db";
 import "drizzle-orm/pg-core";
+let locks = 0;
+function lockScroll() {
+  locks += 1;
+  if (locks === 1) document.body.style.overflow = "hidden";
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    locks = Math.max(0, locks - 1);
+    if (locks === 0) document.body.style.overflow = "";
+  };
+}
 function Sheet({
   open,
   onClose,
@@ -48,19 +60,20 @@ function Sheet({
   }, [open]);
   useEffect(() => {
     if (!open) return;
+    return lockScroll();
+  }, [open]);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    if (!open) return;
     function onKey(e) {
       if (e.key !== "Escape") return;
       const dialogs = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
-      if (dialogs[dialogs.length - 1] === panelRef.current) onClose();
+      if (dialogs[dialogs.length - 1] === panelRef.current) closeRef.current();
     }
     document.addEventListener("keydown", onKey);
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
-    };
-  }, [open, onClose]);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
   if (!open || typeof document === "undefined") return null;
   return createPortal(
     /* @__PURE__ */ jsxs("div", { className: "fixed inset-0 z-50 flex items-end justify-center min-[700px]:items-center", children: [
@@ -3840,12 +3853,11 @@ function StaffPicker({
       if (e.key === "Escape") onClose();
     }
     document.addEventListener("keydown", onKey);
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const unlock = lockScroll();
     return () => {
+      unlock();
       cancelAnimationFrame(frame);
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
       if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
     };
   }, [open]);
@@ -4196,6 +4208,8 @@ function ScanView({
   const [unknownTab, setUnknownTab] = useState("new");
   const [linkQuery, setLinkQuery] = useState("");
   const [linkResults, setLinkResults] = useState([]);
+  const [linkError, setLinkError] = useState(false);
+  const [linking, setLinking] = useState(false);
   const orbTimer = useRef(void 0);
   const [partialCode, setPartialCode] = useState(null);
   const photoInput = useRef(null);
@@ -4208,8 +4222,13 @@ function ScanView({
       return;
     }
     const handle = setTimeout(async () => {
-      const results = await searchProducts({ data: { query: linkQuery } });
-      setLinkResults(results);
+      try {
+        const results = await searchProducts({ data: { query: linkQuery } });
+        setLinkResults(results);
+        setLinkError(false);
+      } catch {
+        setLinkError(true);
+      }
     }, 220);
     return () => clearTimeout(handle);
   }, [linkQuery]);
@@ -4422,11 +4441,21 @@ function ScanView({
     setOrb({ kind: "idle" });
   }
   async function handleLinkExisting(productId) {
-    if (!unknownBarcode) return;
-    await linkBarcodeToProduct({ data: { productId, barcode: unknownBarcode } });
-    const code = unknownBarcode;
-    setUnknownBarcode(null);
-    await submitScan(code);
+    if (!unknownBarcode || linking) return;
+    setLinking(true);
+    try {
+      const r = await linkBarcodeToProduct({ data: { productId, barcode: unknownBarcode } });
+      if (!r.ok) return toast(r.message);
+      if (r.product) onProduct?.(r.product);
+      const code = unknownBarcode;
+      setUnknownBarcode(null);
+      toast(`Linked. ${code} now scans as ${r.product?.name ?? "that product"}.`);
+      await submitScan(code);
+    } catch {
+      toast("Couldn’t link that barcode. Check your connection and try again.");
+    } finally {
+      setLinking(false);
+    }
   }
   async function undo(m) {
     try {
@@ -4729,6 +4758,8 @@ function ScanView({
               linkResults.map((p) => /* @__PURE__ */ jsx("li", { children: /* @__PURE__ */ jsxs(
                 "button",
                 {
+                  type: "button",
+                  disabled: linking,
                   onClick: () => handleLinkExisting(p.id),
                   className: "w-full flex items-center gap-3 py-2.5 px-1 border-0 border-b border-line bg-transparent text-left cursor-pointer hover:bg-surface rounded-lg",
                   children: [
@@ -4740,9 +4771,9 @@ function ScanView({
                   ]
                 }
               ) }, p.id)),
-              linkQuery.trim() && linkResults.length === 0 && /* @__PURE__ */ jsx("li", { className: "text-ink-2 text-sm py-3", children: "No products match that search." })
+              linkError ? /* @__PURE__ */ jsx("li", { className: "text-bad text-sm py-3", children: "Search didn’t load. Check your connection and keep typing." }) : linkQuery.trim() && linkResults.length === 0 && /* @__PURE__ */ jsx("li", { className: "text-ink-2 text-sm py-3", children: "No products match that search." })
             ] }),
-            /* @__PURE__ */ jsx("p", { className: "text-ink-2 text-[13px] mt-3 mb-0", children: "Linking replaces that product's barcode with this one, then logs the scan." })
+            /* @__PURE__ */ jsx("p", { className: "text-ink-2 text-[13px] mt-3 mb-0", children: linking ? "Linking…" : "Linking adds this code as another SKU on that product (its own barcode keeps working), then logs the scan." })
           ] })
         ]
       }
@@ -6281,7 +6312,7 @@ function InventoryView({
             onSave: async ({ barcode, ...values }) => {
               let saved = await updateProduct({ data: { productId: editing.id, ...values, staffName } });
               if (barcode !== editing.barcode) {
-                saved = await linkBarcodeToProduct({ data: { productId: editing.id, barcode } });
+                saved = await setProductBarcode({ data: { productId: editing.id, barcode } });
               }
               if (saved) onProduct?.(saved);
               setEditing(null);
