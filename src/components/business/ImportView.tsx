@@ -101,8 +101,7 @@ export function ImportView({
       setMode(r.mode)
       setLines(r.lines)
       setStep({ kind: 'review', fileName: name, vendor: r.vendor, date: r.date })
-      // A price list keeps the file's prices; staff can still ask for AI estimates by hand.
-      if (r.mode !== 'prices') estimate(r.lines, id)
+      // No automatic AI price guesses (too often wrong); staff can still ask for cost estimates by hand.
     } catch {
       if (id === run.current) setStep({ kind: 'pick', error: 'Couldn’t read that file. Check your connection and try again.' })
     }
@@ -141,10 +140,6 @@ export function ImportView({
             if (!next.unitCostCents && p.unitCostCents) {
               next.unitCostCents = p.unitCostCents
               next.costSource = 'ai'
-            }
-            if (!next.retailPriceCents && p.retailPriceCents) {
-              next.retailPriceCents = p.retailPriceCents
-              next.retailSource = 'ai'
             }
             return next
           }),

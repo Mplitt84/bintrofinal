@@ -10,7 +10,6 @@ import type { WebPriceResult } from '@/lib/insights'
 type Found = Extract<WebPriceResult, { ok: true }>
 type RowState = {
   cost: string
-  retail: string
   /** AI result shown on the row (applied only when staff tap Use / Save). */
   found?: Found
   /** "Not found" / error message from the last AI check. */
@@ -27,14 +26,13 @@ const SOURCE_LABEL: Record<string, string> = {
   manufacturer: 'Brand site',
   distributor: 'Pro distributor',
   amazon: 'Marketplace',
-  estimate: 'AI estimate',
 }
 
 /**
  * Products → Missing costs: every product with no cost in one list. Tap an item
- * to type its cost and retail, or "Find with AI" for that one item; or
- * "Find all with AI" to work down the list. AI finds are saved right away in
- * the bulk run, and shown for approval on a single row.
+ * to type its cost, or "Find with AI" for that item; or "Find all with AI" to
+ * look the list up. AI only reports real listed costs (no guesses), never fills
+ * retail, and nothing is saved until staff approve it (per row, or "Save N found").
  */
 export function MissingCostsSheet({
   open,
@@ -85,24 +83,17 @@ export function MissingCostsSheet({
     return missing.filter((p) => [p.name, p.brand, p.vendor, p.category, p.barcode].join(' ').toLowerCase().includes(q))
   }, [missing, query])
 
-  const row = (p: Product): RowState =>
-    rows[p.id] ?? { cost: '', retail: p.retailPriceCents ? centsToDollars(p.retailPriceCents) : '' }
-  const patch = (id: number, next: Partial<RowState>, p?: Product) =>
-    setRows((r) => ({ ...r, [id]: { ...(r[id] ?? (p ? row(p) : { cost: '', retail: '' })), ...next } }))
+  const row = (p: Product): RowState => rows[p.id] ?? { cost: '' }
+  const patch = (id: number, next: Partial<RowState>) => setRows((r) => ({ ...r, [id]: { ...(r[id] ?? { cost: '' }), ...next } }))
 
   async function findOne(p: Product) {
-    patch(p.id, { checking: true, note: undefined }, p)
+    patch(p.id, { checking: true, note: undefined })
     try {
       const r = await checkWebPrice({
         data: { productId: p.id, name: p.name, brand: p.brand, size: p.size, category: p.category, vendor: p.vendor, barcode: p.barcode },
       })
       if (r.ok && r.unitCostCents > 0) {
-        patch(p.id, {
-          checking: false,
-          found: r,
-          cost: centsToDollars(r.unitCostCents),
-          retail: p.retailPriceCents ? centsToDollars(p.retailPriceCents) : r.retailPriceCents ? centsToDollars(r.retailPriceCents) : '',
-        })
+        patch(p.id, { checking: false, found: r, cost: centsToDollars(r.unitCostCents) })
       } else {
         patch(p.id, { checking: false, note: r.ok ? 'No cost found. Type it in from your invoice.' : r.message })
       }
@@ -115,19 +106,9 @@ export function MissingCostsSheet({
     const st = row(p)
     const cost = toCents(st.cost)
     if (!cost) return toast('Type a cost first.')
-    const retail = toCents(st.retail)
-    patch(p.id, { saving: true }, p)
+    patch(p.id, { saving: true })
     try {
-      const fromAi = st.found && cost === st.found.unitCostCents
-      await applyWebPrice({
-        data: {
-          productId: p.id,
-          // Keep the AI source on record only when the AI number is what's being saved.
-          checkId: fromAi && (!retail || retail === st.found!.retailPriceCents) ? st.found!.checkId : undefined,
-          unitCostCents: cost,
-          retailPriceCents: retail || undefined,
-        },
-      })
+      await saveCost(p.id, cost, st.found && cost === st.found.unitCostCents ? st.found.checkId : undefined)
       setSaved((s) => new Set(s).add(p.id))
       setOpenId(null)
       toast(`${p.name}: cost $${centsToDollars(cost)} saved`)
@@ -135,6 +116,33 @@ export function MissingCostsSheet({
       patch(p.id, { saving: false })
       toast('Couldn’t save that cost. Try again.')
     }
+  }
+
+  /** Cost only; retail is never touched here. Keeps the AI source on record when its number is what's saved. */
+  async function saveCost(productId: number, cost: number, checkId?: number) {
+    await applyWebPrice({ data: { productId, checkId: checkId || undefined, unitCostCents: cost } })
+  }
+
+  const foundRows = shown.filter((p) => {
+    const st = rows[p.id]
+    return st?.found && toCents(st.cost) > 0 && !st.saving
+  })
+
+  async function saveFound() {
+    let n = 0
+    for (const p of foundRows) {
+      const st = rows[p.id]!
+      const cost = toCents(st.cost)
+      try {
+        await saveCost(p.id, cost, st.found && cost === st.found.unitCostCents ? st.found.checkId : undefined)
+        setSaved((s) => new Set(s).add(p.id))
+        n++
+      } catch {
+        patch(p.id, { note: 'Couldn’t save this one. Try again.' })
+      }
+    }
+    if (n) toast(`${n} cost${n === 1 ? '' : 's'} saved`)
+    await onDone()
   }
 
   async function findAll() {
@@ -147,22 +155,15 @@ export function MissingCostsSheet({
     const worker = async () => {
       while (queue.length && !stop.current) {
         const p = queue.shift()!
-        patch(p.id, { checking: true, note: undefined }, p)
+        patch(p.id, { checking: true, note: undefined })
         try {
           const r = await checkWebPrice({
             data: { productId: p.id, name: p.name, brand: p.brand, size: p.size, category: p.category, vendor: p.vendor, barcode: p.barcode },
           })
           if (r.ok && r.unitCostCents > 0) {
-            await applyWebPrice({
-              data: {
-                productId: p.id,
-                checkId: r.checkId || undefined,
-                unitCostCents: r.unitCostCents,
-                retailPriceCents: p.retailPriceCents ? undefined : r.retailPriceCents || undefined,
-              },
-            })
+            // Shown for review, not saved: staff check the source first.
+            patch(p.id, { checking: false, found: r, cost: centsToDollars(r.unitCostCents) })
             found++
-            setSaved((s) => new Set(s).add(p.id))
           } else {
             patch(p.id, { checking: false, note: r.ok ? 'No cost found' : r.message })
             if (!r.ok && /couldn't check|isn't available/i.test(r.message)) unreachable++
@@ -181,8 +182,7 @@ export function MissingCostsSheet({
     }
     await Promise.all([worker(), worker()])
     setBulk((b) => ({ ...b, running: false }))
-    if (found) toast(`${found} cost${found === 1 ? '' : 's'} filled by AI`)
-    await onDone()
+    if (found) toast(`AI found ${found} listed cost${found === 1 ? '' : 's'}. Check them, then save.`)
   }
 
   const close = async () => {
@@ -196,7 +196,7 @@ export function MissingCostsSheet({
       open={open}
       onClose={close}
       title="Missing costs"
-      subtitle="Tap an item to type its cost, or let AI look it up: your supplier first, then pro distributors, then the brand’s site."
+      subtitle="Tap an item to type its cost from your invoice, or let AI look for a real listed price (your supplier, pro distributors, the brand’s site). AI never guesses and never fills retail; you approve before anything saves."
     >
       <div className="flex items-center gap-2 mb-3">
         <label className="relative flex-1">
@@ -213,7 +213,7 @@ export function MissingCostsSheet({
 
       {(bulk.running || bulk.done > 0) && (
         <p className="text-sm mt-0">
-          AI checked {bulk.done} of {bulk.total} · <b className="text-good">{bulk.found} filled</b>
+          AI checked {bulk.done} of {bulk.total} · <b className="text-good">{bulk.found} found to review</b>
           {bulk.running && ' · keep this open while it runs (20–40 seconds each)'}
         </p>
       )}
@@ -246,7 +246,7 @@ export function MissingCostsSheet({
                   {st.checking ? (
                     <span className="text-[12px] text-ink-2">Checking…</span>
                   ) : st.found ? (
-                    <span className="text-[12px] text-good font-semibold">AI found ${centsToDollars(st.found.unitCostCents)}</span>
+                    <span className="text-[12px] text-good font-semibold">Found ${centsToDollars(st.found.unitCostCents)} · review</span>
                   ) : st.note ? (
                     <span className="text-[12px] text-ink-2">Not found</span>
                   ) : null}
@@ -255,33 +255,22 @@ export function MissingCostsSheet({
 
                 {isOpen && (
                   <div className="pb-3 pl-[52px]">
-                    <div className="grid grid-cols-2 gap-2 mb-2">
-                      <label className="block">
-                        <span className="text-[12px] text-ink-2">Your cost $</span>
-                        <input
-                          className="field-input !py-2"
-                          inputMode="decimal"
-                          placeholder="0.00"
-                          autoFocus
-                          value={st.cost}
-                          onChange={(e) => patch(p.id, { cost: e.target.value }, p)}
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-[12px] text-ink-2">Sells for $</span>
-                        <input
-                          className="field-input !py-2"
-                          inputMode="decimal"
-                          placeholder="Not sold"
-                          value={st.retail}
-                          onChange={(e) => patch(p.id, { retail: e.target.value }, p)}
-                        />
-                      </label>
-                    </div>
+                    <label className="block max-w-[220px] mb-2">
+                      <span className="text-[12px] text-ink-2">Your cost $</span>
+                      <input
+                        className="field-input !py-2"
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        autoFocus
+                        value={st.cost}
+                        onChange={(e) => patch(p.id, { cost: e.target.value })}
+                      />
+                    </label>
 
                     {st.found && (
                       <p className="text-[12px] text-ink-2 mt-0 mb-2">
-                        {SOURCE_LABEL[st.found.sourceType] ?? 'Found'}: {st.found.sourceName}
+                        Listed at {st.found.sourceName}
+                        {SOURCE_LABEL[st.found.sourceType] ? ` (${SOURCE_LABEL[st.found.sourceType].toLowerCase()})` : ''}
                         {st.found.sourceUrl && (
                           <a href={st.found.sourceUrl} target="_blank" rel="noreferrer" className="ml-1 inline-flex items-center gap-0.5">
                             view <ExternalLink size={11} />
@@ -309,12 +298,17 @@ export function MissingCostsSheet({
       )}
 
       <SheetActions>
+        {!bulk.running && foundRows.length > 0 && (
+          <button type="button" className="btn btn-primary" onClick={saveFound}>
+            Save {foundRows.length} found
+          </button>
+        )}
         {bulk.running ? (
           <button type="button" className="btn btn-tonal" onClick={() => (stop.current = true)}>
             Stop AI
           </button>
         ) : (
-          <button type="button" className="btn btn-primary" disabled={shown.length === 0} onClick={findAll}>
+          <button type="button" className={`btn ${foundRows.length ? 'btn-tonal' : 'btn-primary'}`} disabled={shown.length === 0} onClick={findAll}>
             <Sparkles size={16} /> Find {query.trim() ? `these ${shown.length}` : `all ${shown.length}`} with AI
           </button>
         )}

@@ -95,12 +95,15 @@ export async function smartPars(): Promise<SmartParResult> {
       par = Math.max(1, Math.ceil(perDay * lead + safety));
       max = Math.ceil((par + perDay * cycle) / pack) * pack;
       if (max <= par) max = Math.ceil((par + 1) / pack) * pack;
-      const steadiness = weeksKnown < 4 ? "new, extra cushion" : sd > mean ? "use swings a lot, extra cushion" : "steady";
-      reason = `≈ ${perDay >= 1 ? perDay.toFixed(1) : perDay.toFixed(2)} a day · ${lead}-day delivery${knownLead ? ` from ${vendor}` : " (assumed)"} · ${steadiness}`;
+      // Plain words (third-grade reading level): how fast it's used, how long orders take, why the cushion.
+      const steadiness = weeksKnown < 4 ? "new item, so we keep a few extra" : sd > mean ? "you use more some weeks, so we keep a few extra" : "you use about the same each week";
+      const pace = perDay >= 1 ? `You use about ${Math.round(perDay)} a day` : `You use about 1 every ${Math.max(2, Math.round(1 / perDay))} days`;
+      const wait = knownLead ? `orders from ${vendor} take about ${lead} days` : `orders take about ${lead} days (our guess)`;
+      reason = `${pace} · ${wait} · ${steadiness}`;
     } else if (ageDays >= 30) {
       par = 0;
       max = 0;
-      reason = "Not used in 90 days · stops alerting";
+      reason = "Not used in 90 days, so no more reminders";
     } else {
       continue; // Too new to judge.
     }

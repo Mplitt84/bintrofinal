@@ -128,7 +128,7 @@ function Summary({ text }: { text: string }) {
 function PriceCheck({
   productId,
   unitCostCents,
-  retailPriceCents,
+  retailPriceCents: _retail,
   onChanged,
   compact = false,
 }: {
@@ -205,12 +205,6 @@ function PriceCheck({
               Cost <b className="num">{result.unitCostCents ? money(result.unitCostCents) : '—'}</b>
               {unitCostCents > 0 && result.unitCostCents > 0 && result.unitCostCents !== unitCostCents && (
                 <span className="text-ink-2 text-[12px]"> (was {money(unitCostCents)})</span>
-              )}
-            </span>
-            <span>
-              Retail <b className="num">{result.retailPriceCents ? money(result.retailPriceCents) : '—'}</b>
-              {retailPriceCents > 0 && result.retailPriceCents > 0 && result.retailPriceCents !== retailPriceCents && (
-                <span className="text-ink-2 text-[12px]"> (was {money(retailPriceCents)})</span>
               )}
             </span>
           </div>

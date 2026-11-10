@@ -295,10 +295,10 @@ export function DuplicatesSheet({ open, onClose, onDone }: { open: boolean; onCl
 /* ------------------------------------------------------------------ Smart par */
 
 const ORDER_CYCLES = [
-  { days: 3, label: 'Twice a week' },
-  { days: 7, label: 'Weekly' },
+  { days: 3, label: 'Two times a week' },
+  { days: 7, label: 'Every week' },
   { days: 14, label: 'Every 2 weeks' },
-  { days: 30, label: 'Monthly' },
+  { days: 30, label: 'Every month' },
 ]
 
 /**
@@ -339,7 +339,7 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
       await updateBusinessProfile({ data: { orderEveryDays: days } })
       load()
     } catch {
-      toast("Couldn't save how often you order. Try again.")
+      toast('Could not save that. Try again.')
     } finally {
       setCycleBusy(false)
     }
@@ -356,7 +356,7 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
     setUndoing(true)
     try {
       const r = await undoPars({ data: { batchId } })
-      toast(`Put ${r.restored || count} product${(r.restored || count) === 1 ? '' : 's'} back to their old levels`)
+      toast(`Put ${r.restored || count} product${(r.restored || count) === 1 ? '' : 's'} back the way they were`)
       await onDone()
       load()
     } catch {
@@ -372,9 +372,9 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
       const r = await setPars({ data: { items: chosen.map((i) => ({ productId: i.productId, par: i.suggested, max: i.suggestedMax })) } })
       await onDone()
       onClose()
-      toast(`Updated ${r.updated} product${r.updated === 1 ? '' : 's'}. Your counts didn't change.`, r.batchId ? () => undo(r.batchId, r.updated) : undefined)
+      toast(`Saved ${r.updated} product${r.updated === 1 ? '' : 's'}. Your counts stayed the same.`, r.batchId ? () => undo(r.batchId, r.updated) : undefined)
     } catch {
-      toast("Couldn't save the new levels. Nothing was changed, or use Undo in Smart par if some were.")
+      toast('Something went wrong. Try again. If some saved, tap Undo in Smart par.')
     } finally {
       setSaving(false)
     }
@@ -385,10 +385,10 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
       open={open}
       onClose={onClose}
       title="Smart par"
-      subtitle="Lean stock levels from what you really use and how long your vendors really take. Reorder before you run out, and order only up to what one order cycle needs."
+      subtitle="Bintro looks at how much you use and how long your orders take to come. Then it tells you when to order and how many to keep, so you don’t run out and don’t buy too much."
     >
       <div className="mb-3">
-        <p className="m-0 mb-1.5 text-sm font-semibold">How often do you place orders?</p>
+        <p className="m-0 mb-1.5 text-sm font-semibold">How often do you order?</p>
         <div className="flex flex-wrap gap-2" role="group" aria-label="How often you order">
           {ORDER_CYCLES.map((c) => (
             <button
@@ -403,14 +403,14 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
             </button>
           ))}
         </div>
-        <p className="m-0 mt-1.5 text-[12px] text-ink-2">Ordering more often keeps less on the shelf and less cash tied up.</p>
+        <p className="m-0 mt-1.5 text-[12px] text-ink-2">Ordering more often means less stuff on the shelf and more money in your pocket.</p>
       </div>
 
       {data?.lastChange && (
         <div className="flex items-center gap-3 rounded-xl bg-surface px-3 py-2.5 mb-3 text-sm">
           <span className="flex-1">
-            Last applied {new Date(data.lastChange.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} to{' '}
-            <b>{data.lastChange.products}</b> product{data.lastChange.products === 1 ? '' : 's'}. Only levels changed, never counts.
+            You changed <b>{data.lastChange.products}</b> product{data.lastChange.products === 1 ? '' : 's'} on{' '}
+            {new Date(data.lastChange.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}. Your counts stayed the same.
           </span>
           <button
             type="button"
@@ -424,21 +424,21 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
       )}
 
       {!data ? (
-        <p className="text-ink-2 text-sm">Working out your usage…</p>
+        <p className="text-ink-2 text-sm">Looking at what you use…</p>
       ) : (
         <div className="max-h-[50vh] overflow-auto">
           {data.overstock.length > 0 && (
             <div className="rounded-xl bg-warn-tint p-3 mb-3 text-sm">
               <p className="m-0 font-semibold text-warn">
-                About ${centsToDollars(tiedUp)} is sitting on the shelf beyond what you need
+                You have about ${centsToDollars(tiedUp)} of extra stock
               </p>
-              <p className="m-0 mt-0.5 text-[13px]">Hold off reordering these until they come down. Consider featuring them or using them first.</p>
+              <p className="m-0 mt-0.5 text-[13px]">Don’t order more of these yet. Use them or sell them first.</p>
               <ul className="list-none m-0 mt-2 p-0">
                 {data.overstock.slice(0, 6).map((o) => (
                   <li key={o.productId} className="flex justify-between gap-2 py-0.5">
                     <span className="truncate">{o.name}</span>
                     <span className="whitespace-nowrap text-[13px] num">
-                      {o.onHand} on hand · ~{o.daysOfStock} days · ${centsToDollars(o.extraCents)} extra
+                      {o.onHand} on the shelf · lasts about {o.daysOfStock} days · ${centsToDollars(o.extraCents)} extra
                     </span>
                   </li>
                 ))}
@@ -447,15 +447,18 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
           )}
 
           {items.length === 0 ? (
-            <p className="text-ink-2 text-sm">Your levels already match how fast you use things.</p>
+            <p className="text-ink-2 text-sm">Your numbers already look right. Nothing to change.</p>
           ) : (
             <>
               <p className="text-sm mt-0">
-                {items.length - unused} product{items.length - unused === 1 ? '' : 's'} to tune from real use. Untick any you want to keep as they are.
+                {items.length - unused} product{items.length - unused === 1 ? '' : 's'} can be better. Uncheck any you want to leave alone.
+                <span className="block mt-1 text-[13px] text-ink-2">
+                  <b>Order at</b> = order more when you get down to this many. <b>Fill to</b> = how many to have after the order comes.
+                </span>
                 {unused > 0 && (
                   <span className="block mt-1 text-[13px] text-ink-2">
-                    {unused} more had nothing scanned out in 90 days. They're left unticked: if you use them on clients but don't scan them out, keep their alerts on.
-                    Tick only the ones you've truly stopped using{quieted > 0 ? ` (${quieted} ticked)` : ''}.
+                    {unused} more were not scanned out in 90 days, so they are unchecked. If you still use them but forget to scan them, leave them unchecked.
+                    Check only the ones you don’t use anymore{quieted > 0 ? ` (${quieted} checked)` : ''}.
                   </span>
                 )}
               </p>
@@ -482,13 +485,13 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
                     </div>
                     <div className="text-right whitespace-nowrap text-[13px] num">
                       <div>
-                        Reorder at {i.current !== i.suggested && <span className="text-ink-2 line-through mr-1">{i.current}</span>}
+                        Order at {i.current !== i.suggested && <span className="text-ink-2 line-through mr-1">{i.current}</span>}
                         <b>{i.suggested}</b>
                       </div>
                       {i.suggestedMax > 0 && (
                         <div className="text-ink-2">
-                          Order up to <b className="text-ink">{i.suggestedMax}</b>
-                          {i.packSize > 1 && ` (cases of ${i.packSize})`}
+                          Fill to <b className="text-ink">{i.suggestedMax}</b>
+                          {i.packSize > 1 && ` (boxes of ${i.packSize})`}
                         </div>
                       )}
                     </div>
@@ -504,7 +507,7 @@ export function SmartParSheet({ open, onClose, onDone }: { open: boolean; onClos
           Cancel
         </button>
         <button type="button" className="btn btn-primary" disabled={chosen.length === 0 || saving || !data} onClick={apply}>
-          {saving ? 'Saving…' : `Apply ${chosen.length}`}
+          {saving ? 'Saving…' : `Save ${chosen.length}`}
         </button>
       </SheetActions>
     </Sheet>
