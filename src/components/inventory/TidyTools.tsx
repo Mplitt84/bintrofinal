@@ -5,7 +5,6 @@ import { Sheet, SheetActions } from '@/components/ui/Sheet'
 import { centsToDollars } from '@/components/ui/bits'
 import { useToast } from '@/components/ui/Toast'
 import { mergeProducts } from '@/server/inventory.functions'
-import { applyWebPrice, checkWebPrice } from '@/server/insights.functions'
 import {
   getCategoryGroups,
   getDuplicateGroups,
@@ -292,130 +291,6 @@ export function DuplicatesSheet({ open, onClose, onDone }: { open: boolean; onCl
 }
 
 /* ---------------------------------------------------------- Fill missing costs */
-
-/**
- * Runs the AI price check (your supplier → pro distributors → brand) for every
- * product with no cost, two at a time, and saves what it finds.
- */
-export function FillCostsSheet({
-  open,
-  onClose,
-  products,
-  onDone,
-}: {
-  open: boolean
-  onClose: () => void
-  products: Product[]
-  onDone: () => void | Promise<void>
-}) {
-  const missing = useMemo(() => products.filter((p) => !p.unitCostCents), [products])
-  const [state, setState] = useState<{ running: boolean; done: number; found: number; failed: number; message: string }>({
-    running: false,
-    done: 0,
-    found: 0,
-    failed: 0,
-    message: '',
-  })
-  const stop = useRef(false)
-  const [log, setLog] = useState<string[]>([])
-
-  useEffect(() => {
-    if (!open) stop.current = true
-  }, [open])
-
-  async function run() {
-    stop.current = false
-    setLog([])
-    setState({ running: true, done: 0, found: 0, failed: 0, message: '' })
-    const queue = [...missing]
-    let unreachable = 0
-    let found = 0
-    let failed = 0
-    let done = 0
-    const worker = async () => {
-      while (queue.length && !stop.current) {
-        const p = queue.shift()!
-        try {
-          const r = await checkWebPrice({
-            data: { productId: p.id, name: p.name, brand: p.brand, size: p.size, category: p.category, vendor: p.vendor, barcode: p.barcode },
-          })
-          if (r.ok && r.unitCostCents > 0) {
-            await applyWebPrice({
-              data: {
-                productId: p.id,
-                checkId: r.checkId || undefined,
-                unitCostCents: r.unitCostCents,
-                retailPriceCents: p.retailPriceCents ? undefined : r.retailPriceCents || undefined,
-              },
-            })
-            found++
-            setLog((l) => [`${p.name}: $${centsToDollars(r.unitCostCents)} (${r.sourceName})`, ...l].slice(0, 30))
-          } else {
-            failed++
-            if (!r.ok && /couldn't check|isn't available/i.test(r.message)) unreachable++
-          }
-        } catch {
-          failed++
-          unreachable++
-        }
-        done++
-        setState((s) => ({ ...s, done, found, failed }))
-        // The AI service isn't answering at all: stop instead of burning through the list.
-        if (unreachable >= 3 && found === 0) {
-          stop.current = true
-          setState((s) => ({
-            ...s,
-            message: "The AI price service isn't answering on this site right now. Nothing was changed.",
-          }))
-        }
-      }
-    }
-    await Promise.all([worker(), worker()])
-    setState((s) => ({ ...s, running: false }))
-    await onDone()
-  }
-
-  return (
-    <Sheet
-      open={open}
-      onClose={() => {
-        stop.current = true
-        onClose()
-      }}
-      title="Fill missing costs"
-      subtitle="Checks your supplier first, then professional distributors, then the brand's site. Resale sites like eBay are never used."
-    >
-      <p className="text-sm mt-0">
-        <b>{missing.length}</b> product{missing.length === 1 ? ' has' : 's have'} no cost. Each check takes 20–40 seconds; keep this open while it runs.
-      </p>
-      {(state.running || state.done > 0) && (
-        <p className="text-sm">
-          Checked {state.done} of {missing.length} · <b className="text-good">{state.found} filled</b>
-          {state.failed > 0 && ` · ${state.failed} not found`}
-        </p>
-      )}
-      {state.message && <p className="text-bad text-sm font-semibold">{state.message}</p>}
-      {log.length > 0 && (
-        <ul className="list-none m-0 p-0 text-[13px] text-ink-2 max-h-40 overflow-auto">
-          {log.map((l) => (
-            <li key={l}>{l}</li>
-          ))}
-        </ul>
-      )}
-      <SheetActions>
-        {state.running ? (
-          <button type="button" className="btn btn-tonal" onClick={() => (stop.current = true)}>
-            Stop
-          </button>
-        ) : (
-          <button type="button" className="btn btn-primary" disabled={missing.length === 0} onClick={run}>
-            {state.done > 0 ? 'Run again' : `Fill ${missing.length} cost${missing.length === 1 ? '' : 's'}`}
-          </button>
-        )}
-      </SheetActions>
-    </Sheet>
-  )
-}
 
 /* ------------------------------------------------------------------ Smart par */
 
