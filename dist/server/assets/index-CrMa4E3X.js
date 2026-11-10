@@ -1,7 +1,7 @@
 import { jsxs, jsx, Fragment } from "react/jsx-runtime";
 import { useRef, useId, useEffect, useState, useCallback, createContext, useContext, useMemo, forwardRef } from "react";
 import { X, RotateCcw, ChevronRight, ClipboardCheck, Undo2, ShoppingBag, Sparkles, ArrowDownToLine, BadgeCheck, Minus, Plus, Trash2, Check, Search, Copy, Mic, Lock, Square, GitMerge, Camera, Tags, ExternalLink, Wand2, ArrowUpFromLine, FileSpreadsheet, AlertTriangle, Users, UserPlus, ScanBarcode, ScanSearch, PackagePlus, EyeOff, History, Gauge, CircleMinus, Tag, CheckSquare, Pencil, ClipboardList, Mail, RefreshCw, Download, Printer, FileText, CheckCheck, PackageCheck, Truck, CalendarPlus, ChevronLeft, Landmark, Repeat, CalendarDays, CheckCircle2, Send, FileUp, TriangleAlert, Plug, ShieldCheck, LogOut, Lightbulb, Boxes, Leaf, CalendarClock, PiggyBank, ArrowRight, Palette, BluetoothConnected, Bluetooth, Crown, PlayCircle, CreditCard, XCircle, PauseCircle, Receipt, Flame, TrendingUp, TrendingDown, Globe, Settings, Store, Wallet, Activity } from "lucide-react";
-import { c as createSsrRpc, u as updateProduct, s as saveProductCategories, r as removeProductCategories, l as lookupBarcodeDetails, a as readSpokenProduct, b as readLabelPhoto, d as suggestProduct, e as readStockPhotoFn, f as createProduct, g as recordProductMovement, h as searchProducts, i as lookupBarcode, j as scanMovement, k as undoMovement, m as linkBarcodeToProduct, n as bulkUpdateProducts, o as updateBusinessProfile, p as mergeProducts, q as deleteProduct, t as setProductBarcode, v as bulkDeleteProducts, w as getMovementsSince, x as emailBelowPar, y as emailPurchaseOrder, z as toDay, A as parseDay, B as occurrences, C as eventKind, E as EVENT_KINDS, D as formatTime, R as REPEATS, F as estimatedTaxDates, G as googleCalendarUrl, H as outlookCalendarUrl, I as subscribeUrls, J as buildIcs, K as getBudgetOverview, L as listExpenses, M as getIntegrations, N as quickbooksPushMonth, O as editExpense, P as createExpense, Q as readReceiptPhoto, S as removeExpense, T as saveMonthBudget, U as getAccessList, V as signOut, W as removeAccess, X as addAccess, Y as resumePlan, Z as lockInFounding, _ as cancelSubscription, $ as getBillingHistory, a0 as saveAccountDetails, a1 as selectPlan, a2 as openPaymentPortal, a3 as pausePlan, a4 as addTeamMember, a5 as removeTeamMember, a6 as getSquareRetailCategories, a7 as disconnect, a8 as getIntegrationErrorLog, a9 as setSquareRetailCategories, aa as squareImportCatalog, ab as squareSyncSales, ac as squareSendCounts, ad as Route, ae as listProducts, af as getRecentMovements, ag as getAccount, ah as getAuthState } from "./router-C7CFtD62.js";
+import { c as createSsrRpc, u as updateProduct, s as saveProductCategories, r as removeProductCategories, l as lookupBarcodeDetails, a as readSpokenProduct, b as readLabelPhoto, d as suggestProduct, e as readStockPhotoFn, f as createProduct, g as recordProductMovement, h as searchProducts, i as lookupBarcode, j as scanMovement, k as undoMovement, m as linkBarcodeToProduct, n as bulkUpdateProducts, o as updateBusinessProfile, p as mergeProducts, q as deleteProduct, t as setProductBarcode, v as bulkDeleteProducts, w as getMovementsSince, x as emailBelowPar, y as emailPurchaseOrder, z as toDay, A as parseDay, B as occurrences, C as eventKind, E as EVENT_KINDS, D as formatTime, R as REPEATS, F as estimatedTaxDates, G as googleCalendarUrl, H as outlookCalendarUrl, I as subscribeUrls, J as buildIcs, K as getBudgetOverview, L as listExpenses, M as getIntegrations, N as quickbooksPushMonth, O as editExpense, P as createExpense, Q as readReceiptPhoto, S as removeExpense, T as saveMonthBudget, U as getAccessList, V as signOut, W as removeAccess, X as addAccess, Y as resumePlan, Z as lockInFounding, _ as cancelSubscription, $ as getBillingHistory, a0 as saveAccountDetails, a1 as selectPlan, a2 as openPaymentPortal, a3 as pausePlan, a4 as addTeamMember, a5 as removeTeamMember, a6 as getSquareRetailCategories, a7 as disconnect, a8 as getIntegrationErrorLog, a9 as setSquareRetailCategories, aa as squareImportCatalog, ab as squareSyncSales, ac as squareSendCounts, ad as Route, ae as listProducts, af as getRecentMovements, ag as getAccount, ah as getAuthState } from "./router-Bn1XDSIk.js";
 import { createPortal } from "react-dom";
 import { c as createServerFn } from "../server.js";
 import { z } from "zod";
@@ -2216,6 +2216,7 @@ function ProductForm({
   initialDetails,
   barcodeLocked = false,
   autoLookup = false,
+  autoOfferCopy = true,
   products,
   saveLabel,
   qtyLabel = "On hand",
@@ -2362,7 +2363,7 @@ function ProductForm({
     if (!name.trim()) setTimeout(() => nameRef.current?.querySelector("input")?.focus(), 250);
   }
   function offerCopy() {
-    if (!canCopy || offeredCopy.current) return;
+    if (!canCopy || !autoOfferCopy || offeredCopy.current) return;
     offeredCopy.current = true;
     try {
       if (localStorage.getItem(COPY_PROMPT_OFF_KEY) === "1") return;
@@ -4729,6 +4730,7 @@ function ScanView({
               initialBarcode: unknownBarcode,
               barcodeLocked: true,
               autoLookup: true,
+              autoOfferCopy: false,
               products,
               qtyLabel: "Already on shelf",
               saveLabel: mode === "in" ? "Save and scan in" : mode === "check" ? "Save and check" : "Save and scan out",
