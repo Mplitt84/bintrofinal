@@ -1,3 +1,4 @@
+import { lockScroll } from '@/lib/scroll-lock'
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowDownToLine, ArrowUpFromLine, Check, UserPlus, Users, X } from 'lucide-react'
@@ -66,12 +67,11 @@ export function StaffPicker({
       if (e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', onKey)
-    const overflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const unlock = lockScroll()
     return () => {
+      unlock()
       cancelAnimationFrame(frame)
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = overflow
       if (opener && document.contains(opener)) opener.focus({ preventScroll: true })
     }
     // Only re-run when the picker opens or closes.

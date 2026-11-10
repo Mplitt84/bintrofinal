@@ -8,7 +8,7 @@ import { M as MAX_ORDER_QTY } from "./inventory-defaults-BnRHgx1T.js";
 import { T as TAX_GROUPS, d as displayBusinessName } from "./business-types-DKNVcfJE.js";
 import { i as isCalendarToken, f as findCalendarEvents } from "./calendar.server-sixfPSg0.js";
 import { f as findBusinessProfile } from "./business.server-WsLDvovH.js";
-import { PROVIDERS, logIntegrationError, completeAuthorization, StateMismatchError, isConfigured, buildAuthorizeUrl } from "./integrations.server-Bt4S1L6u.js";
+import { PROVIDERS, logIntegrationError, completeAuthorization, StateMismatchError, isConfigured, buildAuthorizeUrl } from "./integrations.server-G7imLk5v.js";
 const Route$b = createRootRoute({
   head: () => ({
     meta: [
@@ -128,9 +128,18 @@ const CreateProductSchema = z.object({
 const createProduct = createServerFn({
   method: "POST"
 }).middleware([requireUser]).inputValidator(CreateProductSchema).handler(createSsrRpc("1687560e98c420e589f15a5fc2d2cc5d10a436e40b36b3eb6abb8c02197449b8"));
+const setProductBarcode = createServerFn({
+  method: "POST"
+}).middleware([requireUser]).inputValidator(z.object({
+  productId: z.number().int().positive(),
+  barcode: z.string().trim().min(1).max(64)
+})).handler(createSsrRpc("d2530cbd9cf4196a817df2ec129f5b7e9901bde43bd5becc2cd7159707f2f3a1"));
 const linkBarcodeToProduct = createServerFn({
   method: "POST"
-}).middleware([requireUser]).inputValidator((data) => data).handler(createSsrRpc("04be2dc3eebc2a4becde65112b9afb13adb203a17735c09bba4c8e90f72e118e"));
+}).middleware([requireUser]).inputValidator(z.object({
+  productId: z.number().int().positive(),
+  barcode: z.string().trim().min(1).max(64)
+})).handler(createSsrRpc("04be2dc3eebc2a4becde65112b9afb13adb203a17735c09bba4c8e90f72e118e"));
 const UpdateProductSchema = z.object({
   productId: z.number().int(),
   name: z.string().optional(),
@@ -406,7 +415,7 @@ const squareSyncSales = createServerFn({
 const quickbooksPushMonth = createServerFn({
   method: "POST"
 }).middleware([requireUser]).inputValidator(MonthWindowSchema).handler(createSsrRpc("7fef2669d1d6f3e9fdccdfbabede084b9e0823ba1f054366dd5ae9501cff565b"));
-const $$splitComponentImporter$3 = () => import("./index-Bh1An-ei.js");
+const $$splitComponentImporter$3 = () => import("./index-BM8ipaEs.js");
 const Route$a = createFileRoute("/")({
   loader: async () => {
     const auth = await getAuthState();
@@ -879,53 +888,54 @@ const router = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProper
   getRouter
 }, Symbol.toStringTag, { value: "Module" }));
 export {
-  saveAccountDetails as $,
-  occurrences as A,
-  eventKind as B,
-  formatTime as C,
-  estimatedTaxDates as D,
+  getBillingHistory as $,
+  parseDay as A,
+  occurrences as B,
+  eventKind as C,
+  formatTime as D,
   EVENT_KINDS as E,
-  googleCalendarUrl as F,
-  outlookCalendarUrl as G,
-  subscribeUrls as H,
-  buildIcs as I,
-  getBudgetOverview as J,
-  listExpenses as K,
-  getIntegrations as L,
-  quickbooksPushMonth as M,
-  editExpense as N,
-  createExpense as O,
-  readReceiptPhoto as P,
-  removeExpense as Q,
+  estimatedTaxDates as F,
+  googleCalendarUrl as G,
+  outlookCalendarUrl as H,
+  subscribeUrls as I,
+  buildIcs as J,
+  getBudgetOverview as K,
+  listExpenses as L,
+  getIntegrations as M,
+  quickbooksPushMonth as N,
+  editExpense as O,
+  createExpense as P,
+  readReceiptPhoto as Q,
   REPEATS as R,
-  saveMonthBudget as S,
-  getAccessList as T,
-  signOut as U,
-  removeAccess as V,
-  addAccess as W,
-  resumePlan as X,
-  lockInFounding as Y,
-  cancelSubscription as Z,
-  getBillingHistory as _,
+  removeExpense as S,
+  saveMonthBudget as T,
+  getAccessList as U,
+  signOut as V,
+  removeAccess as W,
+  addAccess as X,
+  resumePlan as Y,
+  lockInFounding as Z,
+  cancelSubscription as _,
   readSpokenProduct as a,
-  selectPlan as a0,
-  openPaymentPortal as a1,
-  pausePlan as a2,
-  addTeamMember as a3,
-  removeTeamMember as a4,
-  getSquareRetailCategories as a5,
-  disconnect as a6,
-  getIntegrationErrorLog as a7,
-  setSquareRetailCategories as a8,
-  squareImportCatalog as a9,
-  squareSyncSales as aa,
-  squareSendCounts as ab,
-  Route$a as ac,
-  listProducts as ad,
-  getRecentMovements as ae,
-  getAccount as af,
-  getAuthState as ag,
-  router as ah,
+  saveAccountDetails as a0,
+  selectPlan as a1,
+  openPaymentPortal as a2,
+  pausePlan as a3,
+  addTeamMember as a4,
+  removeTeamMember as a5,
+  getSquareRetailCategories as a6,
+  disconnect as a7,
+  getIntegrationErrorLog as a8,
+  setSquareRetailCategories as a9,
+  squareImportCatalog as aa,
+  squareSyncSales as ab,
+  squareSendCounts as ac,
+  Route$a as ad,
+  listProducts as ae,
+  getRecentMovements as af,
+  getAccount as ag,
+  getAuthState as ah,
+  router as ai,
   readLabelPhoto as b,
   createSsrRpc as c,
   suggestProduct as d,
@@ -944,11 +954,11 @@ export {
   deleteProduct as q,
   removeProductCategories as r,
   saveProductCategories as s,
-  bulkDeleteProducts as t,
+  setProductBarcode as t,
   updateProduct as u,
-  getMovementsSince as v,
-  emailBelowPar as w,
-  emailPurchaseOrder as x,
-  toDay as y,
-  parseDay as z
+  bulkDeleteProducts as v,
+  getMovementsSince as w,
+  emailBelowPar as x,
+  emailPurchaseOrder as y,
+  toDay as z
 };

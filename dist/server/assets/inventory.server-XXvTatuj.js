@@ -86,7 +86,7 @@ async function queueSquareChange(product, movement, type) {
 }
 async function flushSquareSoon() {
   try {
-    const { flushSquareOutbox } = await import("./integrations.server-Bt4S1L6u.js");
+    const { flushSquareOutbox } = await import("./integrations.server-G7imLk5v.js");
     await flushSquareOutbox();
   } catch (error) {
     console.error("Square inventory push failed; will retry", error);
@@ -259,12 +259,12 @@ export {
   findMovementsSince as b,
   computeStats as c,
   findProductByBarcode as d,
-  findBarcodeOwner as e,
+  findProductById as e,
   findAllProducts as f,
-  findProductById as g,
-  applyMovement as h,
+  findBarcodeOwner as g,
+  updateProductFields as h,
   insertProduct as i,
-  updateProductFields as j,
+  applyMovement as j,
   deleteProductById as k,
   findBelowParProducts as l,
   mergeProductsInto as m,

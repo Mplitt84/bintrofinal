@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { CheckSquare, CircleMinus, ClipboardCheck, Copy, Gauge, Pencil, Search, Tag, Trash2, X } from 'lucide-react'
 import type { Product, Stats } from './types'
-import { bulkDeleteProducts, createProduct, deleteProduct, linkBarcodeToProduct, mergeProducts, updateProduct } from '@/server/inventory.functions'
+import { bulkDeleteProducts, createProduct, deleteProduct, mergeProducts, setProductBarcode, updateProduct } from '@/server/inventory.functions'
 import { BulkEditSheet } from './BulkEditSheet'
 import { Sheet } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
@@ -325,7 +325,7 @@ export function InventoryView({
               let saved = (await updateProduct({ data: { productId: editing.id, ...values, staffName } })) as Product
               // The barcode has its own update path so a relink never touches stock.
               if (barcode !== editing.barcode) {
-                saved = (await linkBarcodeToProduct({ data: { productId: editing.id, barcode } })) as Product
+                saved = (await setProductBarcode({ data: { productId: editing.id, barcode } })) as Product
               }
               if (saved) onProduct?.(saved)
               setEditing(null)

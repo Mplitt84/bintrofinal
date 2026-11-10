@@ -133,6 +133,8 @@ export function ScanView({
   const [unknownTab, setUnknownTab] = useState<'new' | 'link'>('new')
   const [linkQuery, setLinkQuery] = useState('')
   const [linkResults, setLinkResults] = useState<Product[]>([])
+  const [linkError, setLinkError] = useState(false)
+  const [linking, setLinking] = useState(false)
   const orbTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   // A partial / mis-read scan, kept so staff can still use it if it really is the full code.
   const [partialCode, setPartialCode] = useState<string | null>(null)
@@ -149,8 +151,13 @@ export function ScanView({
       return
     }
     const handle = setTimeout(async () => {
-      const results = await searchProducts({ data: { query: linkQuery } })
-      setLinkResults(results as Product[])
+      try {
+        const results = await searchProducts({ data: { query: linkQuery } })
+        setLinkResults(results as Product[])
+        setLinkError(false)
+      } catch {
+        setLinkError(true)
+      }
     }, 220)
     return () => clearTimeout(handle)
   }, [linkQuery])
@@ -397,11 +404,21 @@ export function ScanView({
   }
 
   async function handleLinkExisting(productId: number) {
-    if (!unknownBarcode) return
-    await linkBarcodeToProduct({ data: { productId, barcode: unknownBarcode } })
-    const code = unknownBarcode
-    setUnknownBarcode(null)
-    await submitScan(code)
+    if (!unknownBarcode || linking) return
+    setLinking(true)
+    try {
+      const r = await linkBarcodeToProduct({ data: { productId, barcode: unknownBarcode } })
+      if (!r.ok) return toast(r.message)
+      if (r.product) onProduct?.(r.product as Product)
+      const code = unknownBarcode
+      setUnknownBarcode(null)
+      toast(`Linked. ${code} now scans as ${r.product?.name ?? 'that product'}.`)
+      await submitScan(code)
+    } catch {
+      toast('Couldn’t link that barcode. Check your connection and try again.')
+    } finally {
+      setLinking(false)
+    }
   }
 
   async function undo(m: MovementRow) {
@@ -710,6 +727,8 @@ export function ScanView({
               {linkResults.map((p) => (
                 <li key={p.id}>
                   <button
+                    type="button"
+                    disabled={linking}
                     onClick={() => handleLinkExisting(p.id)}
                     className="w-full flex items-center gap-3 py-2.5 px-1 border-0 border-b border-line bg-transparent text-left cursor-pointer hover:bg-surface rounded-lg"
                   >
@@ -723,12 +742,15 @@ export function ScanView({
                   </button>
                 </li>
               ))}
-              {linkQuery.trim() && linkResults.length === 0 && (
-                <li className="text-ink-2 text-sm py-3">No products match that search.</li>
+              {linkError ? (
+                <li className="text-bad text-sm py-3">Search didn’t load. Check your connection and keep typing.</li>
+              ) : (
+                linkQuery.trim() &&
+                linkResults.length === 0 && <li className="text-ink-2 text-sm py-3">No products match that search.</li>
               )}
             </ul>
             <p className="text-ink-2 text-[13px] mt-3 mb-0">
-              Linking replaces that product's barcode with this one, then logs the scan.
+              {linking ? 'Linking…' : 'Linking adds this code as another SKU on that product (its own barcode keeps working), then logs the scan.'}
             </p>
           </>
         )}
