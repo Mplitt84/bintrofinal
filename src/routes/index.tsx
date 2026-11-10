@@ -27,6 +27,7 @@ import { listProducts, getRecentMovements } from '@/server/inventory.functions'
 import { getInsights } from '@/server/insights.functions'
 import type { Insights } from '@/lib/insights'
 import { SignInScreen } from '@/components/auth/SignInScreen'
+import { AskBintro } from '@/components/assistant/AskBintro'
 import { getAuthState } from '@/server/auth.functions'
 import type { AuthState } from '@/lib/auth'
 import { addTeamMember, getBusinessProfile, listProductCategories, listTeamMembers } from '@/server/business.functions'
@@ -560,6 +561,8 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
             </PlanGate>
           )}
         </main>
+
+        <AskBintro />
 
         <nav
           className="min-[1060px]:hidden fixed bottom-0 inset-x-0 z-30 bg-page/95 backdrop-blur border-t border-line flex pb-[env(safe-area-inset-bottom)] print:hidden shadow-[0_-6px_20px_-12px_color-mix(in_srgb,var(--color-royal)_25%,transparent)]"
