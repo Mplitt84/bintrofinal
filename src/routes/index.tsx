@@ -22,7 +22,8 @@ import { ScanView } from "@/components/inventory/ScanView";
 import { InventoryView } from "@/components/inventory/InventoryView";
 import { ActivityView } from "@/components/inventory/ActivityView";
 import { ProfitView } from "@/components/insights/ProfitView";
-import { ColorView } from "@/components/color/ColorView";
+import { FormulasView } from "@/components/formulas/FormulasView";
+import { formulaTabLabel } from "@/lib/formulas";
 import {
   RestockView,
   type RestockMode,
@@ -93,7 +94,7 @@ type Tab =
   | "calendar"
   | "budget"
   | "activity"
-  | "color"
+  | "formulas"
   | "settings";
 
 const TABS: {
@@ -105,7 +106,7 @@ const TABS: {
   { id: "scan", label: "Scan", Icon: ScanBarcode },
   { id: "products", label: "Products", Icon: Boxes },
   { id: "restock", label: "Restock", Icon: Truck },
-  { id: "color", label: "Color", Icon: Palette },
+  { id: "formulas", label: "Formulas", Icon: Palette },
   {
     id: "calendar",
     label: "Calendar",
@@ -125,6 +126,7 @@ function tabFromHash(hash: string): { tab: Tab; restock?: RestockMode } | null {
   if (id === "below-par") return { tab: "restock", restock: "below-par" };
   if (id === "reorder") return { tab: "restock", restock: "order" };
   if (id === "deliveries") return { tab: "restock", restock: "deliveries" };
+  if (id === "color") return { tab: "formulas" };
   return TAB_IDS.has(id) ? { tab: id as Tab } : null;
 }
 
@@ -502,13 +504,15 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
   };
 
   const name = staffName.trim();
-  // The Color tab is for color work (hair, tattoo, makeup, nails); bars don't get it.
+  // The Formulas tab (client records + color theory) is for color work; bars don't get it.
   const showColor = !["bar", "retail", "bookstore"].includes(
     profile.businessType,
   );
   const tabButtons = (layout: "bar" | "side") =>
-    TABS.filter((t) => t.id !== "color" || showColor).map(
-      ({ id, label, Icon, feature }) => {
+    TABS.filter((t) => t.id !== "formulas" || showColor).map(
+      ({ id, label: tabLabel, Icon, feature }) => {
+        const label =
+          id === "formulas" ? formulaTabLabel(profile.businessType) : tabLabel;
         const active = tab === id;
         const locked = feature
           ? !planHas(account.effectivePlan, feature)
@@ -791,7 +795,13 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                 )}
               </>
             )}
-            {tab === "color" && showColor && <ColorView />}
+            {tab === "formulas" && showColor && (
+              <FormulasView
+                staffName={staffName}
+                products={products}
+                onChanged={refresh}
+              />
+            )}
             {tab === "budget" && (
               <PlanGate feature="budget">
                 <BudgetView

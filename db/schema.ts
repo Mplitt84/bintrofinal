@@ -64,6 +64,8 @@ export const businessProfile = pgTable("business_profile", {
   calendarToken: text("calendar_token").notNull().default(""),
   /** Secret part of the "email orders to Bintro" address (orders-<token>@<inbound domain>). */
   inboundToken: text("inbound_token").notNull().default(""),
+  /** Tattoo studios: the usual aftercare instructions, filled into each new ink log entry. */
+  aftercareTemplate: text("aftercare_template").notNull().default(""),
   /** Email the weekly best-sellers report (Mondays). */
   weeklyReportEmail: boolean("weekly_report_email").notNull().default(true),
   /** Email the monthly slow-movers + price-check report (1st of the month). */
@@ -413,5 +415,47 @@ export const inboundEmails = pgTable("inbound_emails", {
   status: text().notNull().default("error"),
   message: text().notNull().default(""),
   orderId: integer("order_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+/**
+ * Formulas tab: one row per client visit. kind 'hair' = color formula (products/shades with amounts,
+ * developer, ratio, processing time, leftover); kind 'tattoo' = colors used, placement and aftercare.
+ * Only the client's name is stored about the client (no contact details).
+ */
+export const clientFormulas = pgTable("client_formulas", {
+  id: serial().primaryKey(),
+  kind: text().notNull().default("hair"),
+  clientName: text("client_name").notNull(),
+  /** YYYY-MM-DD of the visit. */
+  serviceDate: text("service_date").notNull(),
+  /** Hair: root touch-up, toner… Tattoo: piece and placement. */
+  service: text().notNull().default(""),
+  /** Hair: shade/product + amount. Tattoo: ink color/brand (amount optional). */
+  lines: jsonb().$type<{ item: string; amount: string }[]>().notNull().default([]),
+  developer: text().notNull().default(""),
+  ratio: text().notNull().default(""),
+  processingMinutes: integer("processing_minutes").notNull().default(0),
+  leftover: text().notNull().default(""),
+  /** Retail prescription: take-home products recommended (from inventory), and whether they were sold then. */
+  retail: jsonb().$type<{ productId: number | null; name: string; qty: number; sold: boolean; logged?: boolean }[]>().notNull().default([]),
+  aftercare: text().notNull().default(""),
+  /** Tattoo: touch-up / healing check date, YYYY-MM-DD or "". */
+  followUpOn: text("follow_up_on").notNull().default(""),
+  notes: text().notNull().default(""),
+  staffName: text("staff_name").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+/** Before / after photos for a client visit (Formulas tab). Base64 JPEG ~1200px, kept apart so lists stay light. */
+export const formulaPhotos = pgTable("formula_photos", {
+  id: serial().primaryKey(),
+  formulaId: integer("formula_id")
+    .notNull()
+    .references(() => clientFormulas.id, { onDelete: "cascade" }),
+  label: text().notNull().default("after"),
+  mediaType: text("media_type").notNull().default("image/jpeg"),
+  data: text().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
