@@ -8,7 +8,7 @@
  */
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { movements, products } from "../../db/schema.js";
+import { movements, products, profitExclusions } from "../../db/schema.js";
 import {
   findBusinessProfile,
   findProductCategories,
@@ -23,6 +23,7 @@ import {
   type MoneyLoser,
   type MoneyMaker,
   type ProductRef,
+  type ProfitListKey,
   type ProfitPeriod,
   type ProfitReport,
   type ServiceCost,
@@ -44,7 +45,7 @@ export async function computeProfit(
   const since = new Date(now.getTime() - days * DAY_MS);
   const deadSince = new Date(now.getTime() - DEAD_STOCK_DAYS * DAY_MS);
 
-  const [all, categories, profile, outs, lastOut, counts] = await Promise.all([
+  const [all, categories, profile, outs, lastOut, counts, exclusions] = await Promise.all([
     db.select().from(products),
     findProductCategories(),
     findBusinessProfile(),
@@ -78,7 +79,12 @@ export async function computeProfit(
           lt(movements.delta, 0),
         ),
       ),
+    db.select().from(profitExclusions),
   ]);
+
+  // Rows removed as incorrect: left off the lists and out of the totals.
+  const excluded = new Set(exclusions.map((e) => `${e.productId}:${e.listKey}`));
+  const ex = (id: number, key: ProfitListKey) => excluded.has(`${id}:${key}`);
 
   const unitsById = new Map(outs.map((o) => [o.productId, o.units]));
   const lastOutById = new Map(
@@ -120,7 +126,7 @@ export async function computeProfit(
     if (kind === "sold" && units > 0) {
       if (!cost) soldNoCost.push(ref(p));
       if (!retail) soldNoRetail.push(ref(p));
-      if (cost && retail) {
+      if (cost && retail && !ex(p.id, retail <= cost ? "loss" : "maker")) {
         const revenue = units * retail;
         const profit = units * (retail - cost);
         const marginPct = Math.round(((retail - cost) / retail) * 100);
@@ -144,7 +150,7 @@ export async function computeProfit(
             why: `Sells for ${money(retail)} but costs you ${money(cost)}. You lost money on all ${units} sold.`,
             fix: "Raise the price or stop carrying it.",
           });
-        } else if (marginPct < THIN_MARGIN_PCT) {
+        } else if (marginPct < THIN_MARGIN_PCT && !ex(p.id, "thin")) {
           const target = Math.ceil(cost / (1 - THIN_MARGIN_PCT / 100));
           losers.push({
             ...ref(p),
@@ -158,7 +164,7 @@ export async function computeProfit(
       }
     }
 
-    if (kind === "used" && units > 0 && cost) {
+    if (kind === "used" && units > 0 && cost && !ex(p.id, "service")) {
       totals.usedCostCents += units * cost;
       serviceCosts.push({ ...ref(p), units, costCents: units * cost });
     }
@@ -168,6 +174,7 @@ export async function computeProfit(
 
     const expiryDays = daysToExpiry(p.expiresOn, now);
     if (expiryDays !== null && expiryDays < 0) {
+      if (ex(p.id, "expired")) continue;
       totals.expiredCents += value;
       losers.push({
         ...ref(p),
@@ -178,7 +185,7 @@ export async function computeProfit(
       });
       continue;
     }
-    if (expiryDays !== null && expiryDays <= 60 && onHand > 0) {
+    if (expiryDays !== null && expiryDays <= 60 && onHand > 0 && !ex(p.id, "expiring")) {
       losers.push({
         ...ref(p),
         kind: "expiring",
@@ -194,6 +201,7 @@ export async function computeProfit(
     const last = lastOutById.get(p.id);
     const oldEnough = p.createdAt < deadSince;
     if (oldEnough && (!last || last < deadSince)) {
+      if (ex(p.id, "dead")) continue;
       totals.deadStockCents += value;
       losers.push({
         ...ref(p),
@@ -212,7 +220,7 @@ export async function computeProfit(
 
     // Only when the business has set a Fill to; the default par alone is too low a bar.
     const fillTo = p.maxQty > 0 ? orderUpTo(p) : 0;
-    if (fillTo > 0 && onHand > fillTo * OVERSTOCK_RATIO) {
+    if (fillTo > 0 && onHand > fillTo * OVERSTOCK_RATIO && !ex(p.id, "overstock")) {
       const extra = onHand - fillTo;
       totals.overstockCents += extra * cost;
       losers.push({
@@ -235,7 +243,7 @@ export async function computeProfit(
   for (const c of counts) {
     const reason = countReason(c.note);
     const p = byId.get(c.productId);
-    if (!reason || !p) continue;
+    if (!reason || !p || ex(p.id, "shrink")) continue;
     const units = -c.delta;
     const cents = units * p.unitCostCents;
     const r = shrink.get(reason) ?? { units: 0, costCents: 0 };
@@ -281,6 +289,9 @@ export async function computeProfit(
     shrinkByReason: [...shrink]
       .map(([reason, v]) => ({ reason, ...v }))
       .sort((a, b) => b.costCents - a.costCents),
+    removed: exclusions
+      .filter((e) => byId.has(e.productId))
+      .map((e) => ({ ...ref(byId.get(e.productId)!), key: e.listKey as ProfitListKey })),
     gaps: {
       soldNoCost,
       soldNoRetail,
@@ -288,4 +299,19 @@ export async function computeProfit(
       productsTotal: all.length,
     },
   };
+}
+
+/** Remove a row from the Profit page as incorrect (kept until it is put back). */
+export async function excludeProfitRow(productId: number, key: ProfitListKey, staffName: string) {
+  await db
+    .insert(profitExclusions)
+    .values({ productId, listKey: key, staffName })
+    .onConflictDoNothing();
+}
+
+/** Put a removed row back on the Profit page. */
+export async function restoreProfitRow(productId: number, key: ProfitListKey) {
+  await db
+    .delete(profitExclusions)
+    .where(and(eq(profitExclusions.productId, productId), eq(profitExclusions.listKey, key)));
 }

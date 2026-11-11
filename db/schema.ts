@@ -461,3 +461,16 @@ export const formulaPhotos = pgTable("formula_photos", {
   data: text().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+/** Profit page rows the business removed because the information was wrong (Activity → Profit). `listKey`: maker | service | a LoserKind. */
+export const profitExclusions = pgTable(
+  "profit_exclusions",
+  {
+    id: serial().primaryKey(),
+    productId: integer("product_id").notNull(),
+    listKey: text("list_key").notNull(),
+    staffName: text("staff_name").notNull().default(""),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [unique().on(t.productId, t.listKey)],
+);
