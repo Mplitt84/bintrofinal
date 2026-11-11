@@ -88,8 +88,8 @@ const SEEDS: TypeSeed[] = [
   },
   {
     id: 'spa',
-    label: 'Spa & massage',
-    blurb: 'Massage, facials, body',
+    label: 'Spa, med spa & massage',
+    blurb: 'Massage, facials, body, aesthetics',
     itemNoun: 'spa and massage product',
     sizes: ['8 oz', '16 oz', '1 gal', '15 ml', '100 ml', '1 L'],
     vendorExample: 'Massage Warehouse',
