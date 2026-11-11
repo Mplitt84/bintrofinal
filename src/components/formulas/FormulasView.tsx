@@ -23,6 +23,7 @@ import {
   HAIR_SERVICES,
   formulaKindFor,
   formulaTabLabel,
+  showsColorTheoryTab,
   formulasCsv,
   groupByClient,
   linesText,
@@ -97,6 +98,8 @@ export function FormulasView({
   const { profile } = useBusiness();
   const kind = formulaKindFor(profile.businessType);
   const [section, setSection] = useState<"records" | "theory">("records");
+  // Salons and tattoo shops see Color theory here; everyone else finds it in Settings.
+  const theory = showsColorTheoryTab(profile.businessType);
   return (
     <>
       <PageHead
@@ -107,34 +110,36 @@ export function FormulasView({
             : "Every client’s color formula and take-home products, saved so nothing is ever lost."
         }
       />
-      <div
-        className="inline-flex bg-surface rounded-full p-1 mb-4"
-        role="tablist"
-        aria-label="Sections"
-      >
-        {(
-          [
-            ["records", "Client records"],
-            ["theory", "Color theory"],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={section === id}
-            onClick={() => setSection(id)}
-            className={`px-4 py-2 rounded-full border-0 cursor-pointer text-sm font-semibold ${
-              section === id
-                ? "bg-white text-ink shadow-sm"
-                : "bg-transparent text-ink-2"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      {section === "records" ? (
+      {theory && (
+        <div
+          className="inline-flex bg-surface rounded-full p-1 mb-4"
+          role="tablist"
+          aria-label="Sections"
+        >
+          {(
+            [
+              ["records", "Client records"],
+              ["theory", "Color theory"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={section === id}
+              onClick={() => setSection(id)}
+              className={`px-4 py-2 rounded-full border-0 cursor-pointer text-sm font-semibold ${
+                section === id
+                  ? "bg-white text-ink shadow-sm"
+                  : "bg-transparent text-ink-2"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {section === "records" || !theory ? (
         <ClientRecords
           kind={kind}
           staffName={staffName}

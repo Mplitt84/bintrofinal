@@ -75,3 +75,8 @@ export function formulasCsv(rows: ClientFormula[]) {
   )
   return [head.map(csvCell).join(','), ...body].join('\n')
 }
+
+/** Color theory sits in the Formulas tab only for salons and tattoo shops; everyone else finds it in Settings. */
+export function showsColorTheoryTab(businessType: string) {
+  return businessType === 'salon' || businessType === 'tattoo'
+}

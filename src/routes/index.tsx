@@ -261,6 +261,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
       setTab("settings");
       setSettingsSection(
         section === "integrations" ||
+          section === "color" ||
           section === "categories" ||
           section === "team" ||
           section === "import" ||

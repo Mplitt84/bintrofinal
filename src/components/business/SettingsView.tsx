@@ -1,26 +1,54 @@
-import { useEffect, useState } from 'react'
-import { ArrowUpFromLine, Check, ExternalLink, Mail, Plug, RefreshCw, Trash2, UserPlus, X } from 'lucide-react'
-import type { IntegrationStatus, Product, TeamMember } from '@/components/inventory/types'
-import { ImportView } from '@/components/business/ImportView'
-import { SetupCheck } from '@/components/business/SetupCheck'
-import { ConnectionDirectory } from '@/components/business/ConnectionDirectory'
-import { EmailOrdersCard } from '@/components/business/EmailOrdersCard'
-import { LEGAL_LINKS } from '@/components/legal/LegalPage'
-import { LEGAL } from '@/lib/legal'
-import type { AuthState } from '@/lib/auth'
-import { AccessPanel } from '@/components/auth/AccessPanel'
-import { AppearanceSettings } from '@/components/business/AppearanceSettings'
-import { ScannerSettings } from '@/components/business/ScannerSettings'
-import { AccountView, type AccountPanel } from '@/components/business/AccountView'
-import { PlanGate, UpgradeCard } from '@/components/business/PlanGate'
-import { businessTypeById, selectableBusinessTypes, type BusinessProfile } from '@/lib/business-types'
-import { CategoryManager, CategorySetupSheet } from '@/components/business/CategorySetupSheet'
-import { CategoryCleanup, CategoryList } from '@/components/inventory/TidyTools'
-import { useBusiness } from '@/components/business/BusinessContext'
-import { deriveInitials } from '@/lib/inventory-defaults'
-import { Field } from '@/components/ui/Sheet'
-import { PageHead, centsToDollars, timeAgo } from '@/components/ui/bits'
-import { useToast } from '@/components/ui/Toast'
+import { useEffect, useState } from "react";
+import {
+  ArrowUpFromLine,
+  Check,
+  ExternalLink,
+  Mail,
+  Plug,
+  RefreshCw,
+  Trash2,
+  UserPlus,
+  X,
+} from "lucide-react";
+import type {
+  IntegrationStatus,
+  Product,
+  TeamMember,
+} from "@/components/inventory/types";
+import { ImportView } from "@/components/business/ImportView";
+import { SetupCheck } from "@/components/business/SetupCheck";
+import { ConnectionDirectory } from "@/components/business/ConnectionDirectory";
+import { EmailOrdersCard } from "@/components/business/EmailOrdersCard";
+import { ColorTheory } from "@/components/color/ColorTheory";
+import { LEGAL_LINKS } from "@/components/legal/LegalPage";
+import { LEGAL } from "@/lib/legal";
+import type { AuthState } from "@/lib/auth";
+import { AccessPanel } from "@/components/auth/AccessPanel";
+import { AppearanceSettings } from "@/components/business/AppearanceSettings";
+import { ScannerSettings } from "@/components/business/ScannerSettings";
+import {
+  AccountView,
+  type AccountPanel,
+} from "@/components/business/AccountView";
+import { PlanGate, UpgradeCard } from "@/components/business/PlanGate";
+import {
+  businessTypeById,
+  selectableBusinessTypes,
+  type BusinessProfile,
+} from "@/lib/business-types";
+import {
+  CategoryManager,
+  CategorySetupSheet,
+} from "@/components/business/CategorySetupSheet";
+import {
+  CategoryCleanup,
+  CategoryList,
+} from "@/components/inventory/TidyTools";
+import { useBusiness } from "@/components/business/BusinessContext";
+import { deriveInitials } from "@/lib/inventory-defaults";
+import { Field } from "@/components/ui/Sheet";
+import { PageHead, centsToDollars, timeAgo } from "@/components/ui/bits";
+import { useToast } from "@/components/ui/Toast";
 import {
   addTeamMember,
   disconnect,
@@ -33,31 +61,33 @@ import {
   setSquareRetailCategories,
   squareSyncSales,
   updateBusinessProfile,
-} from '@/server/business.functions'
-import { sendInsightReportNow } from '@/server/insights.functions'
+} from "@/server/business.functions";
+import { sendInsightReportNow } from "@/server/insights.functions";
 
 export type SettingsSection =
-  | 'profile'
-  | 'appearance'
-  | 'account'
-  | 'categories'
-  | 'team'
-  | 'scanner'
-  | 'import'
-  | 'integrations'
-  | 'setup'
+  | "profile"
+  | "appearance"
+  | "account"
+  | "categories"
+  | "team"
+  | "scanner"
+  | "import"
+  | "integrations"
+  | "setup"
+  | "color";
 
 const SECTIONS: { id: SettingsSection; label: string }[] = [
-  { id: 'profile', label: 'Business profile' },
-  { id: 'appearance', label: 'Look & feel' },
-  { id: 'account', label: 'Account & billing' },
-  { id: 'categories', label: 'Categories' },
-  { id: 'team', label: 'Team' },
-  { id: 'scanner', label: 'Scanner & Bluetooth' },
-  { id: 'import', label: 'Import inventory' },
-  { id: 'integrations', label: 'Connections' },
-  { id: 'setup', label: 'Setup check' },
-]
+  { id: "profile", label: "Business profile" },
+  { id: "appearance", label: "Look & feel" },
+  { id: "account", label: "Account & billing" },
+  { id: "categories", label: "Categories" },
+  { id: "team", label: "Team" },
+  { id: "scanner", label: "Scanner & Bluetooth" },
+  { id: "import", label: "Import inventory" },
+  { id: "integrations", label: "Connections" },
+  { id: "setup", label: "Setup check" },
+  { id: "color", label: "Color theory" },
+];
 
 /** Settings tab: who the business is, who works there, and which outside systems are connected. */
 export function SettingsView({
@@ -77,187 +107,269 @@ export function SettingsView({
   onChanged,
   auth,
 }: {
-  section: SettingsSection
-  onSection: (s: SettingsSection) => void
-  accountPanel: AccountPanel
-  onAccountPanel: (p: AccountPanel) => void
-  profile: BusinessProfile
-  onProfile: (p: BusinessProfile) => void
-  team: TeamMember[]
-  onTeam: (t: TeamMember[]) => void
-  products: Product[]
-  staffName: string
-  onStaffName: (name: string) => void
-  notice: { tone: 'good' | 'bad'; text: string } | null
-  onDismissNotice: () => void
-  onChanged: () => void | Promise<void>
-  auth: AuthState
+  section: SettingsSection;
+  onSection: (s: SettingsSection) => void;
+  accountPanel: AccountPanel;
+  onAccountPanel: (p: AccountPanel) => void;
+  profile: BusinessProfile;
+  onProfile: (p: BusinessProfile) => void;
+  team: TeamMember[];
+  onTeam: (t: TeamMember[]) => void;
+  products: Product[];
+  staffName: string;
+  onStaffName: (name: string) => void;
+  notice: { tone: "good" | "bad"; text: string } | null;
+  onDismissNotice: () => void;
+  onChanged: () => void | Promise<void>;
+  auth: AuthState;
 }) {
   return (
     <div className="max-w-[680px]">
-      <PageHead title="Settings" lead="Make Bintro fit your business. Changes are shared with every device." />
+      <PageHead
+        title="Settings"
+        lead="Make Bintro fit your business. Changes are shared with every device."
+      />
 
       {notice && (
         <div
           role="status"
           className={`flex items-start gap-3 rounded-2xl px-4 py-3 mb-4 text-sm ${
-            notice.tone === 'good' ? 'bg-good-tint text-good' : 'bg-bad-tint text-bad'
+            notice.tone === "good"
+              ? "bg-good-tint text-good"
+              : "bg-bad-tint text-bad"
           }`}
         >
-          {notice.tone === 'good' ? <Check size={18} className="shrink-0 mt-0.5" /> : <X size={18} className="shrink-0 mt-0.5" />}
+          {notice.tone === "good" ? (
+            <Check size={18} className="shrink-0 mt-0.5" />
+          ) : (
+            <X size={18} className="shrink-0 mt-0.5" />
+          )}
           <span className="flex-1 font-semibold">{notice.text}</span>
-          <button className="btn btn-text btn-sm !p-0" onClick={onDismissNotice} aria-label="Dismiss">
+          <button
+            className="btn btn-text btn-sm !p-0"
+            onClick={onDismissNotice}
+            aria-label="Dismiss"
+          >
             <X size={16} />
           </button>
         </div>
       )}
 
-      <div className="flex gap-2 overflow-x-auto pb-1 mb-5" role="group" aria-label="Settings section">
+      <div
+        className="flex gap-2 overflow-x-auto pb-1 mb-5"
+        role="group"
+        aria-label="Settings section"
+      >
         {SECTIONS.map((s) => (
-          <button key={s.id} className="chip" aria-pressed={section === s.id} onClick={() => onSection(s.id)}>
+          <button
+            key={s.id}
+            className="chip"
+            aria-pressed={section === s.id}
+            onClick={() => onSection(s.id)}
+          >
             {s.label}
           </button>
         ))}
       </div>
 
-      {section === 'profile' && (
+      {section === "profile" && (
         <>
-          <ProfileForm profile={profile} onProfile={onProfile} productCategories={products.map((p) => p.category)} />
+          <ProfileForm
+            profile={profile}
+            onProfile={onProfile}
+            productCategories={products.map((p) => p.category)}
+          />
           <ReportSettings profile={profile} onProfile={onProfile} />
         </>
       )}
-      {section === 'appearance' && <AppearanceSettings profile={profile} onProfile={onProfile} />}
-      {section === 'scanner' && <ScannerSettings />}
-      {section === 'setup' && <SetupCheck />}
-      {section === 'account' && <AccountView panel={accountPanel} onPanel={onAccountPanel} />}
-      {section === 'categories' && (
+      {section === "appearance" && (
+        <AppearanceSettings profile={profile} onProfile={onProfile} />
+      )}
+      {section === "scanner" && <ScannerSettings />}
+      {section === "setup" && <SetupCheck />}
+      {section === "color" && (
+        <ColorTheory businessType={profile.businessType} />
+      )}
+      {section === "account" && (
+        <AccountView panel={accountPanel} onPanel={onAccountPanel} />
+      )}
+      {section === "categories" && (
         <>
           <CategoryCleanup onChanged={onChanged} />
           <CategoryList onChanged={onChanged} />
-          <CategoryManager productCategories={products.map((p) => p.category)} />
+          <CategoryManager
+            productCategories={products.map((p) => p.category)}
+          />
         </>
       )}
-      {section === 'team' && (
-        <TeamManager team={team} onTeam={onTeam} staffName={staffName} onStaffName={onStaffName} />
+      {section === "team" && (
+        <TeamManager
+          team={team}
+          onTeam={onTeam}
+          staffName={staffName}
+          onStaffName={onStaffName}
+        />
       )}
-      {section === 'import' && (
+      {section === "import" && (
         <PlanGate feature="import">
-          <ImportView products={products} staffName={staffName} onChanged={onChanged} />
+          <ImportView
+            products={products}
+            staffName={staffName}
+            onChanged={onChanged}
+          />
         </PlanGate>
       )}
-      {section === 'integrations' && (
+      {section === "integrations" && (
         <>
           <Integrations onChanged={onChanged} />
-          <EmailOrdersCard isOwner={auth.user?.role !== 'staff'} />
+          <EmailOrdersCard isOwner={auth.user?.role !== "staff"} />
           <ConnectionDirectory />
         </>
       )}
       <AccessPanel auth={auth} />
       <HelpSupport />
-      <nav className="mt-6 pt-4 border-t border-line flex flex-wrap gap-x-4 gap-y-1 text-[13px]" aria-label="Legal">
+      <nav
+        className="mt-6 pt-4 border-t border-line flex flex-wrap gap-x-4 gap-y-1 text-[13px]"
+        aria-label="Legal"
+      >
         {LEGAL_LINKS.map((l) => (
-          <a key={l.href} href={l.href} target="_blank" rel="noreferrer" className="text-ink-2 font-semibold no-underline">
+          <a
+            key={l.href}
+            href={l.href}
+            target="_blank"
+            rel="noreferrer"
+            className="text-ink-2 font-semibold no-underline"
+          >
             {l.label}
           </a>
         ))}
       </nav>
     </div>
-  )
+  );
 }
 
-type ReportPref = 'weeklyReportEmail' | 'monthlyReportEmail' | 'fastMoverAlertEmail'
+type ReportPref =
+  | "weeklyReportEmail"
+  | "monthlyReportEmail"
+  | "fastMoverAlertEmail";
 
-const REPORTS: { key: ReportPref; kind: 'weekly' | 'monthly' | 'fast'; title: string; body: string }[] = [
+const REPORTS: {
+  key: ReportPref;
+  kind: "weekly" | "monthly" | "fast";
+  title: string;
+  body: string;
+}[] = [
   {
-    key: 'weeklyReportEmail',
-    kind: 'weekly',
-    title: 'Weekly best sellers',
-    body: 'Mondays: what sold very well last week, with trends and anything to stock deeper on.',
+    key: "weeklyReportEmail",
+    kind: "weekly",
+    title: "Weekly best sellers",
+    body: "Mondays: what sold very well last week, with trends and anything to stock deeper on.",
   },
   {
-    key: 'monthlyReportEmail',
-    kind: 'monthly',
-    title: 'Monthly slow movers & prices',
-    body: 'On the 1st: color, retail and other stock that barely moved, the cash tied up, and prices due for an update.',
+    key: "monthlyReportEmail",
+    kind: "monthly",
+    title: "Monthly slow movers & prices",
+    body: "On the 1st: color, retail and other stock that barely moved, the cash tied up, and prices due for an update.",
   },
   {
-    key: 'fastMoverAlertEmail',
-    kind: 'fast',
-    title: 'Fast-mover alerts',
-    body: 'Within a few hours of an item selling out fast: how much to buy in bulk and the predicted cost at your latest prices.',
+    key: "fastMoverAlertEmail",
+    kind: "fast",
+    title: "Fast-mover alerts",
+    body: "Within a few hours of an item selling out fast: how much to buy in bulk and the predicted cost at your latest prices.",
   },
-]
+];
 
 /** Settings → Business profile → Reports & alerts: AI insight emails (pop-ups always show in the app). */
-function ReportSettings({ profile, onProfile }: { profile: BusinessProfile; onProfile: (p: BusinessProfile) => void }) {
-  const toast = useToast()
-  const { can } = useBusiness()
-  const [sending, setSending] = useState<string | null>(null)
-  const recipient = profile.email || profile.orderEmail
+function ReportSettings({
+  profile,
+  onProfile,
+}: {
+  profile: BusinessProfile;
+  onProfile: (p: BusinessProfile) => void;
+}) {
+  const toast = useToast();
+  const { can } = useBusiness();
+  const [sending, setSending] = useState<string | null>(null);
+  const recipient = profile.email || profile.orderEmail;
 
   async function toggle(key: ReportPref, value: boolean) {
-    onProfile({ ...profile, [key]: value })
+    onProfile({ ...profile, [key]: value });
     try {
-      onProfile((await updateBusinessProfile({ data: { [key]: value } })) as BusinessProfile)
+      onProfile(
+        (await updateBusinessProfile({
+          data: { [key]: value },
+        })) as BusinessProfile,
+      );
     } catch {
-      onProfile({ ...profile, [key]: !value })
-      toast("Couldn't save that setting")
+      onProfile({ ...profile, [key]: !value });
+      toast("Couldn't save that setting");
     }
   }
 
-  async function sendNow(kind: 'weekly' | 'monthly' | 'fast') {
-    setSending(kind)
+  async function sendNow(kind: "weekly" | "monthly" | "fast") {
+    setSending(kind);
     try {
-      const r = await sendInsightReportNow({ data: { kind } })
-      toast(r.message)
+      const r = await sendInsightReportNow({ data: { kind } });
+      toast(r.message);
     } catch {
-      toast("Couldn't send the report. Try again.")
+      toast("Couldn't send the report. Try again.");
     } finally {
-      setSending(null)
+      setSending(null);
     }
   }
 
   return (
-    <section className="mt-8 pt-6 border-t border-line" aria-labelledby="reports-title">
-      <h2 id="reports-title" className="text-[18px] font-bold text-royal m-0 mb-1 flex items-center gap-2">
+    <section
+      className="mt-8 pt-6 border-t border-line"
+      aria-labelledby="reports-title"
+    >
+      <h2
+        id="reports-title"
+        className="text-[18px] font-bold text-royal m-0 mb-1 flex items-center gap-2"
+      >
         <Mail size={18} className="text-gold-ink" /> Reports & alerts
       </h2>
       <p className="text-ink-2 text-[13px] mt-0 mb-3">
-        AI-written summaries of your sales, emailed to {recipient ? <b className="text-ink">{recipient}</b> : 'the email above'}. The same
-        insights pop up in the app.
+        AI-written summaries of your sales, emailed to{" "}
+        {recipient ? (
+          <b className="text-ink">{recipient}</b>
+        ) : (
+          "the email above"
+        )}
+        . The same insights pop up in the app.
       </p>
-      {!can('insights') ? (
+      {!can("insights") ? (
         <UpgradeCard feature="insights" compact />
       ) : (
-      <ul className="list-none m-0 p-0 border border-line rounded-2xl divide-y divide-line">
-        {REPORTS.map((r) => (
-          <li key={r.key} className="p-3.5">
-            <label className="flex items-start justify-between gap-3 cursor-pointer">
-              <span className="text-sm">
-                <b className="block">{r.title}</b>
-                <span className="text-ink-2 text-[13px]">{r.body}</span>
-              </span>
-              <input
-                type="checkbox"
-                checked={profile[r.key]}
-                onChange={(e) => toggle(r.key, e.target.checked)}
-                className="w-5 h-5 mt-0.5 accent-[var(--color-action)] shrink-0"
-              />
-            </label>
-            <button
-              type="button"
-              className="btn btn-text btn-sm !px-0 mt-1"
-              disabled={sending !== null}
-              onClick={() => sendNow(r.kind)}
-            >
-              {sending === r.kind ? 'Sending…' : 'Send one now'}
-            </button>
-          </li>
-        ))}
-      </ul>
+        <ul className="list-none m-0 p-0 border border-line rounded-2xl divide-y divide-line">
+          {REPORTS.map((r) => (
+            <li key={r.key} className="p-3.5">
+              <label className="flex items-start justify-between gap-3 cursor-pointer">
+                <span className="text-sm">
+                  <b className="block">{r.title}</b>
+                  <span className="text-ink-2 text-[13px]">{r.body}</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={profile[r.key]}
+                  onChange={(e) => toggle(r.key, e.target.checked)}
+                  className="w-5 h-5 mt-0.5 accent-[var(--color-action)] shrink-0"
+                />
+              </label>
+              <button
+                type="button"
+                className="btn btn-text btn-sm !px-0 mt-1"
+                disabled={sending !== null}
+                onClick={() => sendNow(r.kind)}
+              >
+                {sending === r.kind ? "Sending…" : "Send one now"}
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
-  )
+  );
 }
 
 function ProfileForm({
@@ -265,29 +377,35 @@ function ProfileForm({
   onProfile,
   productCategories,
 }: {
-  profile: BusinessProfile
-  onProfile: (p: BusinessProfile) => void
-  productCategories: string[]
+  profile: BusinessProfile;
+  onProfile: (p: BusinessProfile) => void;
+  productCategories: string[];
 }) {
-  const toast = useToast()
-  const { categories } = useBusiness()
-  const [setupOpen, setSetupOpen] = useState(false)
-  const [draft, setDraft] = useState(profile)
-  const [budget, setBudget] = useState(profile.monthlyBudgetCents ? centsToDollars(profile.monthlyBudgetCents) : '')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
+  const toast = useToast();
+  const { categories } = useBusiness();
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [draft, setDraft] = useState(profile);
+  const [budget, setBudget] = useState(
+    profile.monthlyBudgetCents
+      ? centsToDollars(profile.monthlyBudgetCents)
+      : "",
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  const set = (key: keyof BusinessProfile) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    setDraft((d) => ({ ...d, [key]: e.target.value }))
+  const set =
+    (key: keyof BusinessProfile) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      setDraft((d) => ({ ...d, [key]: e.target.value }));
 
   async function save(e: React.FormEvent) {
-    e.preventDefault()
+    e.preventDefault();
     if (!draft.name.trim()) {
-      setError('Add your business name.')
-      return
+      setError("Add your business name.");
+      return;
     }
-    setSaving(true)
-    setError('')
+    setSaving(true);
+    setError("");
     try {
       const saved = await updateBusinessProfile({
         data: {
@@ -298,19 +416,24 @@ function ProfileForm({
           address: draft.address,
           website: draft.website,
           orderEmail: draft.orderEmail,
-          monthlyBudgetCents: Math.max(0, Math.round((Number(budget) || 0) * 100)),
+          monthlyBudgetCents: Math.max(
+            0,
+            Math.round((Number(budget) || 0) * 100),
+          ),
         },
-      })
-      const typeChanged = (saved as BusinessProfile).businessType !== profile.businessType
-      onProfile(saved as BusinessProfile)
-      setDraft(saved as BusinessProfile)
-      toast('Business profile saved')
+      });
+      const typeChanged =
+        (saved as BusinessProfile).businessType !== profile.businessType;
+      onProfile(saved as BusinessProfile);
+      setDraft(saved as BusinessProfile);
+      toast("Business profile saved");
       // A new business type is the moment to pick categories that fit it.
-      if (typeChanged || categories.length === 0) setTimeout(() => setSetupOpen(true), 300)
+      if (typeChanged || categories.length === 0)
+        setTimeout(() => setSetupOpen(true), 300);
     } catch {
-      setError('Could not save. Check your connection and try again.')
+      setError("Could not save. Check your connection and try again.");
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
@@ -321,16 +444,20 @@ function ProfileForm({
           id="bp-name"
           className="field-input"
           value={draft.name}
-          onChange={set('name')}
+          onChange={set("name")}
           placeholder="e.g. Main Street Salon"
           autoComplete="organization"
         />
       </Field>
 
       <Field label="What kind of business?">
-        <div className="grid grid-cols-2 min-[560px]:grid-cols-3 gap-2" role="radiogroup" aria-label="Business type">
+        <div
+          className="grid grid-cols-2 min-[560px]:grid-cols-3 gap-2"
+          role="radiogroup"
+          aria-label="Business type"
+        >
           {selectableBusinessTypes(profile.businessType).map((t) => {
-            const on = draft.businessType === t.id
+            const on = draft.businessType === t.id;
             return (
               <button
                 key={t.id}
@@ -342,28 +469,49 @@ function ProfileForm({
                 onClick={() => setDraft((d) => ({ ...d, businessType: t.id }))}
               >
                 <span className="block">{t.label}</span>
-                <span className={`block text-[12px] font-normal ${on ? 'text-white/75' : 'text-ink-2'}`}>
-                  {t.legacy ? 'No longer offered' : t.blurb}
+                <span
+                  className={`block text-[12px] font-normal ${on ? "text-white/75" : "text-ink-2"}`}
+                >
+                  {t.legacy ? "No longer offered" : t.blurb}
                 </span>
               </button>
-            )
+            );
           })}
         </div>
       </Field>
       <p className="text-ink-2 text-[13px] -mt-1 mb-4">
-        Tunes AI label reading, price estimates, sizes and the{' '}
-        <button type="button" className="border-0 bg-transparent p-0 text-action font-semibold cursor-pointer" onClick={() => setSetupOpen(true)}>
-          category suggestions for a {businessTypeById(profile.businessType).label.toLowerCase()}
+        Tunes AI label reading, price estimates, sizes and the{" "}
+        <button
+          type="button"
+          className="border-0 bg-transparent p-0 text-action font-semibold cursor-pointer"
+          onClick={() => setSetupOpen(true)}
+        >
+          category suggestions for a{" "}
+          {businessTypeById(profile.businessType).label.toLowerCase()}
         </button>
         .
       </p>
 
       <div className="grid min-[560px]:grid-cols-2 gap-x-2.5">
         <Field label="Email" htmlFor="bp-email">
-          <input id="bp-email" type="email" className="field-input" value={draft.email} onChange={set('email')} autoComplete="email" />
+          <input
+            id="bp-email"
+            type="email"
+            className="field-input"
+            value={draft.email}
+            onChange={set("email")}
+            autoComplete="email"
+          />
         </Field>
         <Field label="Phone" htmlFor="bp-phone">
-          <input id="bp-phone" type="tel" className="field-input" value={draft.phone} onChange={set('phone')} autoComplete="tel" />
+          <input
+            id="bp-phone"
+            type="tel"
+            className="field-input"
+            value={draft.phone}
+            onChange={set("phone")}
+            autoComplete="tel"
+          />
         </Field>
       </div>
       <Field label="Address" htmlFor="bp-address">
@@ -372,7 +520,7 @@ function ProfileForm({
           rows={2}
           className="field-input resize-none"
           value={draft.address}
-          onChange={set('address')}
+          onChange={set("address")}
           autoComplete="street-address"
         />
       </Field>
@@ -383,7 +531,7 @@ function ProfileForm({
           inputMode="url"
           className="field-input"
           value={draft.website}
-          onChange={set('website')}
+          onChange={set("website")}
           placeholder="https://"
           autoComplete="url"
         />
@@ -394,13 +542,15 @@ function ProfileForm({
           type="email"
           className="field-input"
           value={draft.orderEmail}
-          onChange={set('orderEmail')}
-          placeholder={draft.email || 'Same as the email above'}
+          onChange={set("orderEmail")}
+          placeholder={draft.email || "Same as the email above"}
         />
       </Field>
       <Field label="Monthly budget for stock and supplies" htmlFor="bp-budget">
         <div className="relative">
-          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-2">$</span>
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-2">
+            $
+          </span>
           <input
             id="bp-budget"
             type="number"
@@ -414,15 +564,25 @@ function ProfileForm({
           />
         </div>
       </Field>
-      <p className="text-ink-2 text-[13px] -mt-1 mb-0">Used every month unless you set a different amount on the Budget tab.</p>
+      <p className="text-ink-2 text-[13px] -mt-1 mb-0">
+        Used every month unless you set a different amount on the Budget tab.
+      </p>
 
       {error && <p className="text-bad text-sm mt-3 mb-0">{error}</p>}
-      <button type="submit" className="btn btn-primary w-full mt-5" disabled={saving}>
-        {saving ? 'Saving…' : 'Save profile'}
+      <button
+        type="submit"
+        className="btn btn-primary w-full mt-5"
+        disabled={saving}
+      >
+        {saving ? "Saving…" : "Save profile"}
       </button>
-      <CategorySetupSheet open={setupOpen} onClose={() => setSetupOpen(false)} productCategories={productCategories} />
+      <CategorySetupSheet
+        open={setupOpen}
+        onClose={() => setSetupOpen(false)}
+        productCategories={productCategories}
+      />
     </form>
-  )
+  );
 }
 
 function TeamManager({
@@ -431,40 +591,50 @@ function TeamManager({
   staffName,
   onStaffName,
 }: {
-  team: TeamMember[]
-  onTeam: (t: TeamMember[]) => void
-  staffName: string
-  onStaffName: (name: string) => void
+  team: TeamMember[];
+  onTeam: (t: TeamMember[]) => void;
+  staffName: string;
+  onStaffName: (name: string) => void;
 }) {
-  const toast = useToast()
-  const [name, setName] = useState('')
-  const [busy, setBusy] = useState(false)
+  const toast = useToast();
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
 
   async function add(e: React.FormEvent) {
-    e.preventDefault()
-    const next = name.trim()
-    if (!next) return
-    setBusy(true)
+    e.preventDefault();
+    const next = name.trim();
+    if (!next) return;
+    setBusy(true);
     try {
-      onTeam((await addTeamMember({ data: { name: next } })) as TeamMember[])
-      setName('')
-      toast(`${next} added to the team`)
+      onTeam((await addTeamMember({ data: { name: next } })) as TeamMember[]);
+      setName("");
+      toast(`${next} added to the team`);
     } catch (err) {
-      toast(err instanceof Error && err.message.includes('plan') ? err.message : 'Could not add. Try again.')
+      toast(
+        err instanceof Error && err.message.includes("plan")
+          ? err.message
+          : "Could not add. Try again.",
+      );
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
   }
 
   async function remove(member: TeamMember) {
     try {
-      onTeam((await removeTeamMember({ data: { id: member.id } })) as TeamMember[])
-      if (member.name === staffName) onStaffName('')
+      onTeam(
+        (await removeTeamMember({ data: { id: member.id } })) as TeamMember[],
+      );
+      if (member.name === staffName) onStaffName("");
       toast(`${member.name} removed`, async () => {
-        onTeam((await addTeamMember({ data: { name: member.name } })) as TeamMember[])
-      })
+        onTeam(
+          (await addTeamMember({
+            data: { name: member.name },
+          })) as TeamMember[],
+        );
+      });
     } catch {
-      toast('Could not remove. Try again.')
+      toast("Could not remove. Try again.");
     }
   }
 
@@ -482,7 +652,11 @@ function TeamManager({
           placeholder="Add a team member"
           autoComplete="off"
         />
-        <button type="submit" className="btn btn-primary shrink-0" disabled={busy || !name.trim()}>
+        <button
+          type="submit"
+          className="btn btn-primary shrink-0"
+          disabled={busy || !name.trim()}
+        >
           <UserPlus size={18} />
           Add
         </button>
@@ -490,18 +664,26 @@ function TeamManager({
 
       {team.length === 0 ? (
         <p className="text-ink-2 bg-surface rounded-2xl px-4 py-5 text-center m-0">
-          No one saved yet. Add your team so everyone can pick their name with one tap.
+          No one saved yet. Add your team so everyone can pick their name with
+          one tap.
         </p>
       ) : (
         <ul className="list-none m-0 p-0 bg-surface rounded-2xl px-4">
           {team.map((m) => (
-            <li key={m.id} className="flex items-center gap-3 py-2.5 border-b border-line last:border-b-0">
+            <li
+              key={m.id}
+              className="flex items-center gap-3 py-2.5 border-b border-line last:border-b-0"
+            >
               <span className="w-9 h-9 rounded-full bg-action text-white text-[13px] font-bold grid place-items-center shrink-0">
                 {deriveInitials(m.name)}
               </span>
               <span className="flex-1 min-w-0 font-semibold truncate">
                 {m.name}
-                {m.name === staffName && <span className="ml-2 text-[12px] font-semibold text-good">Working now</span>}
+                {m.name === staffName && (
+                  <span className="ml-2 text-[12px] font-semibold text-good">
+                    Working now
+                  </span>
+                )}
               </span>
               <button
                 className="btn btn-text btn-sm !text-bad"
@@ -519,29 +701,31 @@ function TeamManager({
         Removing someone keeps their past scans and expenses in the history.
       </p>
     </div>
-  )
+  );
 }
 
 const PROVIDER_INFO = {
   square: {
-    name: 'Square POS',
-    blurb: 'Do inventory once, in Bintro. Deliveries, counts and products used in services update Square automatically, and Square sales come off Bintro’s counts every 15 minutes.',
-    envVars: ['SQUARE_APPLICATION_ID', 'SQUARE_APPLICATION_SECRET'],
-    envName: 'SQUARE_ENVIRONMENT',
-    dashboard: 'https://developer.squareup.com/apps',
-    dashboardLabel: 'Square Developer dashboard',
+    name: "Square POS",
+    blurb:
+      "Do inventory once, in Bintro. Deliveries, counts and products used in services update Square automatically, and Square sales come off Bintro’s counts every 15 minutes.",
+    envVars: ["SQUARE_APPLICATION_ID", "SQUARE_APPLICATION_SECRET"],
+    envName: "SQUARE_ENVIRONMENT",
+    dashboard: "https://developer.squareup.com/apps",
+    dashboardLabel: "Square Developer dashboard",
   },
   quickbooks: {
-    name: 'QuickBooks Online',
-    blurb: 'Send expenses and each month’s stock purchases to QuickBooks so your books match the Budget tab.',
-    envVars: ['QUICKBOOKS_CLIENT_ID', 'QUICKBOOKS_CLIENT_SECRET'],
-    envName: 'QUICKBOOKS_ENVIRONMENT',
-    dashboard: 'https://developer.intuit.com/app/developer/dashboard',
-    dashboardLabel: 'Intuit Developer dashboard',
+    name: "QuickBooks Online",
+    blurb:
+      "Send expenses and each month’s stock purchases to QuickBooks so your books match the Budget tab.",
+    envVars: ["QUICKBOOKS_CLIENT_ID", "QUICKBOOKS_CLIENT_SECRET"],
+    envName: "QUICKBOOKS_ENVIRONMENT",
+    dashboard: "https://developer.intuit.com/app/developer/dashboard",
+    dashboardLabel: "Intuit Developer dashboard",
   },
-} as const
+} as const;
 
-type SquareCategory = { id: string; name: string; retail: boolean }
+type SquareCategory = { id: string; name: string; retail: boolean };
 
 /**
  * Lets the owner tick which Square categories hold retail. Only items in those
@@ -549,54 +733,64 @@ type SquareCategory = { id: string; name: string; retail: boolean }
  * stay in Square untouched.
  */
 function SquareRetailPicker() {
-  const toast = useToast()
-  const [categories, setCategories] = useState<SquareCategory[] | null>(null)
-  const [chosen, setChosen] = useState(false)
-  const [picked, setPicked] = useState<Set<string>>(new Set())
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
+  const toast = useToast();
+  const [categories, setCategories] = useState<SquareCategory[] | null>(null);
+  const [chosen, setChosen] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   function apply(r: { chosen: boolean; categories: SquareCategory[] }) {
-    setCategories(r.categories)
-    setChosen(r.chosen)
-    setPicked(new Set(r.categories.filter((c) => c.retail).map((c) => c.id)))
+    setCategories(r.categories);
+    setChosen(r.chosen);
+    setPicked(new Set(r.categories.filter((c) => c.retail).map((c) => c.id)));
   }
 
   useEffect(() => {
     getSquareRetailCategories()
       .then((r) => (r.ok ? apply(r.result) : setError(r.message)))
-      .catch(() => setError('Could not load your Square categories.'))
-  }, [])
+      .catch(() => setError("Could not load your Square categories."));
+  }, []);
 
-  const dirty = categories !== null && (!chosen || categories.some((c) => c.retail !== picked.has(c.id)))
+  const dirty =
+    categories !== null &&
+    (!chosen || categories.some((c) => c.retail !== picked.has(c.id)));
 
   async function save() {
-    setSaving(true)
+    setSaving(true);
     try {
-      const r = await setSquareRetailCategories({ data: { ids: [...picked] } })
+      const r = await setSquareRetailCategories({ data: { ids: [...picked] } });
       if (r.ok) {
-        apply(r.result)
-        toast(`${picked.size} retail categor${picked.size === 1 ? 'y' : 'ies'} saved`)
-      } else toast(r.message)
+        apply(r.result);
+        toast(
+          `${picked.size} retail categor${picked.size === 1 ? "y" : "ies"} saved`,
+        );
+      } else toast(r.message);
     } catch {
-      toast('Could not save. Try again.')
+      toast("Could not save. Try again.");
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
-  if (error) return <p className="text-sm text-bad m-0 mb-3">{error}</p>
-  if (categories === null) return <div className="skel w-[50%] mb-3" />
+  if (error) return <p className="text-sm text-bad m-0 mb-3">{error}</p>;
+  if (categories === null) return <div className="skel w-[50%] mb-3" />;
 
   return (
     <div className="bg-surface rounded-xl px-3.5 py-3 mb-3">
-      <p className="text-sm font-semibold m-0">Which Square categories are retail?</p>
+      <p className="text-sm font-semibold m-0">
+        Which Square categories are retail?
+      </p>
       <p className="text-[12px] text-ink-2 m-0 mt-0.5 mb-2">
-        Only items in these categories come into Bintro and stay in step. Services and everything else stay in Square
-        untouched, and Bintro never adds items to Square.
+        Only items in these categories come into Bintro and stay in step.
+        Services and everything else stay in Square untouched, and Bintro never
+        adds items to Square.
       </p>
       {categories.length === 0 ? (
-        <p className="text-[13px] text-ink-2 m-0">No categories in Square yet. Add a Retail category to your items in Square first.</p>
+        <p className="text-[13px] text-ink-2 m-0">
+          No categories in Square yet. Add a Retail category to your items in
+          Square first.
+        </p>
       ) : (
         <div className="flex flex-wrap gap-1.5 mb-2">
           {categories.map((c) => (
@@ -607,10 +801,10 @@ function SquareRetailPicker() {
               aria-pressed={picked.has(c.id)}
               onClick={() =>
                 setPicked((prev) => {
-                  const next = new Set(prev)
-                  if (next.has(c.id)) next.delete(c.id)
-                  else next.add(c.id)
-                  return next
+                  const next = new Set(prev);
+                  if (next.has(c.id)) next.delete(c.id);
+                  else next.add(c.id);
+                  return next;
                 })
               }
             >
@@ -621,54 +815,73 @@ function SquareRetailPicker() {
         </div>
       )}
       {dirty && categories.length > 0 && (
-        <button className="btn btn-primary btn-sm" disabled={saving} onClick={save}>
-          {saving ? 'Saving…' : chosen ? 'Save retail categories' : 'Confirm retail categories'}
+        <button
+          className="btn btn-primary btn-sm"
+          disabled={saving}
+          onClick={save}
+        >
+          {saving
+            ? "Saving…"
+            : chosen
+              ? "Save retail categories"
+              : "Confirm retail categories"}
         </button>
       )}
     </div>
-  )
+  );
 }
 
-function Integrations({ onChanged }: { onChanged: () => void | Promise<void> }) {
-  const toast = useToast()
-  const { can } = useBusiness()
-  const [status, setStatus] = useState<IntegrationStatus[] | null>(null)
-  const [busy, setBusy] = useState('')
-  const [origin, setOrigin] = useState('')
+function Integrations({
+  onChanged,
+}: {
+  onChanged: () => void | Promise<void>;
+}) {
+  const toast = useToast();
+  const { can } = useBusiness();
+  const [status, setStatus] = useState<IntegrationStatus[] | null>(null);
+  const [busy, setBusy] = useState("");
+  const [origin, setOrigin] = useState("");
 
   useEffect(() => {
-    setOrigin(window.location.origin)
+    setOrigin(window.location.origin);
     getIntegrations()
       .then((s) => setStatus(s as IntegrationStatus[]))
-      .catch(() => setStatus([]))
-  }, [])
+      .catch(() => setStatus([]));
+  }, []);
 
   async function run<T>(
     key: string,
     fn: () => Promise<{ ok: true; result: T } | { ok: false; message: string }>,
     done: (result: T) => string,
   ) {
-    setBusy(key)
+    setBusy(key);
     try {
-      const r = await fn()
+      const r = await fn();
       if (r.ok) {
-        toast(done(r.result))
-        await onChanged()
-        setStatus((await getIntegrations()) as IntegrationStatus[])
+        toast(done(r.result));
+        await onChanged();
+        setStatus((await getIntegrations()) as IntegrationStatus[]);
       } else {
-        toast(r.message)
+        toast(r.message);
       }
     } catch {
-      toast('Something went wrong. Try again.')
+      toast("Something went wrong. Try again.");
     } finally {
-      setBusy('')
+      setBusy("");
     }
   }
 
-  async function onDisconnect(provider: IntegrationStatus['provider']) {
-    if (!window.confirm(`Disconnect ${PROVIDER_INFO[provider].name}? Nothing already imported is removed.`)) return
-    setStatus((await disconnect({ data: { provider } })) as IntegrationStatus[])
-    toast(`${PROVIDER_INFO[provider].name} disconnected`)
+  async function onDisconnect(provider: IntegrationStatus["provider"]) {
+    if (
+      !window.confirm(
+        `Disconnect ${PROVIDER_INFO[provider].name}? Nothing already imported is removed.`,
+      )
+    )
+      return;
+    setStatus(
+      (await disconnect({ data: { provider } })) as IntegrationStatus[],
+    );
+    toast(`${PROVIDER_INFO[provider].name} disconnected`);
   }
 
   if (status === null) {
@@ -677,15 +890,18 @@ function Integrations({ onChanged }: { onChanged: () => void | Promise<void> }) 
         <div className="skel w-[60%]" />
         <div className="skel w-[40%]" />
       </div>
-    )
+    );
   }
 
   return (
     <div className="flex flex-col gap-3.5">
       {status.map((s) => {
-        const info = PROVIDER_INFO[s.provider]
+        const info = PROVIDER_INFO[s.provider];
         return (
-          <section key={s.provider} className="bg-white border border-line rounded-2xl p-4">
+          <section
+            key={s.provider}
+            className="bg-white border border-line rounded-2xl p-4"
+          >
             <div className="flex items-start justify-between gap-3 mb-1">
               <h3 className="m-0 text-[17px] font-bold flex items-center gap-2">
                 <Plug size={18} className="text-ink-2" />
@@ -693,10 +909,18 @@ function Integrations({ onChanged }: { onChanged: () => void | Promise<void> }) 
               </h3>
               <span
                 className={`text-[12px] font-bold rounded-full px-2.5 py-1 ${
-                  s.connected ? 'bg-good-tint text-good' : 'bg-surface text-ink-2'
+                  s.connected
+                    ? "bg-good-tint text-good"
+                    : "bg-surface text-ink-2"
                 }`}
               >
-                {s.connected ? 'Connected' : s.expired ? 'Reconnect needed' : s.configured ? 'Not connected' : 'Needs setup'}
+                {s.connected
+                  ? "Connected"
+                  : s.expired
+                    ? "Reconnect needed"
+                    : s.configured
+                      ? "Not connected"
+                      : "Needs setup"}
               </span>
             </div>
             <p className="text-ink-2 text-sm mt-0 mb-3">{info.blurb}</p>
@@ -706,81 +930,122 @@ function Integrations({ onChanged }: { onChanged: () => void | Promise<void> }) 
             ) : s.connected ? (
               <>
                 <p className="text-sm m-0 mb-3">
-                  {s.accountName ? <b>{s.accountName}</b> : 'Account linked'}
+                  {s.accountName ? <b>{s.accountName}</b> : "Account linked"}
                   {s.sandbox && <span className="text-warn"> · sandbox</span>}
-                  {s.lastSyncAt && <span className="text-ink-2"> · last sync {timeAgo(s.lastSyncAt)}</span>}
+                  {s.lastSyncAt && (
+                    <span className="text-ink-2">
+                      {" "}
+                      · last sync {timeAgo(s.lastSyncAt)}
+                    </span>
+                  )}
                 </p>
                 {s.inventory?.needsReconnect ? (
                   <div className="bg-warn-tint rounded-xl px-3.5 py-2.5 text-sm mb-3">
-                    <b>Reconnect to keep Square’s stock in step.</b> This connection was made before Bintro could update Square’s
-                    inventory. Tap Disconnect, then Connect again and allow the new permission.
+                    <b>Reconnect to keep Square’s stock in step.</b> This
+                    connection was made before Bintro could update Square’s
+                    inventory. Tap Disconnect, then Connect again and allow the
+                    new permission.
                   </div>
                 ) : s.inventory ? (
                   <p className="text-sm m-0 mb-3 text-ink-2">
                     {s.inventory.pending > 0
-                      ? `${s.inventory.pending} stock change${s.inventory.pending === 1 ? '' : 's'} waiting to reach Square`
-                      : 'Square’s stock is up to date with Bintro'}
+                      ? `${s.inventory.pending} stock change${s.inventory.pending === 1 ? "" : "s"} waiting to reach Square`
+                      : "Square’s stock is up to date with Bintro"}
                     {s.inventory.failed > 0 && (
                       <span className="text-bad">
-                        {' '}
-                        · {s.inventory.failed} rejected by Square{s.inventory.lastError ? `: ${s.inventory.lastError}` : ''}
+                        {" "}
+                        · {s.inventory.failed} rejected by Square
+                        {s.inventory.lastError
+                          ? `: ${s.inventory.lastError}`
+                          : ""}
                       </span>
                     )}
                   </p>
                 ) : null}
-                {s.provider === 'square' && !s.inventory?.needsReconnect && <SquareRetailPicker />}
+                {s.provider === "square" && !s.inventory?.needsReconnect && (
+                  <SquareRetailPicker />
+                )}
                 <div className="flex flex-wrap gap-2">
-                  {s.provider === 'square' ? (
+                  {s.provider === "square" ? (
                     <>
                       <button
                         className="btn btn-tonal btn-sm"
                         disabled={!!busy}
                         onClick={() =>
-                          run('import', () => squareImportCatalog(), (r) =>
-                            `Imported ${r.created} new retail item${r.created === 1 ? '' : 's'}, linked ${r.updated}${
-                              r.skipped ? ` · left ${r.skipped} non-retail item${r.skipped === 1 ? '' : 's'} in Square` : ''
-                            }${
-                              r.countsSent ? ` · sent ${r.countsSent} count${r.countsSent === 1 ? '' : 's'} to Square` : ''
-                            }`,
+                          run(
+                            "import",
+                            () => squareImportCatalog(),
+                            (r) =>
+                              `Imported ${r.created} new retail item${r.created === 1 ? "" : "s"}, linked ${r.updated}${
+                                r.skipped
+                                  ? ` · left ${r.skipped} non-retail item${r.skipped === 1 ? "" : "s"} in Square`
+                                  : ""
+                              }${
+                                r.countsSent
+                                  ? ` · sent ${r.countsSent} count${r.countsSent === 1 ? "" : "s"} to Square`
+                                  : ""
+                              }`,
                           )
                         }
                       >
-                        {busy === 'import' ? 'Importing…' : 'Import item library'}
+                        {busy === "import"
+                          ? "Importing…"
+                          : "Import item library"}
                       </button>
                       <button
                         className="btn btn-tonal btn-sm"
                         disabled={!!busy}
                         onClick={() =>
-                          run('sales', () => squareSyncSales(), (r) =>
-                            `${r.sales} sale${r.sales === 1 ? '' : 's'}, ${r.units} unit${r.units === 1 ? '' : 's'} counted out${
-                              r.skipped ? ` (${r.skipped} unmatched line${r.skipped === 1 ? '' : 's'})` : ''
-                            }`,
+                          run(
+                            "sales",
+                            () => squareSyncSales(),
+                            (r) =>
+                              `${r.sales} sale${r.sales === 1 ? "" : "s"}, ${r.units} unit${r.units === 1 ? "" : "s"} counted out${
+                                r.skipped
+                                  ? ` (${r.skipped} unmatched line${r.skipped === 1 ? "" : "s"})`
+                                  : ""
+                              }`,
                           )
                         }
                       >
                         <RefreshCw size={15} />
-                        {busy === 'sales' ? 'Syncing…' : 'Sync sales now'}
+                        {busy === "sales" ? "Syncing…" : "Sync sales now"}
                       </button>
                       <button
                         className="btn btn-tonal btn-sm"
                         disabled={!!busy || !!s.inventory?.needsReconnect}
                         onClick={() => {
-                          if (!window.confirm('Set every linked item’s count in Square to match Bintro? Bintro’s counts replace Square’s.')) return
-                          run('counts', () => squareSendCounts(), (r) =>
-                            r.queued === 0
-                              ? 'No linked items yet. Import the item library first.'
-                              : `Sent ${r.sent} count${r.sent === 1 ? '' : 's'} to Square${r.failed ? ` · ${r.failed} rejected` : ''}`,
+                          if (
+                            !window.confirm(
+                              "Set every linked item’s count in Square to match Bintro? Bintro’s counts replace Square’s.",
+                            )
                           )
+                            return;
+                          run(
+                            "counts",
+                            () => squareSendCounts(),
+                            (r) =>
+                              r.queued === 0
+                                ? "No linked items yet. Import the item library first."
+                                : `Sent ${r.sent} count${r.sent === 1 ? "" : "s"} to Square${r.failed ? ` · ${r.failed} rejected` : ""}`,
+                          );
                         }}
                       >
                         <ArrowUpFromLine size={15} />
-                        {busy === 'counts' ? 'Sending…' : 'Send counts to Square'}
+                        {busy === "counts"
+                          ? "Sending…"
+                          : "Send counts to Square"}
                       </button>
                     </>
                   ) : (
-                    <p className="text-sm text-ink-2 m-0 self-center">Send a month from the Budget tab.</p>
+                    <p className="text-sm text-ink-2 m-0 self-center">
+                      Send a month from the Budget tab.
+                    </p>
                   )}
-                  <button className="btn btn-text btn-sm !text-bad ml-auto" onClick={() => onDisconnect(s.provider)}>
+                  <button
+                    className="btn btn-text btn-sm !text-bad ml-auto"
+                    onClick={() => onDisconnect(s.provider)}
+                  >
                     Disconnect
                   </button>
                 </div>
@@ -789,22 +1054,34 @@ function Integrations({ onChanged }: { onChanged: () => void | Promise<void> }) 
               <>
                 {s.expired && (
                   <div className="bg-warn-tint rounded-xl px-3.5 py-2.5 text-sm mb-3">
-                    <b>{info.name} signed Bintro out.</b> The connection expired or was removed on {info.name}’s side. Tap
-                    Reconnect and sign in again; nothing already sent will be sent twice.
+                    <b>{info.name} signed Bintro out.</b> The connection expired
+                    or was removed on {info.name}’s side. Tap Reconnect and sign
+                    in again; nothing already sent will be sent twice.
                   </div>
                 )}
-                <a className="btn btn-primary btn-sm no-underline" href={`/api/integrations/${s.provider}/connect`}>
-                  {s.expired ? 'Reconnect' : 'Connect'} {info.name}
+                <a
+                  className="btn btn-primary btn-sm no-underline"
+                  href={`/api/integrations/${s.provider}/connect`}
+                >
+                  {s.expired ? "Reconnect" : "Connect"} {info.name}
                 </a>
               </>
             ) : (
               <details className="bg-surface rounded-xl px-3.5 py-2.5 text-sm">
-                <summary className="cursor-pointer font-semibold">How to set it up (about 10 minutes, one time)</summary>
+                <summary className="cursor-pointer font-semibold">
+                  How to set it up (about 10 minutes, one time)
+                </summary>
                 <ol className="pl-5 mt-2 mb-1 flex flex-col gap-1.5">
                   <li>
-                    Create an app in the{' '}
-                    <a href={info.dashboard} target="_blank" rel="noreferrer" className="text-action font-semibold">
-                      {info.dashboardLabel} <ExternalLink size={12} className="inline" />
+                    Create an app in the{" "}
+                    <a
+                      href={info.dashboard}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-action font-semibold"
+                    >
+                      {info.dashboardLabel}{" "}
+                      <ExternalLink size={12} className="inline" />
                     </a>
                     .
                   </li>
@@ -815,86 +1092,117 @@ function Integrations({ onChanged }: { onChanged: () => void | Promise<void> }) 
                     </code>
                   </li>
                   <li>
-                    In Netlify, under Project configuration → Environment variables, add{' '}
+                    In Netlify, under Project configuration → Environment
+                    variables, add{" "}
                     {info.envVars.map((v, i) => (
                       <span key={v}>
                         <code className="text-[12px]">{v}</code>
-                        {i < info.envVars.length - 1 ? ' and ' : ''}
+                        {i < info.envVars.length - 1 ? " and " : ""}
                       </span>
-                    ))}{' '}
-                    from the app. Set <code className="text-[12px]">{info.envName}</code> to{' '}
+                    ))}{" "}
+                    from the app. Set{" "}
+                    <code className="text-[12px]">{info.envName}</code> to{" "}
                     <code className="text-[12px]">sandbox</code> while testing.
                   </li>
                   <li>Redeploy, then come back here and tap Connect.</li>
                 </ol>
               </details>
             )}
-            {s.configured && <ErrorLogLink provider={s.provider} name={info.name} />}
+            {s.configured && (
+              <ErrorLogLink provider={s.provider} name={info.name} />
+            )}
           </section>
-        )
+        );
       })}
     </div>
-  )
+  );
 }
 
 /** Downloads the last year of failed calls to this provider as a CSV to share with their support. */
-function ErrorLogLink({ provider, name }: { provider: IntegrationStatus['provider']; name: string }) {
-  const toast = useToast()
-  const [busy, setBusy] = useState(false)
+function ErrorLogLink({
+  provider,
+  name,
+}: {
+  provider: IntegrationStatus["provider"];
+  name: string;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
   return (
     <button
       className="btn btn-text btn-sm !px-0 mt-2 text-ink-2"
       disabled={busy}
       onClick={async () => {
-        setBusy(true)
+        setBusy(true);
         try {
-          const rows = await getIntegrationErrorLog({ data: { provider } })
+          const rows = await getIntegrationErrorLog({ data: { provider } });
           if (rows.length === 0) {
-            toast(`No ${name} errors in the last year`)
-            return
+            toast(`No ${name} errors in the last year`);
+            return;
           }
-          const cell = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
+          const cell = (v: string | number) =>
+            `"${String(v).replace(/"/g, '""')}"`;
           const csv = [
-            ['Time (UTC)', 'Action', 'HTTP status', 'Error code', 'intuit_tid', 'Message'].map(cell).join(','),
-            ...rows.map((r) => [r.createdAt, r.action, r.status, r.code, r.intuitTid, r.message].map(cell).join(',')),
-          ].join('\n')
-          const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
-          const a = document.createElement('a')
-          a.href = url
-          a.download = `bintro-${provider}-error-log.csv`
-          a.click()
-          URL.revokeObjectURL(url)
+            [
+              "Time (UTC)",
+              "Action",
+              "HTTP status",
+              "Error code",
+              "intuit_tid",
+              "Message",
+            ]
+              .map(cell)
+              .join(","),
+            ...rows.map((r) =>
+              [r.createdAt, r.action, r.status, r.code, r.intuitTid, r.message]
+                .map(cell)
+                .join(","),
+            ),
+          ].join("\n");
+          const url = URL.createObjectURL(
+            new Blob([csv], { type: "text/csv" }),
+          );
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `bintro-${provider}-error-log.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
         } catch {
-          toast("Couldn't load the error log. Try again.")
+          toast("Couldn't load the error log. Try again.");
         } finally {
-          setBusy(false)
+          setBusy(false);
         }
       }}
     >
-      {busy ? 'Preparing…' : 'Download error log'}
+      {busy ? "Preparing…" : "Download error log"}
     </button>
-  )
+  );
 }
 
 /** Settings → Help & support: emails Bintro support with the details support needs already filled in. */
 function HelpSupport() {
-  const { name } = useBusiness()
-  const ready = !LEGAL.supportEmail.includes('[')
+  const { name } = useBusiness();
+  const ready = !LEGAL.supportEmail.includes("[");
   const href = () => {
     const body = [
-      'What happened (and what you expected):',
-      '',
-      '',
-      '— Details for Bintro support —',
+      "What happened (and what you expected):",
+      "",
+      "",
+      "— Details for Bintro support —",
       `Business: ${name}`,
       `Site: ${window.location.host}`,
       `Device: ${navigator.userAgent}`,
       `Time: ${new Date().toString()}`,
-      'If this is about Square or QuickBooks, attach the error log from Settings → Connections → Download error log.',
-    ].join('\n')
-    const params = new URLSearchParams({ subject: `Bintro help: ${name}`, body }).toString().replace(/\+/g, '%20')
-    return `mailto:${LEGAL.supportEmail}?${params}`
-  }
+      "If this is about Square or QuickBooks, attach the error log from Settings → Connections → Download error log.",
+    ].join("\n");
+    const params = new URLSearchParams({
+      subject: `Bintro help: ${name}`,
+      body,
+    })
+      .toString()
+      .replace(/\+/g, "%20");
+    return `mailto:${LEGAL.supportEmail}?${params}`;
+  };
   return (
     <section className="mt-4 bg-white border border-line rounded-2xl p-4">
       <h3 className="m-0 mb-1 text-[17px] font-bold flex items-center gap-2">
@@ -902,16 +1210,25 @@ function HelpSupport() {
         Help &amp; support
       </h3>
       <p className="text-ink-2 text-sm mt-0 mb-3">
-        Something not working, or a question? Email us and we’ll get back to you.
+        Something not working, or a question? Email us and we’ll get back to
+        you.
       </p>
       {ready ? (
-        <a className="btn btn-primary btn-sm no-underline" href={href()} onClick={(e) => (e.currentTarget.href = href())}>
+        <a
+          className="btn btn-primary btn-sm no-underline"
+          href={href()}
+          onClick={(e) => (e.currentTarget.href = href())}
+        >
           Email support
         </a>
       ) : (
-        <p className="text-sm m-0 text-warn">Support email isn’t set yet (LEGAL.supportEmail in src/lib/legal.ts).</p>
+        <p className="text-sm m-0 text-warn">
+          Support email isn’t set yet (LEGAL.supportEmail in src/lib/legal.ts).
+        </p>
       )}
-      {ready && <p className="text-ink-2 text-[13px] mt-2 mb-0">{LEGAL.supportEmail}</p>}
+      {ready && (
+        <p className="text-ink-2 text-[13px] mt-2 mb-0">{LEGAL.supportEmail}</p>
+      )}
     </section>
-  )
+  );
 }
