@@ -7,10 +7,11 @@
 export type TipCategory = 'save' | 'plan' | 'green' | 'stock' | 'stylist'
 
 /** Tabs a tip can be tied to; mirrors the tab ids in `routes/index.tsx`. */
-export type TipTab = 'scan' | 'products' | 'restock' | 'calendar' | 'budget' | 'activity' | 'settings'
+export type TipTab = 'scan' | 'products' | 'restock' | 'calendar' | 'budget' | 'activity' | 'color' | 'settings'
 
 /** Which kinds of business a tip is written for. Omitted = everyone. */
-type Audience = 'beauty' | 'bar' | 'hair'
+/** Groups (beauty, bar, hair = salons + barbers) or a single business type id. */
+type Audience = 'beauty' | 'bar' | 'hair' | 'barber' | 'spa' | 'tattoo' | 'nails' | 'brows'
 
 export type Tip = {
   id: string
@@ -33,13 +34,121 @@ export const TIP_CATEGORIES: { id: TipCategory; label: string; short: string }[]
 ]
 
 export const TIPS: Tip[] = [
+  // Bars: pour cost and waste
+  {
+    id: 'bar-jigger',
+    category: 'save',
+    title: 'Jigger every pour',
+    body: 'Free-pouring a little extra on each drink adds up to bottles a week. Measured pours keep cost per drink the same every time.',
+    tabs: ['scan', 'activity'],
+    audience: 'bar',
+  },
+  {
+    id: 'bar-waste-sheet',
+    category: 'stock',
+    title: 'Keep a spill and comp sheet',
+    body: 'Write down every spill, remake and comped drink. When the count is short, you’ll know what was waste and what is missing.',
+    tabs: ['activity', 'products'],
+    audience: 'bar',
+  },
+  {
+    id: 'bar-fifo',
+    category: 'save',
+    title: 'Oldest bottle in front',
+    body: 'Rotate kegs, wine, mixers and juices first in, first out, and date-label anything you prep. Expired mixers and flat kegs are money down the drain.',
+    tabs: ['restock', 'products'],
+    audience: 'bar',
+  },
+  {
+    id: 'bar-weekly-count',
+    category: 'stock',
+    title: 'Count top spirits every week',
+    body: 'Your 10 best-selling bottles are where most of the money is. A quick weekly count with a reason for each difference catches over-pouring early.',
+    tabs: ['products', 'activity'],
+    audience: 'bar',
+  },
+  // Barbershops
+  {
+    id: 'barber-blades',
+    category: 'save',
+    title: 'Clean and oil clippers every day',
+    body: 'Blades last much longer when they’re brushed, disinfected and oiled daily. Replacing blades early costs more than the oil.',
+    tabs: ['scan', 'budget'],
+    audience: 'barber',
+  },
+  {
+    id: 'barber-bulk',
+    category: 'save',
+    title: 'Bulk-buy only what every chair uses',
+    body: 'Neck strips, disinfectant and blades used every cut are worth buying by the case. Specialty products aren’t.',
+    tabs: ['restock'],
+    audience: 'barber',
+  },
+  {
+    id: 'barber-retail',
+    category: 'save',
+    title: 'Sell what you style with',
+    body: 'Use your retail pomade or oil in the chair and tell the client what it is. Products you show sell far better than products on a shelf.',
+    tabs: ['products', 'activity'],
+    audience: 'barber',
+  },
+  // Spas and med spas
+  {
+    id: 'spa-lots',
+    category: 'stock',
+    title: 'Track lot numbers and dates',
+    body: 'Write the lot number and expiration on high-cost products when they arrive, and use the soonest-expiring first.',
+    tabs: ['restock', 'products'],
+    audience: 'spa',
+  },
+  {
+    id: 'spa-group-bookings',
+    category: 'save',
+    title: 'Book the same treatments back to back',
+    body: 'Products that only last a short time once opened go further when appointments using them are grouped together. Follow the maker’s directions for how long an opened product is good.',
+    tabs: ['calendar'],
+    audience: 'spa',
+  },
+  {
+    id: 'spa-count-high-cost',
+    category: 'stock',
+    title: 'Count expensive items every week',
+    body: 'Your priciest products deserve a weekly count with a reason for every difference. Small gaps there cost more than big gaps on cheap supplies.',
+    tabs: ['products', 'activity'],
+    audience: 'spa',
+  },
+  {
+    id: 'spa-pumps',
+    category: 'green',
+    title: 'Pumps and spatulas, not fingers',
+    body: 'Measured pumps and clean spatulas stop over-use and keep jars from spoiling, so every container lasts more services.',
+    tabs: ['scan'],
+    audience: 'spa',
+  },
+  // Tattoo and nails
+  {
+    id: 'tattoo-caps',
+    category: 'save',
+    title: 'Pour small ink caps',
+    body: 'Leftover ink in caps gets thrown away. Pour a little, top up as you go.',
+    tabs: ['scan', 'color'],
+    audience: 'tattoo',
+  },
+  {
+    id: 'nails-palette',
+    category: 'save',
+    title: 'Mix custom shades in small amounts',
+    body: 'Mix on a palette, a little at a time, and save the recipe for repeat clients so you never remake a whole batch.',
+    tabs: ['scan', 'color'],
+    audience: 'nails',
+  },
   // Stylist tips (hair salons and barbers): less waste at the bowl and the shampoo bowl
   {
     id: 'stylist-color-32g',
     category: 'stylist',
     title: 'Mix 32 grams for a root touch-up',
     body: '32 grams of color is the average amount for a root touch-up. Start there instead of eyeballing a full bowl.',
-    tabs: ['scan', 'activity'],
+    tabs: ['color', 'scan', 'activity'],
     audience: 'hair',
   },
   {
@@ -47,7 +156,7 @@ export const TIPS: Tip[] = [
     category: 'stylist',
     title: 'Remix instead of over-mixing',
     body: 'Running short? Always go back and mix a little more. A second small mix beats tossing leftover color down the sink.',
-    tabs: ['scan', 'activity'],
+    tabs: ['color', 'scan', 'activity'],
     audience: 'hair',
   },
   {
@@ -55,7 +164,7 @@ export const TIPS: Tip[] = [
     category: 'stylist',
     title: '1–2 pumps of shampoo and conditioner',
     body: 'Saturate the hair with water first, then use 1–2 pumps per client and work it through with water. More pumps just rinse product down the drain.',
-    tabs: ['scan', 'activity'],
+    tabs: ['color', 'scan', 'activity'],
     audience: 'hair',
   },
 
@@ -313,7 +422,8 @@ function audienceFor(businessType: string): Audience | null {
 function tipFits(tip: Tip, businessType: string) {
   if (!tip.audience) return true
   if (tip.audience === 'hair') return HAIR_TYPES.has(businessType)
-  return tip.audience === audienceFor(businessType)
+  if (tip.audience === 'beauty' || tip.audience === 'bar') return tip.audience === audienceFor(businessType)
+  return tip.audience === businessType
 }
 
 /**

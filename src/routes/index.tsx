@@ -11,6 +11,7 @@ import {
   Truck,
   TriangleAlert,
   Wallet,
+  Palette,
 } from "lucide-react";
 import type {
   MovementRow,
@@ -21,6 +22,7 @@ import { ScanView } from "@/components/inventory/ScanView";
 import { InventoryView } from "@/components/inventory/InventoryView";
 import { ActivityView } from "@/components/inventory/ActivityView";
 import { ProfitView } from "@/components/insights/ProfitView";
+import { ColorView } from "@/components/color/ColorView";
 import {
   RestockView,
   type RestockMode,
@@ -91,6 +93,7 @@ type Tab =
   | "calendar"
   | "budget"
   | "activity"
+  | "color"
   | "settings";
 
 const TABS: {
@@ -102,6 +105,7 @@ const TABS: {
   { id: "scan", label: "Scan", Icon: ScanBarcode },
   { id: "products", label: "Products", Icon: Boxes },
   { id: "restock", label: "Restock", Icon: Truck },
+  { id: "color", label: "Color", Icon: Palette },
   {
     id: "calendar",
     label: "Calendar",
@@ -194,7 +198,9 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
     text: string;
   } | null>(null);
   const [tipsOpen, setTipsOpen] = useState(false);
-  const [activityView, setActivityView] = useState<"profit" | "usage">("profit");
+  const [activityView, setActivityView] = useState<"profit" | "usage">(
+    "profit",
+  );
   const [insights, setInsights] = useState<Insights | null>(null);
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [insightSegment, setInsightSegment] = useState<InsightSegment>("fast");
@@ -496,64 +502,72 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
   };
 
   const name = staffName.trim();
+  // The Color tab is for color work (hair, tattoo, makeup, nails); bars don't get it.
+  const showColor = !["bar", "retail", "bookstore"].includes(
+    profile.businessType,
+  );
   const tabButtons = (layout: "bar" | "side") =>
-    TABS.map(({ id, label, Icon, feature }) => {
-      const active = tab === id;
-      const locked = feature ? !planHas(account.effectivePlan, feature) : false;
-      const badge =
-        id === "restock" && belowPar.length > 0 ? belowPar.length : null;
-      return (
-        <button
-          key={id}
-          onClick={() => selectTab(id)}
-          aria-current={active ? "page" : undefined}
-          className={
-            layout === "bar"
-              ? `relative flex-1 flex flex-col items-center gap-1 pt-2 pb-1.5 px-0.5 border-0 bg-transparent cursor-pointer text-[11px] font-semibold whitespace-nowrap min-w-0 ${
-                  active ? "text-action" : "text-ink-2"
-                }`
-              : `relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-0 cursor-pointer text-[15px] font-semibold text-left ${
-                  active
-                    ? "bg-action-tint text-action"
-                    : "bg-transparent text-ink-2 hover:bg-surface hover:text-ink"
-                }`
-          }
-        >
-          <span
+    TABS.filter((t) => t.id !== "color" || showColor).map(
+      ({ id, label, Icon, feature }) => {
+        const active = tab === id;
+        const locked = feature
+          ? !planHas(account.effectivePlan, feature)
+          : false;
+        const badge =
+          id === "restock" && belowPar.length > 0 ? belowPar.length : null;
+        return (
+          <button
+            key={id}
+            onClick={() => selectTab(id)}
+            aria-current={active ? "page" : undefined}
             className={
               layout === "bar"
-                ? `relative grid place-items-center w-12 h-8 rounded-full transition-colors ${active ? "bg-action-tint" : ""}`
-                : "relative grid place-items-center"
+                ? `relative flex-1 flex flex-col items-center gap-1 pt-2 pb-1.5 px-0.5 border-0 bg-transparent cursor-pointer text-[11px] font-semibold whitespace-nowrap min-w-0 ${
+                    active ? "text-action" : "text-ink-2"
+                  }`
+                : `relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-0 cursor-pointer text-[15px] font-semibold text-left ${
+                    active
+                      ? "bg-action-tint text-action"
+                      : "bg-transparent text-ink-2 hover:bg-surface hover:text-ink"
+                  }`
             }
           >
-            <Icon
-              size={layout === "bar" ? 22 : 18}
-              strokeWidth={active ? 2.4 : 2}
-            />
-            {locked && (
-              <span className="absolute -top-1 -right-1.5 w-[16px] h-[16px] rounded-full bg-gold text-white grid place-items-center">
-                <Lock size={9} strokeWidth={3} />
-                <span className="sr-only"> (upgrade)</span>
-              </span>
-            )}
-            {badge !== null && (
-              <span className="num absolute -top-1.5 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-bad text-white text-[11px] leading-[18px] font-bold text-center">
-                {badge}
-              </span>
-            )}
-          </span>
-          <span className={layout === "side" ? "flex-1" : undefined}>
-            {label}
-          </span>
-          {active && layout === "bar" && (
             <span
-              className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-[3px] rounded-b-full bg-gold"
-              aria-hidden="true"
-            />
-          )}
-        </button>
-      );
-    });
+              className={
+                layout === "bar"
+                  ? `relative grid place-items-center w-12 h-8 rounded-full transition-colors ${active ? "bg-action-tint" : ""}`
+                  : "relative grid place-items-center"
+              }
+            >
+              <Icon
+                size={layout === "bar" ? 22 : 18}
+                strokeWidth={active ? 2.4 : 2}
+              />
+              {locked && (
+                <span className="absolute -top-1 -right-1.5 w-[16px] h-[16px] rounded-full bg-gold text-white grid place-items-center">
+                  <Lock size={9} strokeWidth={3} />
+                  <span className="sr-only"> (upgrade)</span>
+                </span>
+              )}
+              {badge !== null && (
+                <span className="num absolute -top-1.5 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-bad text-white text-[11px] leading-[18px] font-bold text-center">
+                  {badge}
+                </span>
+              )}
+            </span>
+            <span className={layout === "side" ? "flex-1" : undefined}>
+              {label}
+            </span>
+            {active && layout === "bar" && (
+              <span
+                className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-[3px] rounded-b-full bg-gold"
+                aria-hidden="true"
+              />
+            )}
+          </button>
+        );
+      },
+    );
 
   return (
     <BusinessProvider
@@ -777,6 +791,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                 )}
               </>
             )}
+            {tab === "color" && showColor && <ColorView />}
             {tab === "budget" && (
               <PlanGate feature="budget">
                 <BudgetView
