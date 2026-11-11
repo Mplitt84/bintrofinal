@@ -47,6 +47,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   │   └── InsightsSheet.tsx   # Sales insights sheet (Moving fast / Best sellers / Slow movers / Prices), InsightsBanner, InsightPopup
 │   │   ├── business
 │   │   │   ├── BusinessContext.tsx  # BusinessProvider / useBusiness() → profile, business type, display name, saved categories
+│   │   │   ├── IndustryPicker.tsx   # Settings → Business profile: pick the industry, preview what Bintro sets up, switch
 │   │   │   ├── CategorySetupSheet.tsx # Category pop-up (per-type suggestions grouped by tax line) + CategoryManager for Settings
 │   │   │   ├── CalendarView.tsx     # Calendar tab: month grid, agenda, add to Google/Outlook/.ics, subscribe-feed sheet, quick-start events
 │   │   │   ├── BudgetView.tsx       # Budget tab: rolling monthly spend vs budget, chart, expenses, receipt AI, QuickBooks push, CSV
@@ -92,6 +93,7 @@ Bintro is a barcode scan-in/scan-out stock tracker and money manager for small b
 │   │   ├── insights.ts            # Insight thresholds, types (BestSeller, SlowMover, FastMover, PriceReminder, WebPriceResult), color detection
 │   │   ├── state-taxes.ts         # STATE_TAXES: each state's tax agency link, estimated-tax dates and quarterly sales tax due rule (sources in the header)
 │   │   ├── calendar.ts            # Event kinds, repeat expansion, Google/Outlook add + subscribe links, .ics builder, estimated tax dates
+│   │   ├── industry.ts            # Per-industry setup: accent, pitch, RecordSpec (client-records tab wording/fields), industrySetup preview lines
 │   │   ├── formulas.ts            # Formula/visit types, groupByClient, linesText, formulasCsv, formulaKindFor / formulaTabLabel
 │   │   ├── color.ts               # LEVELS, TONE_FAMILIES, WHEEL (RYB) + complementOf — brand-neutral color theory data
 │   │   ├── tips.ts                # Tip content (save money, plan ahead, sustainability, smarter stock), per-tab/per-type ordering
@@ -192,6 +194,9 @@ Restock lists and purchase orders send through Resend (`RESEND_API_KEY`) or Send
 
 ### Business profile and types
 `useBusiness()` exposes the profile, the matching `BusinessType` (categories, sizes, expense categories, item noun used in AI prompts and chips) and the display name. Never hardcode the business name — use `displayBusinessName` / `useBusiness().name`.
+
+### Industry setup (Settings → Business profile → Your industry)
+`src/lib/industry.ts` is the one place that says what each business type gets: `INDUSTRIES` (fixed `accent` color, `pitch`, and a `RecordSpec` or null), `recordSpecFor(type)` (the client-records tab's label — Formulas / Clients / Ink log — lead, service pick-list or free text, line labels and placeholders, `mix` = developer/ratio/minutes/leftover row, `aftercare` + follow-up label, notes placeholder; null = no client-records tab: bar, retail, bookstore), `showsColorTheoryTab` and `industrySetup(type)` (plain-language list of what switching sets up, built from real data: record spec, `categorySuggestionsFor`, sizes, trade tips in `TIPS`, `directoryFor` apps). `IndustryPicker` (top of Business profile): accent cards per industry, a live preview (setup checklist + "Your menu" strip) for the tapped one, and "Set up Bintro for a …" which saves only `businessType` (`updateBusinessProfile`), updates the menu at once and opens `CategorySetupSheet`. Nothing is deleted on a switch. `FormulasView` reads everything from `recordSpecFor` (DB `kind` stays hair | tattoo). To tailor more for an industry, add it to `industry.ts` and list it in `industrySetup` — never promise something in the preview that the app doesn't do.
 
 ### Sign-in screen
 `SignInScreen.tsx` shows the brand ad photo (`public/signin-720.webp`, `signin-1152.webp`, `signin-720.jpg` fallback; source 1152×2048 portrait, already includes the "Bintro." logo) on yellow `#fdde55`, always whole (`object-contain`). Phones and tablets: the page is one screen tall; the photo takes the space above a slim sign-in strip (Continue with Google + 2-Step · Terms · Privacy), so the button never covers it. `lg` and up: photo left (edges faded with a mask), white sign-in card right.

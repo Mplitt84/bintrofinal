@@ -20,10 +20,8 @@ import { LiveCamera } from "@/components/inventory/LiveCamera";
 import { ColorTheory } from "@/components/color/ColorTheory";
 import { shrinkImage } from "@/lib/images";
 import {
-  HAIR_SERVICES,
   formulaKindFor,
   formulaTabLabel,
-  showsColorTheoryTab,
   formulasCsv,
   groupByClient,
   linesText,
@@ -44,6 +42,11 @@ import {
   saveAftercareTemplate,
   saveClientFormula,
 } from "@/server/formulas.functions";
+import {
+  recordSpecFor,
+  showsColorTheoryTab,
+  type RecordSpec,
+} from "@/lib/industry";
 import type { Product } from "@/components/inventory/types";
 
 const today = () => {
@@ -59,10 +62,13 @@ const prettyDate = (ymd: string) => {
     year: "numeric",
   });
 };
+/** Used only if a record is opened on a business type with no client records. */
+const FALLBACK_SPEC = recordSpecFor("other")!;
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 function blankVisit(
   kind: FormulaKind,
+  spec: RecordSpec,
   staffName: string,
   aftercare: string,
   clientName = "",
@@ -71,14 +77,14 @@ function blankVisit(
     kind,
     clientName,
     serviceDate: today(),
-    service: kind === "hair" ? HAIR_SERVICES[0] : "",
+    service: spec.services?.[0] ?? "",
     lines: [{ item: "", amount: "" }],
     retail: [],
     developer: "",
     ratio: "",
     processingMinutes: 0,
     leftover: "",
-    aftercare: kind === "tattoo" ? aftercare : "",
+    aftercare: spec.aftercare ? aftercare : "",
     followUpOn: "",
     notes: "",
     staffName,
@@ -104,11 +110,7 @@ export function FormulasView({
     <>
       <PageHead
         title={formulaTabLabel(profile.businessType)}
-        lead={
-          kind === "tattoo"
-            ? "Every client’s colors, placement and aftercare, saved so nothing is ever lost."
-            : "Every client’s color formula and take-home products, saved so nothing is ever lost."
-        }
+        lead={recordSpecFor(profile.businessType)?.lead ?? ""}
       />
       {theory && (
         <div
@@ -165,6 +167,8 @@ function ClientRecords({
   onChanged: () => void;
 }) {
   const toast = useToast();
+  const { profile } = useBusiness();
+  const spec = recordSpecFor(profile.businessType) ?? FALLBACK_SPEC;
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState<ClientFormula[] | null>(null);
   const [aftercare, setAftercare] = useState("");
@@ -220,7 +224,7 @@ function ClientRecords({
             notes: "",
             leftover: "",
           }
-        : blankVisit(kind, staffName, aftercare),
+        : blankVisit(kind, spec, staffName, aftercare),
     );
   }
 
@@ -258,8 +262,7 @@ function ClientRecords({
         <EmptyState
           title={search ? "No client by that name" : "No client records yet"}
         >
-          Tap “New client visit” after each{" "}
-          {kind === "tattoo" ? "tattoo" : "color service"}. The next time they
+          Tap “New client visit” after each {spec.visitNoun}. The next time they
           come in, everything is here.
         </EmptyState>
       )}
@@ -292,9 +295,7 @@ function ClientRecords({
                   <ChevronRight size={18} className="text-ink-2" />
                 </span>
                 <span className="block text-[13px] mt-2 truncate">
-                  <b>
-                    {last.service || (kind === "tattoo" ? "Tattoo" : "Color")}:
-                  </b>{" "}
+                  <b>{last.service || spec.linesHeading}:</b>{" "}
                   {linesText(last.lines) || "no products listed"}
                 </span>
                 {last.retail.length > 0 && (
@@ -374,6 +375,8 @@ function VisitCard({
   onDeleted: () => void;
 }) {
   const toast = useToast();
+  const { profile } = useBusiness();
+  const spec = recordSpecFor(profile.businessType) ?? FALLBACK_SPEC;
   const [confirm, setConfirm] = useState(false);
   const [photos, setPhotos] = useState<FormulaPhoto[] | null>(null);
   const [photoCount, setPhotoCount] = useState(v.photoCount);
@@ -472,7 +475,7 @@ function VisitCard({
       {v.lines.length > 0 && (
         <div className="mt-2">
           <span className="block text-[12px] font-semibold text-ink-2 uppercase tracking-wide">
-            {v.kind === "tattoo" ? "Colors used" : "Formula"}
+            {spec.linesHeading}
           </span>
           <ul className="m-0 mt-1 p-0 list-none text-[15px]">
             {v.lines.map((l, i) => (
@@ -482,18 +485,17 @@ function VisitCard({
               </li>
             ))}
           </ul>
-          {v.kind === "hair" &&
-            (v.developer || v.ratio || v.processingMinutes > 0) && (
-              <p className="text-[13px] m-0 mt-1">
-                {[
-                  v.developer && `Developer ${v.developer}`,
-                  v.ratio && `ratio ${v.ratio}`,
-                  v.processingMinutes > 0 && `${v.processingMinutes} min`,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-            )}
+          {(v.developer || v.ratio || v.processingMinutes > 0) && (
+            <p className="text-[13px] m-0 mt-1">
+              {[
+                v.developer && `Developer ${v.developer}`,
+                v.ratio && `ratio ${v.ratio}`,
+                v.processingMinutes > 0 && `${v.processingMinutes} min`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          )}
           {v.leftover && (
             <p className="text-[12px] text-ink-2 m-0 mt-0.5">
               Left over: {v.leftover}
@@ -524,7 +526,7 @@ function VisitCard({
         </div>
       )}
 
-      {v.kind === "tattoo" && v.aftercare && (
+      {v.aftercare && (
         <div className="mt-3">
           <span className="block text-[12px] font-semibold text-ink-2 uppercase tracking-wide">
             Aftercare given
@@ -645,7 +647,8 @@ function VisitForm({
   const [saveTemplate, setSaveTemplate] = useState(false);
   const set = (patch: Partial<FormulaInput>) =>
     setF((x) => ({ ...x, ...patch }));
-  const tattoo = f.kind === "tattoo";
+  const { profile } = useBusiness();
+  const spec = recordSpecFor(profile.businessType) ?? FALLBACK_SPEC;
 
   const productNames = useMemo(
     () =>
@@ -699,7 +702,7 @@ function VisitForm({
       const soldAny = f.retail.some((r) => r.sold && !r.logged && r.productId);
       const saved = await saveClientFormula({ data: f });
       let template: string | undefined;
-      if (tattoo && saveTemplate && f.aftercare.trim()) {
+      if (spec.aftercare && saveTemplate && f.aftercare.trim()) {
         await saveAftercareTemplate({ data: { text: f.aftercare } });
         template = f.aftercare.trim();
       }
@@ -750,17 +753,14 @@ function VisitForm({
           />
         </Field>
       </div>
-      <Field
-        label={tattoo ? "Piece and placement" : "Service"}
-        htmlFor="v-service"
-      >
-        {tattoo ? (
+      <Field label={spec.serviceLabel} htmlFor="v-service">
+        {!spec.services ? (
           <input
             id="v-service"
             className="field-input"
             value={f.service}
             onChange={(e) => set({ service: e.target.value })}
-            placeholder="e.g. Rose, left forearm"
+            placeholder={spec.servicePlaceholder}
           />
         ) : (
           <select
@@ -769,7 +769,7 @@ function VisitForm({
             value={f.service}
             onChange={(e) => set({ service: e.target.value })}
           >
-            {[...new Set([...HAIR_SERVICES, f.service].filter(Boolean))].map(
+            {[...new Set([...spec.services, f.service].filter(Boolean))].map(
               (s) => (
                 <option key={s}>{s}</option>
               ),
@@ -779,9 +779,7 @@ function VisitForm({
       </Field>
 
       <span className="block text-[13px] font-semibold text-ink-2 mb-1.5">
-        {tattoo
-          ? "Colors used (ink brand and color)"
-          : "Formula (product / shade and amount)"}
+        {spec.linesLabel}
       </span>
       <ul className="m-0 p-0 list-none space-y-2 mb-2">
         {f.lines.map((l, i) => (
@@ -791,14 +789,14 @@ function VisitForm({
               list="formula-products"
               value={l.item}
               onChange={(e) => setLine(i, { item: e.target.value })}
-              placeholder={tattoo ? "e.g. Dynamic Black" : "e.g. 7N"}
+              placeholder={spec.itemPlaceholder}
               aria-label={`Item ${i + 1}`}
             />
             <input
               className="field-input !w-24 shrink-0"
               value={l.amount}
               onChange={(e) => setLine(i, { amount: e.target.value })}
-              placeholder={tattoo ? "optional" : "30 g"}
+              placeholder={spec.amountPlaceholder}
               aria-label={`Amount ${i + 1}`}
             />
             {f.lines.length > 1 && (
@@ -822,11 +820,11 @@ function VisitForm({
           className="btn btn-text btn-sm !px-0 mb-3"
           onClick={() => set({ lines: [...f.lines, { item: "", amount: "" }] })}
         >
-          <Plus size={14} /> Add {tattoo ? "a color" : "a product"}
+          <Plus size={14} /> Add {spec.addLabel}
         </button>
       )}
 
-      {!tattoo && (
+      {spec.mix && (
         <div className="grid grid-cols-2 min-[560px]:grid-cols-4 gap-x-3">
           <Field label="Developer" htmlFor="v-dev">
             <input
@@ -873,7 +871,7 @@ function VisitForm({
         </div>
       )}
 
-      {tattoo && (
+      {spec.aftercare && (
         <>
           <Field label="Aftercare given" htmlFor="v-after">
             <textarea
@@ -903,7 +901,7 @@ function VisitForm({
               Save as my usual aftercare
             </label>
           </div>
-          <Field label="Touch-up / healing check" htmlFor="v-follow">
+          <Field label={spec.followUpLabel} htmlFor="v-follow">
             <input
               id="v-follow"
               className="field-input"
@@ -1033,11 +1031,7 @@ function VisitForm({
           className="field-input min-h-[80px]"
           value={f.notes}
           onChange={(e) => set({ notes: e.target.value })}
-          placeholder={
-            tattoo
-              ? "Skin, needle, how it healed last time"
-              : "Porosity, grey %, what you’d change next time"
-          }
+          placeholder={spec.notesPlaceholder}
         />
       </Field>
       <button

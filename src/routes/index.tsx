@@ -24,6 +24,7 @@ import { ActivityView } from "@/components/inventory/ActivityView";
 import { ProfitView } from "@/components/insights/ProfitView";
 import { FormulasView } from "@/components/formulas/FormulasView";
 import { formulaTabLabel } from "@/lib/formulas";
+import { recordSpecFor } from "@/lib/industry";
 import {
   RestockView,
   type RestockMode,
@@ -506,9 +507,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
 
   const name = staffName.trim();
   // The Formulas tab (client records + color theory) is for color work; bars don't get it.
-  const showColor = !["bar", "retail", "bookstore"].includes(
-    profile.businessType,
-  );
+  const showColor = recordSpecFor(profile.businessType) !== null;
   const tabButtons = (layout: "bar" | "side") =>
     TABS.filter((t) => t.id !== "formulas" || showColor).map(
       ({ id, label: tabLabel, Icon, feature }) => {

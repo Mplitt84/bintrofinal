@@ -20,6 +20,7 @@ import { SetupCheck } from "@/components/business/SetupCheck";
 import { ConnectionDirectory } from "@/components/business/ConnectionDirectory";
 import { EmailOrdersCard } from "@/components/business/EmailOrdersCard";
 import { ColorTheory } from "@/components/color/ColorTheory";
+import { IndustryPicker } from "@/components/business/IndustryPicker";
 import { LEGAL_LINKS } from "@/components/legal/LegalPage";
 import { LEGAL } from "@/lib/legal";
 import type { AuthState } from "@/lib/auth";
@@ -31,11 +32,7 @@ import {
   type AccountPanel,
 } from "@/components/business/AccountView";
 import { PlanGate, UpgradeCard } from "@/components/business/PlanGate";
-import {
-  businessTypeById,
-  selectableBusinessTypes,
-  type BusinessProfile,
-} from "@/lib/business-types";
+import { type BusinessProfile } from "@/lib/business-types";
 import {
   CategoryManager,
   CategorySetupSheet,
@@ -174,6 +171,14 @@ export function SettingsView({
 
       {section === "profile" && (
         <>
+          <IndustryPicker
+            profile={profile}
+            onProfile={onProfile}
+            productCategories={products.map((p) => p.category)}
+          />
+          <h2 className="m-0 mb-3 text-[20px] font-bold tracking-tight">
+            Business details
+          </h2>
           <ProfileForm
             profile={profile}
             onProfile={onProfile}
@@ -410,7 +415,6 @@ function ProfileForm({
       const saved = await updateBusinessProfile({
         data: {
           name: draft.name,
-          businessType: draft.businessType,
           email: draft.email,
           phone: draft.phone,
           address: draft.address,
@@ -449,48 +453,6 @@ function ProfileForm({
           autoComplete="organization"
         />
       </Field>
-
-      <Field label="What kind of business?">
-        <div
-          className="grid grid-cols-2 min-[560px]:grid-cols-3 gap-2"
-          role="radiogroup"
-          aria-label="Business type"
-        >
-          {selectableBusinessTypes(profile.businessType).map((t) => {
-            const on = draft.businessType === t.id;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                className="chip !rounded-xl !py-2.5 text-left !whitespace-normal"
-                aria-pressed={on}
-                onClick={() => setDraft((d) => ({ ...d, businessType: t.id }))}
-              >
-                <span className="block">{t.label}</span>
-                <span
-                  className={`block text-[12px] font-normal ${on ? "text-white/75" : "text-ink-2"}`}
-                >
-                  {t.legacy ? "No longer offered" : t.blurb}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </Field>
-      <p className="text-ink-2 text-[13px] -mt-1 mb-4">
-        Tunes AI label reading, price estimates, sizes and the{" "}
-        <button
-          type="button"
-          className="border-0 bg-transparent p-0 text-action font-semibold cursor-pointer"
-          onClick={() => setSetupOpen(true)}
-        >
-          category suggestions for a{" "}
-          {businessTypeById(profile.businessType).label.toLowerCase()}
-        </button>
-        .
-      </p>
 
       <div className="grid min-[560px]:grid-cols-2 gap-x-2.5">
         <Field label="Email" htmlFor="bp-email">
