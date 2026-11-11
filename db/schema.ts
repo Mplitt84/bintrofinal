@@ -437,6 +437,8 @@ export const clientFormulas = pgTable("client_formulas", {
   ratio: text().notNull().default(""),
   processingMinutes: integer("processing_minutes").notNull().default(0),
   leftover: text().notNull().default(""),
+  /** Practice chips picked for the visit (treatment types, styles, skin notes…) from the industry's lists. */
+  tags: jsonb().$type<string[]>().notNull().default([]),
   /** Retail prescription: take-home products recommended (from inventory), and whether they were sold then. */
   retail: jsonb().$type<{ productId: number | null; name: string; qty: number; sold: boolean; logged?: boolean }[]>().notNull().default([]),
   aftercare: text().notNull().default(""),

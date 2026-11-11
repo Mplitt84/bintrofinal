@@ -1,0 +1,1 @@
+ALTER TABLE "client_formulas" ADD COLUMN "tags" jsonb DEFAULT '[]' NOT NULL;

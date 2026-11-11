@@ -10,6 +10,7 @@ type Row = typeof clientFormulas.$inferSelect;
 function toFormula(r: Row, photoCount = 0): ClientFormula {
   return {
     photoCount,
+    tags: r.tags ?? [],
     retail: r.retail,
     id: r.id,
     kind: r.kind === "tattoo" ? "tattoo" : "hair",
@@ -35,6 +36,7 @@ const values = (f: FormulaInput) => ({
   clientName: f.clientName.trim(),
   serviceDate: f.serviceDate,
   service: f.service.trim(),
+  tags: [...new Set(f.tags.map((t) => t.trim()).filter(Boolean))].slice(0, 30),
   retail: f.retail
     .filter((x) => x.name.trim() && x.qty > 0)
     .map((x) => ({ productId: x.productId, name: x.name.trim(), qty: Math.round(x.qty), sold: x.sold, logged: Boolean(x.logged) })),
