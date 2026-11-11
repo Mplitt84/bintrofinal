@@ -7,7 +7,7 @@
 export type TipCategory = 'save' | 'plan' | 'green' | 'stock' | 'stylist'
 
 /** Tabs a tip can be tied to; mirrors the tab ids in `routes/index.tsx`. */
-export type TipTab = 'scan' | 'products' | 'restock' | 'calendar' | 'budget' | 'activity' | 'color' | 'settings'
+export type TipTab = 'scan' | 'products' | 'restock' | 'calendar' | 'budget' | 'activity' | 'formulas' | 'settings'
 
 /** Which kinds of business a tip is written for. Omitted = everyone. */
 /** Groups (beauty, bar, hair = salons + barbers) or a single business type id. */
@@ -131,7 +131,7 @@ export const TIPS: Tip[] = [
     category: 'save',
     title: 'Pour small ink caps',
     body: 'Leftover ink in caps gets thrown away. Pour a little, top up as you go.',
-    tabs: ['scan', 'color'],
+    tabs: ['scan', 'formulas'],
     audience: 'tattoo',
   },
   {
@@ -139,7 +139,7 @@ export const TIPS: Tip[] = [
     category: 'save',
     title: 'Mix custom shades in small amounts',
     body: 'Mix on a palette, a little at a time, and save the recipe for repeat clients so you never remake a whole batch.',
-    tabs: ['scan', 'color'],
+    tabs: ['scan', 'formulas'],
     audience: 'nails',
   },
   // Stylist tips (hair salons and barbers): less waste at the bowl and the shampoo bowl
@@ -148,7 +148,7 @@ export const TIPS: Tip[] = [
     category: 'stylist',
     title: 'Mix 32 grams for a root touch-up',
     body: '32 grams of color is the average amount for a root touch-up. Start there instead of eyeballing a full bowl.',
-    tabs: ['color', 'scan', 'activity'],
+    tabs: ['formulas', 'scan', 'activity'],
     audience: 'hair',
   },
   {
@@ -156,7 +156,7 @@ export const TIPS: Tip[] = [
     category: 'stylist',
     title: 'Remix instead of over-mixing',
     body: 'Running short? Always go back and mix a little more. A second small mix beats tossing leftover color down the sink.',
-    tabs: ['color', 'scan', 'activity'],
+    tabs: ['formulas', 'scan', 'activity'],
     audience: 'hair',
   },
   {
@@ -164,7 +164,7 @@ export const TIPS: Tip[] = [
     category: 'stylist',
     title: '1–2 pumps of shampoo and conditioner',
     body: 'Saturate the hair with water first, then use 1–2 pumps per client and work it through with water. More pumps just rinse product down the drain.',
-    tabs: ['color', 'scan', 'activity'],
+    tabs: ['formulas', 'scan', 'activity'],
     audience: 'hair',
   },
 

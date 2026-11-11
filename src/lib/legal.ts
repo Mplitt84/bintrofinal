@@ -136,7 +136,8 @@ export const PRIVACY: LegalSection[] = [
       'Sign-in: the name, email address and Google account ID of each person you allow to sign in, when they last signed in, and a sign-in session record for each browser. We never see Google passwords.',
       'Account and billing: plan, billing email and owner name. Card details are handled by our payment processor (Stripe); we only see the card brand and last 4 digits.',
       'Files you upload: invoices, receipts, sales reports, stock lists and product photos, used to read the information you asked for. Receipt photos you add to an expense are kept with that expense (and attached to it in QuickBooks if you send it there) until you remove the photo or delete the expense.',
-      'Order emails you forward: if you forward vendor order confirmations to your Bintro order address, we receive the email (through Resend), read the products, quantities and prices into an open order, and keep the sender, subject and result in a short log.',
+      'Client records: if you use the Formulas tab, we store the client name you type (we suggest first name and last initial), each visit’s color formula or tattoo colors, placement and aftercare, recommended take-home products, notes, before/after photos you add, and who saved it. We don’t ask for client contact details. You can delete a visit or photo at any time, and download all records as a spreadsheet.',
+    'Order emails you forward: if you forward vendor order confirmations to your Bintro order address, we receive the email (through Resend), read the products, quantities and prices into an open order, and keep the sender, subject and result in a short log.',
     'Connected services: if you connect Square or QuickBooks, the access tokens they issue and the data needed for the connection (catalog items, inventory counts, sales, expenses).',
       'Device settings: a few preferences (such as the last staff name, palette and tip settings) are saved in your browser on that device only.',
     ],
@@ -144,7 +145,7 @@ export const PRIVACY: LegalSection[] = [
   {
     heading: 'What we don\'t collect',
     paragraphs: [
-      `${product} does not collect your clients' personal information, does not use advertising trackers, and does not sell or rent data to anyone.`,
+      `Apart from the client names, notes and photos you choose to save in client records, ${product} does not collect your clients' personal information, does not use advertising trackers, and does not sell or rent data to anyone.`,
     ],
   },
   {
