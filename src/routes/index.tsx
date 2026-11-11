@@ -20,6 +20,7 @@ import type {
 import { ScanView } from "@/components/inventory/ScanView";
 import { InventoryView } from "@/components/inventory/InventoryView";
 import { ActivityView } from "@/components/inventory/ActivityView";
+import { ProfitView } from "@/components/insights/ProfitView";
 import {
   RestockView,
   type RestockMode,
@@ -193,6 +194,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
     text: string;
   } | null>(null);
   const [tipsOpen, setTipsOpen] = useState(false);
+  const [activityView, setActivityView] = useState<"profit" | "usage">("profit");
   const [insights, setInsights] = useState<Insights | null>(null);
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [insightSegment, setInsightSegment] = useState<InsightSegment>("fast");
@@ -738,8 +740,41 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
             )}
             {tab === "activity" && (
               <>
-                <InsightsBanner insights={insights} onOpen={openInsights} />
-                <ActivityView recent={recent} />
+                <div
+                  className="inline-flex bg-surface rounded-full p-1 mb-4"
+                  role="tablist"
+                  aria-label="Activity views"
+                >
+                  {(
+                    [
+                      ["profit", "Profit"],
+                      ["usage", "Usage"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      aria-selected={activityView === id}
+                      onClick={() => setActivityView(id)}
+                      className={`px-4 py-2 rounded-full border-0 cursor-pointer text-sm font-semibold ${
+                        activityView === id
+                          ? "bg-white text-ink shadow-sm"
+                          : "bg-transparent text-ink-2"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {activityView === "profit" ? (
+                  <ProfitView onOpenProducts={() => selectTab("products")} />
+                ) : (
+                  <>
+                    <InsightsBanner insights={insights} onOpen={openInsights} />
+                    <ActivityView recent={recent} />
+                  </>
+                )}
               </>
             )}
             {tab === "budget" && (

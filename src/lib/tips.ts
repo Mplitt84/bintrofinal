@@ -4,13 +4,13 @@
  * (bulb in the header) and as a once-a-day pop-up. Client-safe.
  */
 
-export type TipCategory = 'save' | 'plan' | 'green' | 'stock'
+export type TipCategory = 'save' | 'plan' | 'green' | 'stock' | 'stylist'
 
 /** Tabs a tip can be tied to; mirrors the tab ids in `routes/index.tsx`. */
 export type TipTab = 'scan' | 'products' | 'restock' | 'calendar' | 'budget' | 'activity' | 'settings'
 
 /** Which kinds of business a tip is written for. Omitted = everyone. */
-type Audience = 'beauty' | 'bar'
+type Audience = 'beauty' | 'bar' | 'hair'
 
 export type Tip = {
   id: string
@@ -29,9 +29,36 @@ export const TIP_CATEGORIES: { id: TipCategory; label: string; short: string }[]
   { id: 'plan', label: 'Plan ahead', short: 'Plan' },
   { id: 'green', label: 'Sustainability', short: 'Green' },
   { id: 'stock', label: 'Smarter stock', short: 'Stock' },
+  { id: 'stylist', label: 'Stylist tips', short: 'Stylist' },
 ]
 
 export const TIPS: Tip[] = [
+  // Stylist tips (hair salons and barbers): less waste at the bowl and the shampoo bowl
+  {
+    id: 'stylist-color-32g',
+    category: 'stylist',
+    title: 'Mix 32 grams for a root touch-up',
+    body: '32 grams of color is the average amount for a root touch-up. Start there instead of eyeballing a full bowl.',
+    tabs: ['scan', 'activity'],
+    audience: 'hair',
+  },
+  {
+    id: 'stylist-remix-color',
+    category: 'stylist',
+    title: 'Remix instead of over-mixing',
+    body: 'Running short? Always go back and mix a little more. A second small mix beats tossing leftover color down the sink.',
+    tabs: ['scan', 'activity'],
+    audience: 'hair',
+  },
+  {
+    id: 'stylist-shampoo-pumps',
+    category: 'stylist',
+    title: '1–2 pumps of shampoo and conditioner',
+    body: 'Saturate the hair with water first, then use 1–2 pumps per client and work it through with water. More pumps just rinse product down the drain.',
+    tabs: ['scan', 'activity'],
+    audience: 'hair',
+  },
+
   // Save money
   {
     id: 'save-bulk-fast-movers',
@@ -275,9 +302,18 @@ export const TIPS: Tip[] = [
 
 const BEAUTY_TYPES = new Set(['salon', 'barber', 'nails', 'brows', 'tattoo', 'spa', 'other'])
 
+const HAIR_TYPES = new Set(['salon', 'barber'])
+
 function audienceFor(businessType: string): Audience | null {
   if (businessType === 'bar') return 'bar'
   return BEAUTY_TYPES.has(businessType) ? 'beauty' : null
+}
+
+/** Hair tips go to salons and barbers; beauty tips to every beauty business. */
+function tipFits(tip: Tip, businessType: string) {
+  if (!tip.audience) return true
+  if (tip.audience === 'hair') return HAIR_TYPES.has(businessType)
+  return tip.audience === audienceFor(businessType)
 }
 
 /**
@@ -285,8 +321,7 @@ function audienceFor(businessType: string): Audience | null {
  * within each group rotates daily so the first tip isn't always the same.
  */
 export function tipsFor(businessType: string, tab: TipTab, category?: TipCategory, day = dayNumber()): Tip[] {
-  const audience = audienceFor(businessType)
-  const fits = TIPS.filter((t) => (!t.audience || t.audience === audience) && (!category || t.category === category))
+  const fits = TIPS.filter((t) => tipFits(t, businessType) && (!category || t.category === category))
   const rotate = (list: Tip[]) => {
     if (!list.length) return list
     const start = day % list.length
