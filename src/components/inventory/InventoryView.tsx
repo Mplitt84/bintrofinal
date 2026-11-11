@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { CheckSquare, CircleMinus, ClipboardCheck, Copy, Gauge, Pencil, Search, Tag, Trash2, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { CheckSquare, Plus, CircleMinus, ClipboardCheck, Copy, Gauge, Pencil, Search, Tag, Trash2, X } from 'lucide-react'
 import type { Product, Stats } from './types'
 import { bulkDeleteProducts, createProduct, deleteProduct, mergeProducts, setProductBarcode, updateProduct } from '@/server/inventory.functions'
 import { BulkEditSheet } from './BulkEditSheet'
@@ -104,8 +104,17 @@ export function InventoryView({
     }
   }
 
+  // Floating "Add product" once the header button has scrolled out of view.
+  const [scrolled, setScrolled] = useState(false)
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 220)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
   return (
-    <div className={selecting ? 'pb-24' : ''}>
+    <div className={selecting ? 'pb-24' : 'pb-20'}>
       <PageHead
         title="Products"
         lead="Everything on the shelf, and everything Bintro recognizes when you scan."
@@ -349,6 +358,17 @@ export function InventoryView({
           />
         )}
       </Sheet>
+
+      {scrolled && !selecting && !adding && !editing && (
+        <button
+          type="button"
+          data-add-fab
+          className="btn btn-primary fixed z-30 right-4 min-[1060px]:right-8 bottom-[calc(env(safe-area-inset-bottom)+84px)] min-[1060px]:bottom-6 !rounded-full !px-5 !py-3.5 shadow-lg print:hidden"
+          onClick={() => setAdding(true)}
+        >
+          <Plus size={18} /> Add product
+        </button>
+      )}
 
       <Sheet
         open={adding}
