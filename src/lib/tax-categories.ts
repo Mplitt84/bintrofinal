@@ -28,6 +28,8 @@ export type TaxGroup = {
   qbAccount: string
   /** Counts toward cost of goods sold rather than operating expenses. */
   cogs: boolean
+  /** Kept for categories filed before the wellness & body art focus; not offered in pickers. */
+  legacy?: boolean
 }
 
 export const TAX_GROUPS: TaxGroup[] = [
@@ -54,6 +56,7 @@ export const TAX_GROUPS: TaxGroup[] = [
     taxLine: 'Cost of goods sold · Sch. C Part III, line 36 (Purchases)',
     qbAccount: 'Cost of Goods Sold – Beverage',
     cogs: true,
+    legacy: true,
   },
   {
     id: 'food',
@@ -62,6 +65,7 @@ export const TAX_GROUPS: TaxGroup[] = [
     taxLine: 'Cost of goods sold · Sch. C Part III, line 36 (Purchases)',
     qbAccount: 'Cost of Goods Sold – Food',
     cogs: true,
+    legacy: true,
   },
   {
     id: 'disposables',
@@ -149,8 +153,6 @@ export function guessTaxGroup(name: string, suggestions: CategorySuggestion[], s
   if (/glove|liner|foil|wipe|towel.?paper|cotton|strip|spatula|barrier|disinfect|sanit|clean|cup|straw|napkin/.test(n)) return 'disposables'
   if (/towel|sheet|robe|linen|blanket|cape/.test(n)) return 'linens'
   if (/shear|clipper|tool|lamp|machine|brush|comb|tweezer|nipper|warmer|glassware|dryer|iron/.test(n)) return 'tools'
-  if (/vodka|whisk|tequila|rum|gin|liqu|wine|beer|spirit|mixer|seltzer/.test(n)) return 'beverage'
-  if (/food|snack|garnish/.test(n)) return 'food'
   if (/coffee|tea|water|refresh|champagne/.test(n)) return 'amenities'
   if (/office|paper|receipt|gift.?card|pen/.test(n)) return 'office'
   return DEFAULT_TAX_GROUP
@@ -232,4 +234,9 @@ export const CATEGORY_SUGGESTIONS: Record<string, CategorySuggestion[]> = {
 
 export function categorySuggestionsFor(typeId: string): CategorySuggestion[] {
   return CATEGORY_SUGGESTIONS[typeId] ?? CATEGORY_SUGGESTIONS.other!
+}
+
+/** Tax groups offered in pickers. Pass the one already chosen so an old (legacy) choice still shows. */
+export function selectableTaxGroups(current?: string) {
+  return TAX_GROUPS.filter((g) => !g.legacy || g.id === current)
 }

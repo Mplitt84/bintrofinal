@@ -1,8 +1,8 @@
 import { categorySuggestionsFor } from './tax-categories'
 
 /**
- * Kinds of business Bintro is set up for: small beauty and wellness shops,
- * plus bars. The type tunes the AI prompts, the category set-up pop-up, size
+ * Kinds of business Bintro is set up for: wellness and body art spaces (hair, barber, nails,
+ * brows & lashes, tattoo & piercing, spa). Bar, retail and bookstore are legacy: still work, not offered. The type tunes the AI prompts, the category set-up pop-up, size
  * suggestions and a few placeholders. Client-safe.
  */
 
@@ -18,7 +18,7 @@ export type BusinessType = {
   sizes: string[]
   vendorExample: string
   expenseCategories: string[]
-  /** Kept so businesses set up before the beauty & wellness focus still work, but not offered. */
+  /** Kept so businesses set up before the wellness & body art focus still work, but not offered. */
   legacy?: boolean
 }
 
@@ -103,6 +103,7 @@ const SEEDS: TypeSeed[] = [
     sizes: ['750 ml', '1 L', '1.75 L', '12 oz', '16 oz', '24 pack', '1/2 keg'],
     vendorExample: 'Southern Glazer’s',
     expenseCategories: withExtra('Entertainment'),
+    legacy: true,
   },
   {
     id: 'other',

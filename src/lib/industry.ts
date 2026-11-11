@@ -255,8 +255,7 @@ export function industrySetup(id: string): SetupLine[] {
   const tips = TIPS.filter(
     (t) =>
       t.audience === id ||
-      (t.audience === "hair" && (id === "salon" || id === "barber")) ||
-      (t.audience === "bar" && id === "bar"),
+      (t.audience === "hair" && (id === "salon" || id === "barber")),
   );
   const apps = directoryFor(id)
     .filter((e) => e.types.includes(id))

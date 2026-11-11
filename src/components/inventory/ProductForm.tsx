@@ -16,7 +16,7 @@ import { PriceInput } from '@/components/ui/PriceInput'
 import { Thumb, centsToDollars } from '@/components/ui/bits'
 import { useBusiness } from '@/components/business/BusinessContext'
 import { CategorySetupSheet } from '@/components/business/CategorySetupSheet'
-import { TAX_GROUPS, categorySuggestionsFor, findCategory, guessTaxGroup, taxGroupById, taxKind, type ProductCategory, type TaxGroupId } from '@/lib/tax-categories'
+import { selectableTaxGroups, categorySuggestionsFor, findCategory, guessTaxGroup, taxGroupById, taxKind, type ProductCategory, type TaxGroupId } from '@/lib/tax-categories'
 import { COPY_PROMPT_OFF_KEY, CopyPreviousSheet } from './CopyPreviousSheet'
 import { MicButton, SpeakDetails } from './VoiceInput'
 import { MergePanel } from './MergePanel'
@@ -704,7 +704,7 @@ export function ProductForm({
                   value={chosenGroup}
                   onChange={(e) => setNewCategoryGroup(e.target.value as TaxGroupId)}
                 >
-                  {TAX_GROUPS.map((g) => (
+                  {selectableTaxGroups(chosenGroup).map((g) => (
                     <option key={g.id} value={g.id}>
                       {g.label} ({taxKind(g)})
                     </option>
