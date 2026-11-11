@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowRight, Boxes, CalendarClock, ChevronLeft, ChevronRight, Leaf, Lightbulb, PiggyBank, X } from 'lucide-react'
+import { ArrowRight, Boxes, CalendarClock, Scissors, ChevronLeft, ChevronRight, Leaf, Lightbulb, PiggyBank, X } from 'lucide-react'
 import { Sheet } from '@/components/ui/Sheet'
 import { useBusiness } from '@/components/business/BusinessContext'
 import { TIP_CATEGORIES, tipsFor, type Tip, type TipCategory, type TipTab } from '@/lib/tips'
@@ -20,6 +20,7 @@ const CATEGORY_ICON: Record<TipCategory, typeof Lightbulb> = {
   plan: CalendarClock,
   green: Leaf,
   stock: Boxes,
+  stylist: Scissors,
 }
 
 function categoryLabel(id: TipCategory) {
