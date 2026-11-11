@@ -16,6 +16,7 @@ import {
   findExpenseReceipt,
   deleteExpenseReceipt,
   insertTeamMember,
+  setTeamMemberRoles,
   saveBusinessProfile,
   setMonthBudget,
   updateExpense,
@@ -75,10 +76,23 @@ export const listTeamMembers = createServerFn({ method: "GET" }).middleware([req
 });
 
 export const addTeamMember = createServerFn({ method: "POST" }).middleware([requireUser])
-  .inputValidator(z.object({ name: z.string().trim().min(1).max(60) }))
+  .inputValidator(
+    z.object({
+      name: z.string().trim().min(1).max(60),
+      isProvider: z.boolean().optional(),
+      isAdmin: z.boolean().optional(),
+    }),
+  )
   .handler(async ({ data }) => {
     await assertTeamRoom();
-    return insertTeamMember(data.name);
+    return insertTeamMember(data.name, { isProvider: data.isProvider, isAdmin: data.isAdmin });
+  });
+
+/** Team roles: sees clients (stylist / artist / provider) and/or admin side. */
+export const updateTeamMemberRoles = createServerFn({ method: "POST" }).middleware([requireUser])
+  .inputValidator(z.object({ id: z.number().int(), isProvider: z.boolean(), isAdmin: z.boolean() }))
+  .handler(async ({ data }) => {
+    return setTeamMemberRoles(data.id, { isProvider: data.isProvider, isAdmin: data.isAdmin });
   });
 
 export const removeTeamMember = createServerFn({ method: "POST" }).middleware([requireUser])

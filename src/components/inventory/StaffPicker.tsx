@@ -37,6 +37,7 @@ export function StaffPicker({
   prompt,
   team,
   current,
+  providerNoun = 'Stylist',
   onPick,
   onClose,
   onManageTeam,
@@ -45,7 +46,9 @@ export function StaffPicker({
   prompt: StaffPrompt
   team: TeamMember[]
   current: string
-  onPick: (name: string) => void
+  /** What a team member who sees clients is called here (Stylist, Barber, Artist…). */
+  providerNoun?: string
+  onPick: (name: string, roles?: { isProvider: boolean; isAdmin: boolean }) => void
   onClose: () => void
   onManageTeam: () => void
 }) {
@@ -53,10 +56,14 @@ export function StaffPicker({
   const panelRef = useRef<HTMLDivElement>(null)
   const [draft, setDraft] = useState('')
   const [adding, setAdding] = useState(false)
+  const [isProvider, setIsProvider] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setDraft('')
+    setIsProvider(true)
+    setIsAdmin(false)
     setAdding(team.length === 0)
     const opener = document.activeElement as HTMLElement | null
     const frame = requestAnimationFrame(() => {
@@ -87,7 +94,7 @@ export function StaffPicker({
   function submitNew(e: React.FormEvent) {
     e.preventDefault()
     const next = draft.trim().slice(0, 60)
-    if (next) onPick(next)
+    if (next) onPick(next, { isProvider, isAdmin })
   }
 
   return createPortal(
@@ -150,6 +157,11 @@ export function StaffPicker({
                     {deriveInitials(m.name)}
                   </span>
                   <span className="text-[15px] font-bold text-ink leading-tight break-words max-w-full">{m.name}</span>
+                  {(m.isProvider || m.isAdmin) && (
+                    <span className="text-[11.5px] font-semibold text-ink-2 leading-tight -mt-1">
+                      {[m.isProvider && providerNoun, m.isAdmin && 'Admin'].filter(Boolean).join(' · ')}
+                    </span>
+                  )}
                   {on && (
                     <span className="absolute top-2 right-2 w-6 h-6 rounded-full bg-action text-white grid place-items-center">
                       <Check size={14} strokeWidth={3} />
@@ -163,7 +175,8 @@ export function StaffPicker({
         )}
 
         {adding ? (
-          <form onSubmit={submitNew} className="flex gap-2 text-left">
+          <form onSubmit={submitNew} className="text-left">
+            <div className="flex gap-2">
             <label htmlFor="staff-new-name" className="sr-only">
               Your name
             </label>
@@ -180,6 +193,18 @@ export function StaffPicker({
               <UserPlus size={18} />
               Go
             </button>
+            </div>
+            <fieldset className="border-0 p-0 m-0 mt-3">
+              <legend className="text-[13px] font-semibold text-ink-2 mb-1.5">What do you do here? Pick all that apply.</legend>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className="chip" aria-pressed={isProvider} onClick={() => setIsProvider((v) => !v)}>
+                  {providerNoun} (I see clients)
+                </button>
+                <button type="button" className="chip" aria-pressed={isAdmin} onClick={() => setIsAdmin((v) => !v)}>
+                  Admin (inventory, orders, books)
+                </button>
+              </div>
+            </fieldset>
           </form>
         ) : (
           <button type="button" className="btn btn-tonal w-full" onClick={() => setAdding(true)}>

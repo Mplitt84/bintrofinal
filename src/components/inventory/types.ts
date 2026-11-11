@@ -29,7 +29,7 @@ export type Product = {
   updatedAt: string | Date;
 };
 
-export type TeamMember = { id: number; name: string; createdAt: string | Date };
+export type TeamMember = { id: number; name: string; isProvider: boolean; isAdmin: boolean; createdAt: string | Date };
 
 export type Expense = {
   id: number;
