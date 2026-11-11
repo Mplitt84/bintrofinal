@@ -71,7 +71,7 @@ export function PageHead({
         <h1 className="text-[28px] leading-tight tracking-tight font-bold mt-0 mb-1 text-royal">{title}</h1>
         <p className="text-ink-2 mt-0 mb-5">{lead}</p>
       </div>
-      {action}
+      {action && <div className="mb-4 flex flex-wrap items-center gap-2">{action}</div>}
     </div>
   )
 }

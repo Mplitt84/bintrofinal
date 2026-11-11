@@ -188,7 +188,7 @@ export const EMPTY_PROFILE: BusinessProfile = {
   weeklyReportEmail: true,
   monthlyReportEmail: true,
   fastMoverAlertEmail: true,
-  palette: 'burgundy-olive',
+  palette: 'bintro',
   orderEveryDays: 7,
   taxState: '',
 }

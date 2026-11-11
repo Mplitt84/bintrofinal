@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useId } from "react";
 import { ArrowUp } from "lucide-react";
 import { Sheet } from "@/components/ui/Sheet";
 import { useBusiness } from "@/components/business/BusinessContext";
@@ -15,7 +15,10 @@ const STARTERS = [
   "Who scanned the most this week?",
 ];
 
-/** Bintro's mascot: a happy little bin with big eyes. Body follows the brand action color. */
+/**
+ * Bintro's mascot: a friendly bin tipping its lid. Fixed brand colors (mustard body, royal blue
+ * lines) with soft gradients, so it looks the same in every palette.
+ */
 export function BinBuddy({
   size = 56,
   blink = true,
@@ -23,101 +26,131 @@ export function BinBuddy({
   size?: number;
   blink?: boolean;
 }) {
+  const id = useId().replace(/:/g, "");
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 64 64"
       aria-hidden="true"
-      className="block"
+      className="block shrink-0"
     >
-      {/* Brand: bold mustard bin, royal blue lines */}
-      {/* lid handle */}
-      <rect
-        x="25"
-        y="5"
-        width="14"
-        height="6"
-        rx="3"
-        fill="none"
-        stroke="#002CB7"
-        strokeWidth="3"
+      <defs>
+        <linearGradient id={`${id}b`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#FFDA5C" />
+          <stop offset="0.55" stopColor="#F2C033" />
+          <stop offset="1" stopColor="#E0A617" />
+        </linearGradient>
+        <linearGradient id={`${id}l`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#FFE27A" />
+          <stop offset="1" stopColor="#F2C033" />
+        </linearGradient>
+        <radialGradient id={`${id}e`} cx="0.4" cy="0.35" r="0.7">
+          <stop offset="0" stopColor="#1C4BE0" />
+          <stop offset="1" stopColor="#001E8A" />
+        </radialGradient>
+      </defs>
+      <ellipse
+        cx="32"
+        cy="59.5"
+        rx="15"
+        ry="2.6"
+        fill="#001E8A"
+        opacity=".14"
       />
-      {/* lid */}
-      <rect
-        x="9"
-        y="10.5"
-        width="46"
-        height="8"
-        rx="4"
-        fill="#F2C033"
-        stroke="#002CB7"
-        strokeWidth="2.6"
-      />
-      {/* body */}
       <path
-        d="M13 20 H51 L47.5 55 Q47 59 43 59 H21 Q17 59 16.5 55 Z"
-        fill="#F2C033"
-        stroke="#002CB7"
-        strokeWidth="2.6"
-        strokeLinejoin="round"
-      />
-      {/* ribs */}
-      <path
-        d="M24 47 v6.5 M32 47 v6.5 M40 47 v6.5"
+        d="M14.5 21.5 H49.5 L46.4 53.2 Q45.9 58 41.1 58 H22.9 Q18.1 58 17.6 53.2 Z"
+        fill={`url(#${id}b)`}
         stroke="#002CB7"
         strokeWidth="2.4"
-        strokeLinecap="round"
+        strokeLinejoin="round"
       />
-      {/* eyes */}
-      <g className={blink ? "bin-buddy-eyes" : undefined}>
-        <ellipse
-          cx="24.5"
-          cy="31"
-          rx="5.6"
-          ry="6.4"
-          fill="#fff"
-          stroke="#002CB7"
-          strokeWidth="1.8"
-        />
-        <ellipse
-          cx="39.5"
-          cy="31"
-          rx="5.6"
-          ry="6.4"
-          fill="#fff"
-          stroke="#002CB7"
-          strokeWidth="1.8"
-        />
-        <circle cx="25.6" cy="32.2" r="3" fill="#002CB7" />
-        <circle cx="40.6" cy="32.2" r="3" fill="#002CB7" />
-        <circle cx="26.6" cy="30.9" r="1.1" fill="#fff" />
-        <circle cx="41.6" cy="30.9" r="1.1" fill="#fff" />
-      </g>
-      {/* cheeks */}
-      <ellipse
-        cx="18.8"
-        cy="39.5"
-        rx="3"
-        ry="1.9"
-        fill="#f08a5d"
-        opacity=".55"
-      />
-      <ellipse
-        cx="45.2"
-        cy="39.5"
-        rx="3"
-        ry="1.9"
-        fill="#f08a5d"
-        opacity=".55"
-      />
-      {/* smile */}
       <path
-        d="M26 39.5 Q32 45.5 38 39.5"
-        fill="none"
-        stroke="#002CB7"
+        d="M19.2 25 L21.4 52.5"
+        stroke="#fff"
         strokeWidth="2.6"
         strokeLinecap="round"
+        opacity=".45"
+      />
+      <path
+        d="M27 49.5 v4 M32 49.5 v4 M37 49.5 v4"
+        stroke="#C48A08"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <g transform="rotate(-7 32 16)">
+        <path
+          d="M26.5 10.5 V8.6 Q26.5 6 29.1 6 H34.9 Q37.5 6 37.5 8.6 V10.5"
+          fill="none"
+          stroke="#002CB7"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+        />
+        <rect
+          x="10"
+          y="10.5"
+          width="44"
+          height="8"
+          rx="4"
+          fill={`url(#${id}l)`}
+          stroke="#002CB7"
+          strokeWidth="2.4"
+        />
+        <path
+          d="M14.5 13.2 H30"
+          stroke="#fff"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          opacity=".6"
+        />
+      </g>
+      <g className={blink ? "bin-buddy-eyes" : undefined}>
+        <ellipse
+          cx="25"
+          cy="32.5"
+          rx="5.4"
+          ry="6.2"
+          fill="#fff"
+          stroke="#002CB7"
+          strokeWidth="1.8"
+        />
+        <ellipse
+          cx="39"
+          cy="32.5"
+          rx="5.4"
+          ry="6.2"
+          fill="#fff"
+          stroke="#002CB7"
+          strokeWidth="1.8"
+        />
+        <circle cx="26" cy="33.6" r="3.1" fill={`url(#${id}e)`} />
+        <circle cx="40" cy="33.6" r="3.1" fill={`url(#${id}e)`} />
+        <circle cx="27.2" cy="32.2" r="1.15" fill="#fff" />
+        <circle cx="41.2" cy="32.2" r="1.15" fill="#fff" />
+      </g>
+      <ellipse
+        cx="20.6"
+        cy="41.6"
+        rx="2.6"
+        ry="1.6"
+        fill="#F0764A"
+        opacity=".5"
+      />
+      <ellipse
+        cx="43.4"
+        cy="41.6"
+        rx="2.6"
+        ry="1.6"
+        fill="#F0764A"
+        opacity=".5"
+      />
+      <path
+        d="M26.5 41.4 Q32 47 37.5 41.4"
+        fill="#fff"
+        stroke="#002CB7"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );

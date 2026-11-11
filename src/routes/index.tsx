@@ -526,7 +526,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
             aria-current={active ? "page" : undefined}
             className={
               layout === "bar"
-                ? `relative flex-1 flex flex-col items-center gap-1 pt-2 pb-1.5 px-0.5 border-0 bg-transparent cursor-pointer text-[11px] font-semibold whitespace-nowrap min-w-0 ${
+                ? `relative flex-1 flex flex-col items-center gap-1 pt-2 pb-1.5 px-0 border-0 bg-transparent cursor-pointer text-[10px] min-[400px]:text-[11px] font-semibold whitespace-nowrap min-w-0 basis-0 overflow-hidden ${
                     active ? "text-action" : "text-ink-2"
                   }`
                 : `relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-0 cursor-pointer text-[15px] font-semibold text-left ${
@@ -539,7 +539,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
             <span
               className={
                 layout === "bar"
-                  ? `relative grid place-items-center w-12 h-8 rounded-full transition-colors ${active ? "bg-action-tint" : ""}`
+                  ? `relative grid place-items-center w-11 min-[400px]:w-12 h-8 rounded-full transition-colors ${active ? "bg-action-tint" : ""}`
                   : "relative grid place-items-center"
               }
             >
@@ -702,7 +702,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
           </header>
 
           <main className="max-w-[1100px] min-[1060px]:max-w-[1240px] mx-auto px-4 min-[1060px]:px-8 pt-4 min-[1060px]:pt-6 pb-[calc(96px+env(safe-area-inset-bottom))] min-[1060px]:pb-12">
-            {!profile.name.trim() && tab !== "settings" && (
+            {!profile.name.trim() && tab === "scan" && (
               <button
                 onClick={() => openSettings("profile")}
                 className="w-full text-left flex items-center gap-3 bg-action-tint text-action rounded-2xl px-4 py-3 mb-4 border-0 cursor-pointer"
@@ -714,7 +714,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                 </span>
               </button>
             )}
-            {hydrated && !name && tab !== "settings" && (
+            {hydrated && !name && tab === "scan" && (
               <button
                 onClick={openStaff}
                 className="w-full text-left flex items-center gap-3 bg-warn-tint text-warn rounded-2xl px-4 py-3 mb-4 border-0 cursor-pointer"

@@ -13,7 +13,7 @@ export const Route = createRootRoute({
         name: 'viewport',
         content: 'width=device-width, initial-scale=1, viewport-fit=cover',
       },
-      { name: 'theme-color', content: '#fdf9f1' },
+      { name: 'theme-color', content: '#fffdf7' },
       { name: 'apple-mobile-web-app-capable', content: 'yes' },
       { name: 'mobile-web-app-capable', content: 'yes' },
       { name: 'apple-mobile-web-app-title', content: 'Bintro' },
@@ -21,6 +21,11 @@ export const Route = createRootRoute({
       {
         title: 'Bintro — Inventory & budget',
       },
+      { name: 'description', content: 'Bintro tracks stock, orders, client records and spending for salons, barbershops, spas and tattoo studios.' },
+      { property: 'og:title', content: 'Bintro' },
+      { property: 'og:description', content: 'Inventory, orders, client records and budget for wellness and body art spaces.' },
+      { property: 'og:type', content: 'website' },
+      { property: 'og:image', content: '/icon-512.png' },
     ],
     links: [
       { rel: 'manifest', href: '/manifest.webmanifest' },
