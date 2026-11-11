@@ -1,4 +1,5 @@
 /** Formulas tab types (client-safe). */
+import { recordSpecFor } from './industry'
 
 export type FormulaKind = 'hair' | 'tattoo'
 
@@ -44,15 +45,13 @@ export function groupByClient(rows: ClientFormula[]): ClientRecord[] {
   return [...map.values()].sort((a, b) => b.lastVisit.localeCompare(a.lastVisit))
 }
 
-export const HAIR_SERVICES = ['Root touch-up', 'All-over color', 'Toner / gloss', 'Highlights', 'Balayage', 'Lowlights', 'Grey blending', 'Color correction']
-
 /** Tattoo shops log ink and aftercare; everyone else logs hair color formulas. */
 export function formulaKindFor(businessType: string): FormulaKind {
   return businessType === 'tattoo' ? 'tattoo' : 'hair'
 }
 
 export function formulaTabLabel(businessType: string) {
-  return businessType === 'tattoo' ? 'Ink log' : 'Formulas'
+  return recordSpecFor(businessType)?.tabLabel ?? 'Formulas'
 }
 
 /** One line of text for lists and CSV: "7N 30 g + 7.3 10 g". */
@@ -76,7 +75,3 @@ export function formulasCsv(rows: ClientFormula[]) {
   return [head.map(csvCell).join(','), ...body].join('\n')
 }
 
-/** Color theory sits in the Formulas tab only for salons and tattoo shops; everyone else finds it in Settings. */
-export function showsColorTheoryTab(businessType: string) {
-  return businessType === 'salon' || businessType === 'tattoo'
-}

@@ -451,3 +451,8 @@ body {
   html { -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; overscroll-behavior-y: none; }
   button, a, .chip { touch-action: manipulation; }
 }
+
+/* Industry picker: the preview eases in each time a different industry is tapped. */
+.industry-preview { animation: industry-in .28s ease-out; }
+@keyframes industry-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .industry-preview { animation: none; } .industry-card { transition: none; } }
