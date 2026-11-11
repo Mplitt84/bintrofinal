@@ -51,7 +51,7 @@ export const movements = pgTable("movements", {
 export const businessProfile = pgTable("business_profile", {
   id: integer().primaryKey(),
   name: text().notNull().default(""),
-  /** Salon, bar, nail studio, bookstore… Tunes AI prompts and category suggestions. */
+  /** Salon, barbershop, nail studio, tattoo shop… Tunes AI prompts and category suggestions. */
   businessType: text("business_type").notNull().default("salon"),
   email: text().notNull().default(""),
   phone: text().notNull().default(""),

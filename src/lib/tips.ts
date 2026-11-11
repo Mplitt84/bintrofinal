@@ -10,8 +10,8 @@ export type TipCategory = 'save' | 'plan' | 'green' | 'stock' | 'stylist'
 export type TipTab = 'scan' | 'products' | 'restock' | 'calendar' | 'budget' | 'activity' | 'formulas' | 'settings'
 
 /** Which kinds of business a tip is written for. Omitted = everyone. */
-/** Groups (beauty, bar, hair = salons + barbers) or a single business type id. */
-type Audience = 'beauty' | 'bar' | 'hair' | 'barber' | 'spa' | 'tattoo' | 'nails' | 'brows'
+/** Groups (beauty, hair = salons + barbers) or a single business type id. */
+type Audience = 'beauty' | 'hair' | 'barber' | 'spa' | 'tattoo' | 'nails' | 'brows'
 
 export type Tip = {
   id: string
@@ -34,39 +34,6 @@ export const TIP_CATEGORIES: { id: TipCategory; label: string; short: string }[]
 ]
 
 export const TIPS: Tip[] = [
-  // Bars: pour cost and waste
-  {
-    id: 'bar-jigger',
-    category: 'save',
-    title: 'Jigger every pour',
-    body: 'Free-pouring a little extra on each drink adds up to bottles a week. Measured pours keep cost per drink the same every time.',
-    tabs: ['scan', 'activity'],
-    audience: 'bar',
-  },
-  {
-    id: 'bar-waste-sheet',
-    category: 'stock',
-    title: 'Keep a spill and comp sheet',
-    body: 'Write down every spill, remake and comped drink. When the count is short, you’ll know what was waste and what is missing.',
-    tabs: ['activity', 'products'],
-    audience: 'bar',
-  },
-  {
-    id: 'bar-fifo',
-    category: 'save',
-    title: 'Oldest bottle in front',
-    body: 'Rotate kegs, wine, mixers and juices first in, first out, and date-label anything you prep. Expired mixers and flat kegs are money down the drain.',
-    tabs: ['restock', 'products'],
-    audience: 'bar',
-  },
-  {
-    id: 'bar-weekly-count',
-    category: 'stock',
-    title: 'Count top spirits every week',
-    body: 'Your 10 best-selling bottles are where most of the money is. A quick weekly count with a reason for each difference catches over-pouring early.',
-    tabs: ['products', 'activity'],
-    audience: 'bar',
-  },
   // Barbershops
   {
     id: 'barber-blades',
@@ -238,14 +205,6 @@ export const TIPS: Tip[] = [
     audience: 'beauty',
     tabs: ['scan', 'budget'],
   },
-  {
-    id: 'save-pour-cost',
-    category: 'save',
-    title: 'Watch pour cost, not just sales',
-    body: "Jiggers and regular counts keep over-pours in check. If a bottle empties faster than the sales say it should, that's where the money is going.",
-    audience: 'bar',
-    tabs: ['scan', 'activity'],
-  },
 
   // Plan ahead
   {
@@ -332,20 +291,6 @@ export const TIPS: Tip[] = [
     audience: 'beauty',
   },
   {
-    id: 'green-bar-returns',
-    category: 'green',
-    title: 'Return kegs and crates promptly',
-    body: 'Returnable kegs, crates and bottles earn deposits back and stay out of the waste stream. Keep a spot by the door for pickups.',
-    audience: 'bar',
-  },
-  {
-    id: 'green-bar-garnish',
-    category: 'green',
-    title: 'Prep garnish to the forecast',
-    body: 'Cut fruit and herbs for the night you expect, not the night you hope for. Leftover peels make great syrups and cordials.',
-    audience: 'bar',
-  },
-  {
     id: 'green-paperless',
     category: 'green',
     title: 'Go paperless with orders',
@@ -414,7 +359,6 @@ const BEAUTY_TYPES = new Set(['salon', 'barber', 'nails', 'brows', 'tattoo', 'sp
 const HAIR_TYPES = new Set(['salon', 'barber'])
 
 function audienceFor(businessType: string): Audience | null {
-  if (businessType === 'bar') return 'bar'
   return BEAUTY_TYPES.has(businessType) ? 'beauty' : null
 }
 
@@ -422,7 +366,7 @@ function audienceFor(businessType: string): Audience | null {
 function tipFits(tip: Tip, businessType: string) {
   if (!tip.audience) return true
   if (tip.audience === 'hair') return HAIR_TYPES.has(businessType)
-  if (tip.audience === 'beauty' || tip.audience === 'bar') return tip.audience === audienceFor(businessType)
+  if (tip.audience === 'beauty') return tip.audience === audienceFor(businessType)
   return tip.audience === businessType
 }
 

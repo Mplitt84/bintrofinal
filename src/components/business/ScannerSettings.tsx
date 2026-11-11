@@ -190,7 +190,7 @@ export function ScannerSettings() {
         <div className="flex flex-col gap-2" role="radiogroup" aria-label="When to ask who's scanning">
           {(
             [
-              { id: 'every', title: 'Before every scan', body: 'Best for shared devices at the front desk or bar.' },
+              { id: 'every', title: 'Before every scan', body: 'Best for shared devices at the front desk.' },
               {
                 id: 'idle',
                 title: `After ${STAFF_IDLE_MINUTES} minutes without a scan`,

@@ -5,6 +5,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useBusiness } from './BusinessContext'
 import {
   TAX_GROUPS,
+  selectableTaxGroups,
   categorySuggestionsFor,
   guessTaxGroup,
   taxGroupById,
@@ -246,7 +247,7 @@ export function CategorySetupSheet({
             value={customGroup}
             onChange={(e) => setCustomGroup(e.target.value as TaxGroupId)}
           >
-            {TAX_GROUPS.map((g) => (
+            {selectableTaxGroups(customGroup).map((g) => (
               <option key={g.id} value={g.id}>
                 {g.label} ({taxKind(g)})
               </option>
@@ -360,7 +361,7 @@ export function CategoryManager({ productCategories }: { productCategories: stri
                         value={c.taxGroup}
                         onChange={(e) => refile(c, e.target.value as TaxGroupId)}
                       >
-                        {TAX_GROUPS.map((g) => (
+                        {selectableTaxGroups(c.taxGroup).map((g) => (
                           <option key={g.id} value={g.id}>
                             {g.label} ({taxKind(g)})
                           </option>

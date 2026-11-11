@@ -8,7 +8,7 @@
  * Square and QuickBooks are already live and shown above the directory.
  */
 export type DirectoryStatus = 'soon' | 'upload'
-export type DirectoryKind = 'Booking & POS' | 'Bar POS' | 'Accounting'
+export type DirectoryKind = 'Booking & POS' | 'Accounting'
 
 export type DirectoryEntry = {
   id: string
@@ -34,8 +34,7 @@ export const CONNECTION_DIRECTORY: DirectoryEntry[] = [
   { id: 'glossgenius', name: 'GlossGenius', kind: 'Booking & POS', status: 'upload', types: ['salon', 'barber', 'nails', 'brows', 'tattoo'], blurb: 'Upload your product sales report and Bintro takes it off the shelf.', website: 'https://glossgenius.com' },
   { id: 'mangomint', name: 'Mangomint', kind: 'Booking & POS', status: 'upload', types: ['salon', 'spa', 'nails', 'brows'], blurb: 'Upload your product sales report and Bintro takes it off the shelf.', website: 'https://www.mangomint.com' },
   { id: 'booksy', name: 'Booksy', kind: 'Booking & POS', status: 'upload', types: ['barber', 'salon', 'tattoo', 'nails'], blurb: 'Upload your product sales report and Bintro takes it off the shelf.', website: 'https://booksy.com' },
-  { id: 'toast', name: 'Toast', kind: 'Bar POS', status: 'soon', types: ['bar'], blurb: 'Drinks sold come off the bar stock automatically.', website: 'https://pos.toasttab.com' },
-  { id: 'clover', name: 'Clover', kind: 'Bar POS', status: 'soon', types: ['bar', 'other'], blurb: 'Sales from your Clover register come off the shelf.', website: 'https://www.clover.com' },
+  { id: 'clover', name: 'Clover', kind: 'Booking & POS', status: 'soon', types: ['other'], blurb: 'Sales from your Clover register come off the shelf.', website: 'https://www.clover.com' },
   { id: 'xero', name: 'Xero', kind: 'Accounting', status: 'soon', types: [], blurb: 'Purchases and cost of goods go straight to your books.', website: 'https://www.xero.com' },
 ]
 
