@@ -907,7 +907,7 @@ function VisitForm({
           />
         </Field>
       </div>
-      <Field label="Team member (whose client)" htmlFor="v-staff">
+      <Field label={`${spec.providerNoun} (whose client)`} htmlFor="v-staff">
         <select
           id="v-staff"
           className="field-input"

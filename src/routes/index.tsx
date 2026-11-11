@@ -24,7 +24,7 @@ import { ActivityView } from "@/components/inventory/ActivityView";
 import { ProfitView } from "@/components/insights/ProfitView";
 import { FormulasView } from "@/components/formulas/FormulasView";
 import { formulaTabLabel } from "@/lib/formulas";
-import { recordSpecFor } from "@/lib/industry";
+import { providerNounFor, recordSpecFor } from "@/lib/industry";
 import {
   RestockView,
   type RestockMode,
@@ -451,7 +451,10 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
     resolve?.(picked);
   }
 
-  async function pickStaff(member: string) {
+  async function pickStaff(
+    member: string,
+    roles?: { isProvider: boolean; isAdmin: boolean },
+  ) {
     const existing = team.find(
       (m) => m.name.toLowerCase() === member.toLowerCase(),
     );
@@ -462,7 +465,9 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
     if (!existing) {
       try {
         setTeam(
-          (await addTeamMember({ data: { name: next } })) as TeamMember[],
+          (await addTeamMember({
+            data: { name: next, ...roles },
+          })) as TeamMember[],
         );
       } catch {
         // Still logged in on this device; the team list can be fixed in Settings.
@@ -803,8 +808,13 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
             )}
             {tab === "formulas" && showColor && (
               <FormulasView
-                staffName={staffName}
-                team={team.map((t) => t.name)}
+                // Only team members who see clients are offered on client records.
+                staffName={
+                  team.some((t) => t.name === staffName && !t.isProvider)
+                    ? ""
+                    : staffName
+                }
+                team={team.filter((t) => t.isProvider).map((t) => t.name)}
                 products={products}
                 onChanged={refresh}
               />
@@ -905,6 +915,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
             prompt={staffPrompt ?? {}}
             team={team}
             current={name}
+            providerNoun={providerNounFor(profile.businessType)}
             onPick={pickStaff}
             onClose={() => closeStaff(null)}
             onManageTeam={() => openSettings("team")}

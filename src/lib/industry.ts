@@ -32,6 +32,8 @@ export type RecordSpec = {
   aftercare: boolean;
   followUpLabel: string;
   /** Tap-to-select practices for a visit, grouped (treatments, styles, skin notes…). */
+  /** What a team member who sees clients is called: Stylist, Barber, Artist… */
+  providerNoun: string;
   tagGroups: TagGroup[];
   notesPlaceholder: string;
 };
@@ -69,7 +71,8 @@ const HAIR: RecordSpec = {
   mix: true,
   aftercare: false,
   followUpLabel: "",
-  tagGroups: [
+  providerNoun: "Stylist",
+      tagGroups: [
     { label: 'Technique', options: ['Single process', 'Foils', 'Balayage', 'Foilyage', 'Color melt', 'Gloss', 'Bleach & tone', 'Grey coverage', 'Color correction'] },
     { label: 'Hair notes', options: ['Curly / coily', 'Fine', 'Coarse', 'Resistant grey', 'High porosity', 'Low porosity', 'Previously colored', 'Box dye history', 'Sensitive scalp'] },
   ],
@@ -106,6 +109,7 @@ export const INDUSTRIES: Industry[] = [
         "Grey blending",
         "Kids cut",
       ],
+      providerNoun: "Barber",
       tagGroups: [
         { label: 'Cut', options: ['Skin fade', 'Low fade', 'Mid fade', 'High fade', 'Taper', 'Scissor cut', 'Buzz cut', 'Line-up', 'Beard shape-up', 'Hot towel shave', 'Design'] },
         { label: 'Hair & skin notes', options: ['Curly / coily', 'Cowlick', 'Thinning', 'Sensitive skin', 'Razor bumps', 'Ingrown hairs'] },
@@ -138,6 +142,7 @@ export const INDUSTRIES: Industry[] = [
         "Nail art",
       ],
       mix: false,
+      providerNoun: "Nail tech",
       tagGroups: [
         { label: 'Service type', options: ['Gel', 'Acrylic', 'Builder gel', 'Dip powder', 'Regular polish', 'Gel-X / tips', 'French', 'Chrome', 'Ombré', 'Nail art'] },
         { label: 'Shape', options: ['Square', 'Round', 'Oval', 'Almond', 'Coffin', 'Stiletto', 'Squoval'] },
@@ -172,6 +177,7 @@ export const INDUSTRIES: Industry[] = [
       mix: false,
       aftercare: true,
       followUpLabel: "Next fill / check",
+      providerNoun: "Lash & brow artist",
       tagGroups: [
         { label: 'Lash style', options: ['Classic', 'Hybrid', 'Volume', 'Mega volume', 'Wispy', 'Cat eye', 'Doll eye', 'Natural'] },
         { label: 'Brow service', options: ['Tint', 'Lamination', 'Wax', 'Thread', 'Henna', 'Shape'] },
@@ -199,6 +205,7 @@ export const INDUSTRIES: Industry[] = [
       mix: false,
       aftercare: true,
       followUpLabel: "Touch-up / healing check",
+      providerNoun: "Artist",
       tagGroups: [
         { label: 'Style', options: ['Traditional', 'Neo-traditional', 'Fine line', 'Black and grey', 'Blackwork', 'Color', 'Realism', 'Japanese', 'Script / lettering', 'Watercolor', 'Dotwork', 'Tribal', 'Freehand', 'Flash', 'Cover-up', 'Touch-up'] },
         { label: 'Skin notes', options: ['Keloid-prone skin', 'Sensitive skin', 'Scar tissue', 'Stretch marks', 'Sun-damaged skin', 'Deeper skin tone', 'Very fair skin', 'Heavy bleeder', 'Dry skin'] },
@@ -233,6 +240,7 @@ export const INDUSTRIES: Industry[] = [
       mix: false,
       aftercare: true,
       followUpLabel: "Follow-up",
+      providerNoun: "Service provider",
       tagGroups: [
         { label: 'Facial & skin treatments', options: ['Hydrating facial', 'Hydrodermabrasion', 'Extractions', 'Dermaplaning', 'Chemical peel', 'Microneedling', 'LED light therapy', 'Microdermabrasion', 'Enzyme treatment', 'Lymphatic facial'] },
         { label: 'Massage', options: ['Swedish', 'Deep tissue', 'Sports', 'Hot stone', 'Prenatal', 'Lymphatic drainage', 'Trigger point', 'Myofascial release', 'Reflexology', 'Aromatherapy', 'Cupping'] },
@@ -340,4 +348,9 @@ export function industrySetup(id: string): SetupLine[] {
       detail: `${apps.slice(0, 4).join(", ")} listed under Connections.`,
     });
   return lines;
+}
+
+/** What this business calls a team member who sees clients (Stylist, Barber, Artist, Service provider…). */
+export function providerNounFor(type: string): string {
+  return recordSpecFor(type)?.providerNoun ?? "Service provider";
 }

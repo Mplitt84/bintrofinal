@@ -1,3 +1,4 @@
+import { providerNounFor } from "@/lib/industry";
 import { useEffect, useState } from "react";
 import {
   ArrowUpFromLine,
@@ -52,6 +53,7 @@ import {
   getIntegrations,
   getIntegrationErrorLog,
   removeTeamMember,
+  updateTeamMemberRoles,
   squareImportCatalog,
   squareSendCounts,
   getSquareRetailCategories,
@@ -213,6 +215,7 @@ export function SettingsView({
           onTeam={onTeam}
           staffName={staffName}
           onStaffName={onStaffName}
+          providerNoun={providerNounFor(profile.businessType)}
         />
       )}
       {section === "import" && (
@@ -552,15 +555,38 @@ function TeamManager({
   onTeam,
   staffName,
   onStaffName,
+  providerNoun,
 }: {
   team: TeamMember[];
   onTeam: (t: TeamMember[]) => void;
   staffName: string;
   onStaffName: (name: string) => void;
+  /** Stylist, Barber, Artist… for this business type. */
+  providerNoun: string;
 }) {
   const toast = useToast();
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [newProvider, setNewProvider] = useState(true);
+  const [newAdmin, setNewAdmin] = useState(false);
+
+  async function setRoles(
+    m: TeamMember,
+    roles: { isProvider: boolean; isAdmin: boolean },
+  ) {
+    // Show the change at once; put it back if the save fails.
+    onTeam(team.map((t) => (t.id === m.id ? { ...t, ...roles } : t)));
+    try {
+      onTeam(
+        (await updateTeamMemberRoles({
+          data: { id: m.id, ...roles },
+        })) as TeamMember[],
+      );
+    } catch {
+      onTeam(team);
+      toast("Could not save that. Try again.");
+    }
+  }
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
@@ -568,8 +594,14 @@ function TeamManager({
     if (!next) return;
     setBusy(true);
     try {
-      onTeam((await addTeamMember({ data: { name: next } })) as TeamMember[]);
+      onTeam(
+        (await addTeamMember({
+          data: { name: next, isProvider: newProvider, isAdmin: newAdmin },
+        })) as TeamMember[],
+      );
       setName("");
+      setNewProvider(true);
+      setNewAdmin(false);
       toast(`${next} added to the team`);
     } catch (err) {
       toast(
@@ -591,7 +623,11 @@ function TeamManager({
       toast(`${member.name} removed`, async () => {
         onTeam(
           (await addTeamMember({
-            data: { name: member.name },
+            data: {
+              name: member.name,
+              isProvider: member.isProvider,
+              isAdmin: member.isAdmin,
+            },
           })) as TeamMember[],
         );
       });
@@ -602,7 +638,13 @@ function TeamManager({
 
   return (
     <div>
-      <form onSubmit={add} className="flex gap-2 mb-4">
+      <p className="text-ink-2 text-sm m-0 mb-3">
+        Mark each person as a <b>{providerNoun.toLowerCase()}</b> (sees
+        clients, so their name is offered on client records), <b>admin</b>{" "}
+        (inventory, orders, books), or both.
+      </p>
+      <form onSubmit={add} className="mb-4">
+        <div className="flex gap-2">
         <label htmlFor="team-name" className="sr-only">
           Team member name
         </label>
@@ -622,6 +664,31 @@ function TeamManager({
           <UserPlus size={18} />
           Add
         </button>
+        </div>
+        {name.trim() && (
+          <div
+            className="flex flex-wrap gap-2 mt-2.5"
+            role="group"
+            aria-label="Role for the new team member"
+          >
+            <button
+              type="button"
+              className="chip"
+              aria-pressed={newProvider}
+              onClick={() => setNewProvider((v) => !v)}
+            >
+              {providerNoun}
+            </button>
+            <button
+              type="button"
+              className="chip"
+              aria-pressed={newAdmin}
+              onClick={() => setNewAdmin((v) => !v)}
+            >
+              Admin
+            </button>
+          </div>
+        )}
       </form>
 
       {team.length === 0 ? (
@@ -634,7 +701,8 @@ function TeamManager({
           {team.map((m) => (
             <li
               key={m.id}
-              className="flex items-center gap-3 py-2.5 border-b border-line last:border-b-0"
+              data-team-row={m.name}
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 border-b border-line last:border-b-0"
             >
               <span className="w-9 h-9 rounded-full bg-action text-white text-[13px] font-bold grid place-items-center shrink-0">
                 {deriveInitials(m.name)}
@@ -646,6 +714,38 @@ function TeamManager({
                     Working now
                   </span>
                 )}
+              </span>
+              <span
+                className="flex gap-1.5 order-last w-full pl-12 min-[560px]:order-none min-[560px]:w-auto min-[560px]:pl-0"
+                role="group"
+                aria-label={`Roles for ${m.name}`}
+              >
+                <button
+                  type="button"
+                  className="chip !py-1.5 !px-3 !text-[13px]"
+                  aria-pressed={m.isProvider}
+                  onClick={() =>
+                    setRoles(m, {
+                      isProvider: !m.isProvider,
+                      isAdmin: m.isAdmin,
+                    })
+                  }
+                >
+                  {providerNoun}
+                </button>
+                <button
+                  type="button"
+                  className="chip !py-1.5 !px-3 !text-[13px]"
+                  aria-pressed={m.isAdmin}
+                  onClick={() =>
+                    setRoles(m, {
+                      isProvider: m.isProvider,
+                      isAdmin: !m.isAdmin,
+                    })
+                  }
+                >
+                  Admin
+                </button>
               </span>
               <button
                 className="btn btn-text btn-sm !text-bad"

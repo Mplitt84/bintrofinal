@@ -87,8 +87,17 @@ export async function findTeamMembers() {
   return db.select().from(teamMembers).orderBy(asc(teamMembers.name));
 }
 
-export async function insertTeamMember(name: string) {
-  await db.insert(teamMembers).values({ name }).onConflictDoNothing();
+export async function insertTeamMember(name: string, roles: { isProvider?: boolean; isAdmin?: boolean } = {}) {
+  await db
+    .insert(teamMembers)
+    .values({ name, isProvider: roles.isProvider ?? true, isAdmin: roles.isAdmin ?? false })
+    .onConflictDoNothing();
+  return findTeamMembers();
+}
+
+/** Set whether a team member sees clients and/or works the admin side. */
+export async function setTeamMemberRoles(id: number, roles: { isProvider: boolean; isAdmin: boolean }) {
+  await db.update(teamMembers).set(roles).where(eq(teamMembers.id, id));
   return findTeamMembers();
 }
 

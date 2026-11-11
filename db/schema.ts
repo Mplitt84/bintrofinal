@@ -84,6 +84,10 @@ export const businessProfile = pgTable("business_profile", {
 export const teamMembers = pgTable("team_members", {
   id: serial().primaryKey(),
   name: text().notNull().unique(),
+  /** Sees clients (stylist, barber, artist, provider…): listed where a client record names its team member. */
+  isProvider: boolean("is_provider").notNull().default(true),
+  /** Works the admin side (inventory, ordering, books). A label; sign-in access is still Settings → Access. */
+  isAdmin: boolean("is_admin").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
