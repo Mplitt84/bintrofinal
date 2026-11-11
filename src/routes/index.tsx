@@ -786,7 +786,13 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                   ))}
                 </div>
                 {activityView === "profit" ? (
-                  <ProfitView onOpenProducts={() => selectTab("products")} />
+                  <ProfitView
+                    products={products}
+                    staffName={staffName}
+                    onProduct={applyProduct}
+                    onChanged={refresh}
+                    onOpenProducts={() => selectTab("products")}
+                  />
                 ) : (
                   <>
                     <InsightsBanner insights={insights} onOpen={openInsights} />

@@ -1,6 +1,29 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Info, TrendingDown, TrendingUp } from "lucide-react";
-import { getProfitReport } from "@/server/profit.functions";
+import {
+  AlertTriangle,
+  ChevronRight,
+  EyeOff,
+  Info,
+  Pencil,
+  TrendingDown,
+  TrendingUp,
+  Undo2,
+} from "lucide-react";
+import {
+  getProfitReport,
+  putBackProfitRow,
+  removeProfitRow,
+} from "@/server/profit.functions";
+import {
+  deleteProduct,
+  mergeProducts,
+  setProductBarcode,
+  updateProduct,
+} from "@/server/inventory.functions";
+import { Sheet } from "@/components/ui/Sheet";
+import { useToast } from "@/components/ui/Toast";
+import { ProductForm } from "@/components/inventory/ProductForm";
+import type { Product } from "@/components/inventory/types";
 import {
   centsToDollars,
   dollarsShort,
@@ -10,7 +33,23 @@ import {
   StatTile,
   Thumb,
 } from "@/components/ui/bits";
-import type { LoserKind, ProfitPeriod, ProfitReport } from "@/lib/profit";
+import type {
+  LoserKind,
+  ProductRef,
+  ProfitListKey,
+  ProfitPeriod,
+  ProfitReport,
+} from "@/lib/profit";
+
+/** The row the user tapped: which product, on which list, and what it said. */
+type Picked = ProductRef & { key: ProfitListKey; summary: string };
+
+const LIST_LABEL = (key: ProfitListKey) =>
+  key === "maker"
+    ? "Making you money"
+    : key === "service"
+      ? "What your services use"
+      : KIND_LABEL[key];
 
 const usd = (cents: number) => `$${centsToDollars(cents)}`;
 
@@ -56,10 +95,52 @@ const name = (p: { brand: string; name: string; size: string }) =>
 
 /** Activity tab → Profit: what's making money, what's costing money, and what data is missing. */
 export function ProfitView({
+  products,
+  staffName,
+  onProduct,
+  onChanged,
   onOpenProducts,
 }: {
+  products: Product[];
+  staffName: string;
+  onProduct?: (product: Product) => void;
+  onChanged: () => Promise<void> | void;
   onOpenProducts?: () => void;
 }) {
+  const toast = useToast();
+  const [reload, setReload] = useState(0);
+  const [picked, setPicked] = useState<Picked | null>(null);
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function removeRow(row: Picked) {
+    setBusy(true);
+    try {
+      await removeProfitRow({
+        data: { productId: row.productId, key: row.key, staffName },
+      });
+      setPicked(null);
+      setReload((n) => n + 1);
+      toast(`Removed ${row.name} from this report`);
+    } catch {
+      toast("Couldn’t remove that. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function putBack(row: ProductRef & { key: ProfitListKey }) {
+    try {
+      await putBackProfitRow({
+        data: { productId: row.productId, key: row.key, staffName },
+      });
+      setReload((n) => n + 1);
+      toast(`Put ${row.name} back`);
+    } catch {
+      toast("Couldn’t put that back. Check your connection and try again.");
+    }
+  }
+
   const [days, setDays] = useState<ProfitPeriod>(90);
   const [report, setReport] = useState<ProfitReport | null>(null);
   const [error, setError] = useState("");
@@ -67,7 +148,6 @@ export function ProfitView({
 
   useEffect(() => {
     let live = true;
-    setReport(null);
     setError("");
     getProfitReport({ data: { days } })
       .then((r) => live && setReport(r))
@@ -79,7 +159,7 @@ export function ProfitView({
     return () => {
       live = false;
     };
-  }, [days]);
+  }, [days, reload]);
 
   const losers = report
     ? showAllLosers
@@ -107,7 +187,10 @@ export function ProfitView({
             type="button"
             className="chip"
             aria-pressed={days === p.days}
-            onClick={() => setDays(p.days)}
+            onClick={() => {
+              setReport(null);
+              setDays(p.days);
+            }}
           >
             {p.label}
           </button>
@@ -120,6 +203,12 @@ export function ProfitView({
         </p>
       )}
       {!report && !error && <div className="skel h-40 rounded-2xl" />}
+      {report && (
+        <p className="text-[13px] text-ink-2 m-0 mb-3">
+          Something look wrong? Tap any product below to correct it or remove
+          it from the report.
+        </p>
+      )}
 
       {report && (
         <>
@@ -199,9 +288,18 @@ export function ProfitView({
               ) : (
                 <ul className="m-0 p-0 list-none bg-white border border-line rounded-2xl divide-y divide-line">
                   {report.makers.map((m, i) => (
-                    <li
-                      key={m.productId}
-                      className="flex items-center gap-3 px-3.5 py-3"
+                    <li key={m.productId}>
+                    <button
+                      type="button"
+                      data-profit-row="maker"
+                      className="w-full text-left flex items-center gap-3 px-3.5 py-3 bg-transparent border-0 cursor-pointer hover:bg-surface"
+                      onClick={() =>
+                        setPicked({
+                          ...m,
+                          key: "maker",
+                          summary: `${m.units} sold · ${usd(m.revenueCents)} in sales · ${usd(m.profitCents)} profit (keep ${m.marginPct}%)`,
+                        })
+                      }
                     >
                       <span className="num w-5 text-[13px] text-ink-2 text-right shrink-0">
                         {i + 1}
@@ -220,6 +318,8 @@ export function ProfitView({
                         </b>
                         <span className="text-[11px] text-ink-2">profit</span>
                       </span>
+                      <ChevronRight size={16} className="text-ink-2 shrink-0" />
+                    </button>
                     </li>
                   ))}
                 </ul>
@@ -240,9 +340,18 @@ export function ProfitView({
                 <>
                   <ul className="m-0 p-0 list-none bg-white border border-line rounded-2xl divide-y divide-line">
                     {losers.map((l, i) => (
-                      <li
-                        key={`${l.kind}-${l.productId}-${i}`}
-                        className="flex items-start gap-3 px-3.5 py-3"
+                      <li key={`${l.kind}-${l.productId}-${i}`}>
+                      <button
+                        type="button"
+                        data-profit-row={l.kind}
+                        className="w-full text-left flex items-start gap-3 px-3.5 py-3 bg-transparent border-0 cursor-pointer hover:bg-surface"
+                        onClick={() =>
+                          setPicked({
+                            ...l,
+                            key: l.kind,
+                            summary: `${l.why} ${usd(l.amountCents)} ${AMOUNT_NOTE[l.kind]}.`,
+                          })
+                        }
                       >
                         <Thumb
                           imageUrl={l.imageUrl}
@@ -272,6 +381,11 @@ export function ProfitView({
                             {AMOUNT_NOTE[l.kind]}
                           </span>
                         </span>
+                        <ChevronRight
+                          size={16}
+                          className="text-ink-2 shrink-0 mt-1"
+                        />
+                      </button>
                       </li>
                     ))}
                   </ul>
@@ -323,9 +437,18 @@ export function ProfitView({
               </p>
               <ul className="m-0 p-0 list-none bg-white border border-line rounded-2xl divide-y divide-line">
                 {report.serviceCosts.map((s) => (
-                  <li
-                    key={s.productId}
-                    className="flex items-center gap-3 px-3.5 py-2.5"
+                  <li key={s.productId}>
+                  <button
+                    type="button"
+                    data-profit-row="service"
+                    className="w-full text-left flex items-center gap-3 px-3.5 py-2.5 bg-transparent border-0 cursor-pointer hover:bg-surface"
+                    onClick={() =>
+                      setPicked({
+                        ...s,
+                        key: "service",
+                        summary: `${s.units} used · ${usd(s.costCents)} in product cost`,
+                      })
+                    }
                   >
                     <Thumb imageUrl={s.imageUrl} label={s.brand || s.name} />
                     <span className="flex-1 min-w-0">
@@ -337,6 +460,42 @@ export function ProfitView({
                     <b className="num shrink-0">
                       {usd(s.costCents)}
                     </b>
+                    <ChevronRight size={16} className="text-ink-2 shrink-0" />
+                  </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {report.removed.length > 0 && (
+            <section className="mt-6" data-profit-removed>
+              <h2 className="text-[18px] font-bold m-0 mb-1">
+                Removed from this report ({report.removed.length})
+              </h2>
+              <p className="text-sm text-ink-2 m-0 mb-2">
+                You marked these as incorrect, so they’re left off the lists
+                and out of the totals. Put one back any time.
+              </p>
+              <ul className="m-0 p-0 list-none bg-white border border-line rounded-2xl divide-y divide-line">
+                {report.removed.map((r) => (
+                  <li
+                    key={`${r.key}-${r.productId}`}
+                    className="flex items-center gap-3 px-3.5 py-2.5"
+                  >
+                    <span className="flex-1 min-w-0">
+                      <b className="block truncate text-[15px]">{name(r)}</b>
+                      <span className="text-[13px] text-ink-2">
+                        {LIST_LABEL(r.key)}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-tonal btn-sm shrink-0"
+                      onClick={() => putBack(r)}
+                    >
+                      <Undo2 size={15} /> Put back
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -380,6 +539,114 @@ export function ProfitView({
           </section>
         </>
       )}
+
+      <Sheet
+        open={picked !== null}
+        onClose={() => setPicked(null)}
+        title={picked ? name(picked) : ""}
+        subtitle={picked ? LIST_LABEL(picked.key) : undefined}
+      >
+        {picked && (
+          <div data-profit-sheet>
+            <p className="bg-surface rounded-xl px-3.5 py-3 text-sm m-0 mb-4">
+              {picked.summary}
+            </p>
+            <b className="block text-[15px] mb-2">Is this wrong?</b>
+            <div className="grid gap-2.5">
+              <button
+                type="button"
+                className="text-left flex items-start gap-3 bg-white border border-line rounded-2xl px-4 py-3.5 cursor-pointer hover:border-royal disabled:opacity-50"
+                disabled={!products.some((p) => p.id === picked.productId)}
+                onClick={() => {
+                  const product = products.find(
+                    (p) => p.id === picked.productId,
+                  );
+                  if (!product) return;
+                  setPicked(null);
+                  setEditing(product);
+                }}
+              >
+                <Pencil size={19} className="text-action shrink-0 mt-0.5" />
+                <span>
+                  <b className="block text-[15px]">Correct it</b>
+                  <span className="text-[13px] text-ink-2">
+                    Fix the cost, retail price, count on hand, Fill to,
+                    expiry date or category. The report updates with the
+                    right numbers.
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="text-left flex items-start gap-3 bg-white border border-line rounded-2xl px-4 py-3.5 cursor-pointer hover:border-royal disabled:opacity-50"
+                disabled={busy}
+                onClick={() => removeRow(picked)}
+              >
+                <EyeOff size={19} className="text-action shrink-0 mt-0.5" />
+                <span>
+                  <b className="block text-[15px]">
+                    {busy ? "Removing…" : "Remove from this report"}
+                  </b>
+                  <span className="text-[13px] text-ink-2">
+                    Takes it off this list and out of the totals. The product
+                    and its stock aren’t touched, and you can put it back at
+                    the bottom of this page.
+                  </span>
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+      </Sheet>
+
+      <Sheet
+        open={editing !== null}
+        onClose={() => setEditing(null)}
+        title="Correct product"
+        subtitle="Editing the on-hand count is logged as an adjustment."
+      >
+        {editing && (
+          <ProductForm
+            key={editing.id}
+            product={editing}
+            products={products}
+            saveLabel="Save"
+            onCancel={() => setEditing(null)}
+            onSave={async ({ barcode, ...values }) => {
+              let saved = (await updateProduct({
+                data: { productId: editing.id, ...values, staffName },
+              })) as Product;
+              if (barcode !== editing.barcode) {
+                saved = (await setProductBarcode({
+                  data: { productId: editing.id, barcode },
+                })) as Product;
+              }
+              if (saved) onProduct?.(saved);
+              setEditing(null);
+              await onChanged();
+              setReload((n) => n + 1);
+              toast(`Saved ${values.name}`);
+            }}
+            onDelete={async () => {
+              await deleteProduct({ data: { productId: editing.id } });
+              setEditing(null);
+              await onChanged();
+              setReload((n) => n + 1);
+              toast(`Deleted ${editing.name}`);
+            }}
+            onMerge={async (target) => {
+              const r = (await mergeProducts({
+                data: { sourceId: editing.id, targetId: target.id },
+              })) as { product: Product };
+              if (r?.product) onProduct?.(r.product);
+              setEditing(null);
+              await onChanged();
+              setReload((n) => n + 1);
+              toast(`Merged ${editing.name} into ${target.name}`);
+            }}
+          />
+        )}
+      </Sheet>
     </>
   );
 }

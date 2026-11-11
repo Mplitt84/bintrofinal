@@ -31,6 +31,10 @@ export type MoneyLoser = ProductRef & {
   fix: string
 }
 
+/** A row on the Profit page: the making-money list, the services list, or one reason on the costing-money list. */
+export type ProfitListKey = 'maker' | 'service' | LoserKind
+export const PROFIT_LIST_KEYS = ['maker', 'service', 'loss', 'thin', 'dead', 'overstock', 'shrink', 'expired', 'expiring'] as const
+
 export type ServiceCost = ProductRef & { units: number; costCents: number }
 
 export type ProfitReport = {
@@ -54,6 +58,8 @@ export type ProfitReport = {
   serviceCosts: ServiceCost[]
   /** Shrink by count reason (Damaged, Theft, Missing SKU…). */
   shrinkByReason: { reason: string; units: number; costCents: number }[]
+  /** Rows the business removed from this report as incorrect; they are left out of the totals too. */
+  removed: (ProductRef & { key: ProfitListKey })[]
   /** Data gaps that make the numbers less sure. */
   gaps: { soldNoCost: ProductRef[]; soldNoRetail: ProductRef[]; neverCounted: number; productsTotal: number }
 }
