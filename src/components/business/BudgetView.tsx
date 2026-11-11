@@ -1,16 +1,45 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Camera, CheckCircle2, ChevronLeft, ChevronRight, Download, Pencil, Plus, ReceiptText, Send } from 'lucide-react'
-import { LiveCamera } from '@/components/inventory/LiveCamera'
-import type { Expense, IntegrationStatus, MonthSpend, MovementRow } from '@/components/inventory/types'
-import { dayKey, monthKey, monthLabel, monthRange, recentMonths } from '@/lib/business-types'
-import { shrinkImage } from '@/lib/images'
-import { applyReceiptPrices } from '@/server/import.functions'
-import { Sheet, Field, SheetActions } from '@/components/ui/Sheet'
-import { AutoInput, QuickChips } from '@/components/ui/AutoInput'
-import { EmptyState, PageHead, StatGrid, StatTile, centsToDollars, dollarsShort } from '@/components/ui/bits'
-import { useToast } from '@/components/ui/Toast'
-import { useBusiness } from './BusinessContext'
-import { TAX_GROUPS, findCategory, type TaxGroup } from '@/lib/tax-categories'
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  Camera,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Pencil,
+  Plus,
+  ReceiptText,
+  Send,
+} from "lucide-react";
+import { LiveCamera } from "@/components/inventory/LiveCamera";
+import type {
+  Expense,
+  IntegrationStatus,
+  MonthSpend,
+  MovementRow,
+} from "@/components/inventory/types";
+import {
+  dayKey,
+  monthKey,
+  monthLabel,
+  monthRange,
+  recentMonths,
+} from "@/lib/business-types";
+import { shrinkImage } from "@/lib/images";
+import { applyReceiptPrices } from "@/server/import.functions";
+import { Sheet, Field, SheetActions } from "@/components/ui/Sheet";
+import { AutoInput, QuickChips } from "@/components/ui/AutoInput";
+import {
+  EmptyState,
+  PageHead,
+  StatGrid,
+  StatTile,
+  centsToDollars,
+  dollarsShort,
+} from "@/components/ui/bits";
+import { useToast } from "@/components/ui/Toast";
+import { useBusiness } from "./BusinessContext";
+import { TAX_GROUPS, findCategory, type TaxGroup } from "@/lib/tax-categories";
 import {
   createExpense,
   editExpense,
@@ -22,9 +51,9 @@ import {
   readReceiptPhoto,
   removeExpense,
   saveMonthBudget,
-} from '@/server/business.functions'
+} from "@/server/business.functions";
 
-const CHART_MONTHS = 6
+const CHART_MONTHS = 6;
 
 /**
  * Budget & Expenses tab: a rolling month-by-month view of what the business
@@ -36,154 +65,225 @@ export function BudgetView({
   recent,
   onOpenSettings,
 }: {
-  staffName: string
-  recent: MovementRow[]
-  onOpenSettings: () => void
+  staffName: string;
+  recent: MovementRow[];
+  onOpenSettings: () => void;
 }) {
-  const toast = useToast()
-  const { type, name: businessName, categories } = useBusiness()
-  const thisMonth = monthKey()
-  const [month, setMonth] = useState(thisMonth)
-  const [overview, setOverview] = useState<MonthSpend[] | null>(null)
-  const [items, setItems] = useState<Expense[] | null>(null)
-  const [qb, setQb] = useState<IntegrationStatus | null>(null)
-  const [editing, setEditing] = useState<Expense | 'new' | null>(null)
-  const [budgetOpen, setBudgetOpen] = useState(false)
-  const [pushing, setPushing] = useState(false)
-  const [version, setVersion] = useState(0)
+  const toast = useToast();
+  const { type, name: businessName, categories } = useBusiness();
+  const thisMonth = monthKey();
+  const [month, setMonth] = useState(thisMonth);
+  const [overview, setOverview] = useState<MonthSpend[] | null>(null);
+  const [items, setItems] = useState<Expense[] | null>(null);
+  const [qb, setQb] = useState<IntegrationStatus | null>(null);
+  const [editing, setEditing] = useState<Expense | "new" | null>(null);
+  const [budgetOpen, setBudgetOpen] = useState(false);
+  const [pushing, setPushing] = useState(false);
+  const [version, setVersion] = useState(0);
 
-  const months = useMemo(() => recentMonths(month, CHART_MONTHS), [month])
+  const months = useMemo(() => recentMonths(month, CHART_MONTHS), [month]);
 
   useEffect(() => {
-    let live = true
+    let live = true;
     Promise.all([
       getBudgetOverview({ data: { months: months.map(monthRange) } }),
       listExpenses({ data: { month } }),
     ])
       .then(([o, e]) => {
-        if (!live) return
-        setOverview(o as MonthSpend[])
-        setItems(e as Expense[])
+        if (!live) return;
+        setOverview(o as MonthSpend[]);
+        setItems(e as Expense[]);
       })
       .catch(() => {
-        if (!live) return
-        setOverview([])
-        setItems([])
-      })
+        if (!live) return;
+        setOverview([]);
+        setItems([]);
+      });
     return () => {
-      live = false
-    }
-  }, [months, month, recent, version])
+      live = false;
+    };
+  }, [months, month, recent, version]);
 
   useEffect(() => {
     getIntegrations()
-      .then((s) => setQb((s as IntegrationStatus[]).find((i) => i.provider === 'quickbooks') ?? null))
-      .catch(() => setQb(null))
-  }, [])
+      .then((s) =>
+        setQb(
+          (s as IntegrationStatus[]).find((i) => i.provider === "quickbooks") ??
+            null,
+        ),
+      )
+      .catch(() => setQb(null));
+  }, []);
 
-  const current = overview?.find((m) => m.month === month)
+  const current = overview?.find((m) => m.month === month);
 
   /** Stock received this month rolled up to the tax line each product category is filed under. */
   const taxRollup = useMemo(() => {
-    const groups = new Map<string, { group: TaxGroup | null; cents: number; categories: Set<string> }>()
+    const groups = new Map<
+      string,
+      { group: TaxGroup | null; cents: number; categories: Set<string> }
+    >();
     for (const c of current?.stockCategories ?? []) {
-      const saved = findCategory(categories, c.category)
-      const group = saved ? TAX_GROUPS.find((g) => g.id === saved.taxGroup) ?? null : null
-      const id = group?.id ?? 'unfiled'
-      const row = groups.get(id) ?? { group, cents: 0, categories: new Set<string>() }
-      row.cents += c.cents
-      row.categories.add(c.category || 'No category')
-      groups.set(id, row)
+      const saved = findCategory(categories, c.category);
+      const group = saved
+        ? (TAX_GROUPS.find((g) => g.id === saved.taxGroup) ?? null)
+        : null;
+      const id = group?.id ?? "unfiled";
+      const row = groups.get(id) ?? {
+        group,
+        cents: 0,
+        categories: new Set<string>(),
+      };
+      row.cents += c.cents;
+      row.categories.add(c.category || "No category");
+      groups.set(id, row);
     }
-    return Array.from(groups.values()).sort((a, b) => b.cents - a.cents)
-  }, [current, categories])
-  const spent = current ? current.inventoryCents + current.expenseCents : 0
-  const budget = current?.budgetCents ?? 0
-  const left = budget - spent
-  const pct = budget > 0 ? Math.round((spent / budget) * 100) : null
+    return Array.from(groups.values()).sort((a, b) => b.cents - a.cents);
+  }, [current, categories]);
+  const spent = current ? current.inventoryCents + current.expenseCents : 0;
+  const budget = current?.budgetCents ?? 0;
+  const left = budget - spent;
+  const pct = budget > 0 ? Math.round((spent / budget) * 100) : null;
   const avg = overview?.length
-    ? Math.round(overview.reduce((s, m) => s + m.inventoryCents + m.expenseCents, 0) / overview.length)
-    : 0
+    ? Math.round(
+        overview.reduce((s, m) => s + m.inventoryCents + m.expenseCents, 0) /
+          overview.length,
+      )
+    : 0;
 
   const vendorSuggestions = useMemo(
-    () => Array.from(new Set([...(items ?? []).map((e) => e.vendor), ...(current?.vendors ?? []).map((v) => v.vendor)])).filter(Boolean),
+    () =>
+      Array.from(
+        new Set([
+          ...(items ?? []).map((e) => e.vendor),
+          ...(current?.vendors ?? []).map((v) => v.vendor),
+        ]),
+      ).filter(Boolean),
     [items, current],
-  )
+  );
 
   function reload() {
-    setVersion((v) => v + 1)
+    setVersion((v) => v + 1);
   }
 
   async function pushToQuickBooks() {
-    setPushing(true)
+    setPushing(true);
     try {
-      const r = await quickbooksPushMonth({ data: monthRange(month) })
+      const r = await quickbooksPushMonth({ data: monthRange(month) });
       if (!r.ok) {
-        toast(r.message)
-        return
+        toast(r.message);
+        return;
       }
-      const { sentExpenses, sentVendors, sentReceipts = 0, receiptErrors = 0, monthClosed } = r.result
-      const total = sentExpenses + sentVendors
-      const photos = sentReceipts ? ` with ${sentReceipts} receipt photo${sentReceipts === 1 ? '' : 's'}` : ''
+      const {
+        sentExpenses,
+        sentVendors,
+        sentReceipts = 0,
+        receiptErrors = 0,
+        monthClosed,
+      } = r.result;
+      const total = sentExpenses + sentVendors;
+      const photos = sentReceipts
+        ? ` with ${sentReceipts} receipt photo${sentReceipts === 1 ? "" : "s"}`
+        : "";
       toast(
         (total === 0 && !sentReceipts
-          ? 'QuickBooks is already up to date for this month'
+          ? "QuickBooks is already up to date for this month"
           : total === 0
-            ? `Attached ${sentReceipts} receipt photo${sentReceipts === 1 ? '' : 's'} in QuickBooks`
-            : `Sent ${total} entr${total === 1 ? 'y' : 'ies'} to QuickBooks${photos}${monthClosed ? '' : '. Stock purchases go once the month ends'}`) +
-          (receiptErrors ? `. ${receiptErrors} receipt photo${receiptErrors === 1 ? '' : 's'} didn’t attach; they’ll try again next time.` : ''),
-      )
-      reload()
+            ? `Attached ${sentReceipts} receipt photo${sentReceipts === 1 ? "" : "s"} in QuickBooks`
+            : `Sent ${total} entr${total === 1 ? "y" : "ies"} to QuickBooks${photos}${monthClosed ? "" : ". Stock purchases go once the month ends"}`) +
+          (receiptErrors
+            ? `. ${receiptErrors} receipt photo${receiptErrors === 1 ? "" : "s"} didn’t attach; they’ll try again next time.`
+            : ""),
+      );
+      reload();
     } catch {
-      toast('Could not reach QuickBooks. Try again.')
+      toast("Could not reach QuickBooks. Try again.");
     } finally {
-      setPushing(false)
+      setPushing(false);
     }
   }
 
   function exportCsv() {
-    if (!current || !items) return
+    if (!current || !items) return;
     const cell = (v: string | number) => {
-      const s = String(v)
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-    }
-    const rows: (string | number)[][] = [['Date', 'Type', 'Vendor / payee', 'Category', 'Tax group', 'Tax line', 'Description', 'Amount']]
-    for (const e of items) rows.push([e.spentOn, 'Expense', e.vendor, e.category, '', '', e.note, centsToDollars(e.amountCents)])
-    const last = new Date(new Date(monthRange(month).end).getTime() - 1)
+      const s = String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const rows: (string | number)[][] = [
+      [
+        "Date",
+        "Type",
+        "Vendor / payee",
+        "Category",
+        "Tax group",
+        "Tax line",
+        "Description",
+        "Amount",
+      ],
+    ];
+    for (const e of items)
+      rows.push([
+        e.spentOn,
+        "Expense",
+        e.vendor,
+        e.category,
+        "",
+        "",
+        e.note,
+        centsToDollars(e.amountCents),
+      ]);
+    const last = new Date(new Date(monthRange(month).end).getTime() - 1);
     // Stock is listed per product category so each line carries the tax group an accountant books it to.
     for (const c of current.stockCategories) {
-      const saved = findCategory(categories, c.category)
-      const group = saved ? TAX_GROUPS.find((g) => g.id === saved.taxGroup) : undefined
+      const saved = findCategory(categories, c.category);
+      const group = saved
+        ? TAX_GROUPS.find((g) => g.id === saved.taxGroup)
+        : undefined;
       rows.push([
         dayKey(last),
-        'Inventory received',
-        '',
-        c.category || 'No category',
-        group?.label ?? 'Not filed',
-        group?.taxLine ?? '',
-        'Stock scanned in this month',
+        "Inventory received",
+        "",
+        c.category || "No category",
+        group?.label ?? "Not filed",
+        group?.taxLine ?? "",
+        "Stock scanned in this month",
         centsToDollars(c.cents),
-      ])
+      ]);
     }
-    const blob = new Blob(['﻿' + rows.map((r) => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${businessName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-spending-${month}.csv`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
+    const blob = new Blob(
+      ["﻿" + rows.map((r) => r.map(cell).join(",")).join("\r\n")],
+      { type: "text/csv;charset=utf-8" },
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-spending-${month}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   const status =
     pct === null
       ? null
       : pct > 100
-        ? { tone: 'bad' as const, label: `Over budget by ${dollarsShort(-left)}`, Icon: AlertTriangle }
+        ? {
+            tone: "bad" as const,
+            label: `Over budget by ${dollarsShort(-left)}`,
+            Icon: AlertTriangle,
+          }
         : pct >= 85
-          ? { tone: 'warn' as const, label: `${pct}% used — getting close`, Icon: AlertTriangle }
-          : { tone: 'good' as const, label: `${pct}% used — on track`, Icon: CheckCircle2 }
+          ? {
+              tone: "warn" as const,
+              label: `${pct}% used — getting close`,
+              Icon: AlertTriangle,
+            }
+          : {
+              tone: "good" as const,
+              label: `${pct}% used — on track`,
+              Icon: CheckCircle2,
+            };
 
   return (
     <div>
@@ -191,7 +291,7 @@ export function BudgetView({
         title="Budget & Expenses"
         lead="What the team spends each month on stock and everything else, against your budget."
         action={
-          <button className="btn btn-primary" onClick={() => setEditing('new')}>
+          <button className="btn btn-primary" onClick={() => setEditing("new")}>
             <Plus size={18} />
             Add expense
           </button>
@@ -206,51 +306,84 @@ export function BudgetView({
         >
           <ChevronLeft size={18} />
         </button>
-        <h2 className="m-0 text-lg font-bold min-w-[150px] text-center">{monthLabel(month)}</h2>
+        <h2 className="m-0 text-lg font-bold min-w-[150px] text-center">
+          {monthLabel(month)}
+        </h2>
         <button
           className="btn btn-tonal btn-sm !px-2.5"
           disabled={month >= thisMonth}
           onClick={() => {
-            const [y, m] = month.split('-').map(Number)
-            setMonth(monthKey(new Date(y!, m!, 1)))
+            const [y, m] = month.split("-").map(Number);
+            setMonth(monthKey(new Date(y!, m!, 1)));
           }}
           aria-label="Next month"
         >
           <ChevronRight size={18} />
         </button>
         {month !== thisMonth && (
-          <button className="btn btn-text btn-sm" onClick={() => setMonth(thisMonth)}>
+          <button
+            className="btn btn-text btn-sm"
+            onClick={() => setMonth(thisMonth)}
+          >
             This month
           </button>
         )}
       </div>
 
       <StatGrid>
-        <StatTile label={current?.hasOverride ? 'Budget (this month)' : 'Monthly budget'} value={overview ? (budget ? dollarsShort(budget) : 'Not set') : '–'} />
-        <StatTile label="Spent" value={overview ? dollarsShort(spent) : '–'} />
         <StatTile
-          label={left < 0 ? 'Over budget' : 'Left to spend'}
-          value={overview ? (budget ? dollarsShort(Math.abs(left)) : '–') : '–'}
-          tone={!budget ? undefined : left < 0 ? 'bad' : pct !== null && pct >= 85 ? 'warn' : 'good'}
+          label={
+            current?.hasOverride ? "Budget (this month)" : "Monthly budget"
+          }
+          value={overview ? (budget ? dollarsShort(budget) : "Not set") : "–"}
         />
-        <StatTile label={`${CHART_MONTHS}-month average`} value={overview ? dollarsShort(avg) : '–'} />
+        <StatTile label="Spent" value={overview ? dollarsShort(spent) : "–"} />
+        <StatTile
+          label={left < 0 ? "Over budget" : "Left to spend"}
+          value={overview ? (budget ? dollarsShort(Math.abs(left)) : "–") : "–"}
+          tone={
+            !budget
+              ? undefined
+              : left < 0
+                ? "bad"
+                : pct !== null && pct >= 85
+                  ? "warn"
+                  : "good"
+          }
+        />
+        <StatTile
+          label={`${CHART_MONTHS}-month average`}
+          value={overview ? dollarsShort(avg) : "–"}
+        />
       </StatGrid>
 
       <div className="bg-surface rounded-2xl p-4 mb-5">
         {budget > 0 && pct !== null && status ? (
           <>
-            <div className="h-3 rounded-full bg-white overflow-hidden mb-2" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Budget used">
+            <div
+              className="h-3 rounded-full bg-white overflow-hidden mb-2"
+              role="progressbar"
+              aria-valuenow={pct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Budget used"
+            >
               <div
-                className={`h-full rounded-full ${status.tone === 'bad' ? 'bg-bad' : status.tone === 'warn' ? 'bg-warn' : 'bg-good'}`}
+                className={`h-full rounded-full ${status.tone === "bad" ? "bg-bad" : status.tone === "warn" ? "bg-warn" : "bg-good"}`}
                 style={{ width: `${Math.min(100, pct)}%` }}
               />
             </div>
             <div className="flex items-center justify-between gap-3 flex-wrap text-sm">
-              <span className={`flex items-center gap-1.5 font-semibold ${status.tone === 'bad' ? 'text-bad' : status.tone === 'warn' ? 'text-warn' : 'text-good'}`}>
+              <span
+                className={`flex items-center gap-1.5 font-semibold ${status.tone === "bad" ? "text-bad" : status.tone === "warn" ? "text-warn" : "text-good"}`}
+              >
                 <status.Icon size={16} />
                 {status.label}
               </span>
-              <button className="btn btn-text btn-sm !p-0" onClick={() => setBudgetOpen(true)}>
+              <button
+                className="btn btn-text btn-sm !p-0"
+                onClick={() => setBudgetOpen(true)}
+              >
                 <Pencil size={14} />
                 Change budget
               </button>
@@ -258,28 +391,42 @@ export function BudgetView({
           </>
         ) : (
           <div className="flex items-center justify-between gap-3 flex-wrap text-sm">
-            <span className="text-ink-2">Set a monthly budget to see how much is left to spend.</span>
-            <button className="btn btn-tonal btn-sm" onClick={() => setBudgetOpen(true)}>
+            <span className="text-ink-2">
+              Set a monthly budget to see how much is left to spend.
+            </span>
+            <button
+              className="btn btn-tonal btn-sm"
+              onClick={() => setBudgetOpen(true)}
+            >
               Set budget
             </button>
           </div>
         )}
       </div>
 
-      {overview && overview.length > 0 && <SpendChart data={overview} selected={month} onSelect={setMonth} />}
+      {overview && overview.length > 0 && (
+        <SpendChart data={overview} selected={month} onSelect={setMonth} />
+      )}
 
       <div className="grid min-[760px]:grid-cols-2 gap-3.5 mb-5">
         <Breakdown
           title="Stock received"
           total={current?.inventoryCents ?? 0}
           empty="Nothing scanned in this month. Scan deliveries in on the Scan tab and they’re counted here."
-          rows={(current?.vendors ?? []).map((v) => ({ label: v.vendor, sub: `${v.units} unit${v.units === 1 ? '' : 's'}`, cents: v.cents }))}
+          rows={(current?.vendors ?? []).map((v) => ({
+            label: v.vendor,
+            sub: `${v.units} unit${v.units === 1 ? "" : "s"}`,
+            cents: v.cents,
+          }))}
         />
         <Breakdown
           title="Other expenses"
           total={current?.expenseCents ?? 0}
           empty="No expenses logged. Snap a receipt with Add expense."
-          rows={(current?.categories ?? []).map((c) => ({ label: c.category, cents: c.cents }))}
+          rows={(current?.categories ?? []).map((c) => ({
+            label: c.category,
+            cents: c.cents,
+          }))}
         />
       </div>
 
@@ -291,15 +438,29 @@ export function BudgetView({
           </div>
           <ul className="list-none m-0 p-0">
             {taxRollup.map((r) => (
-              <li key={r.group?.id ?? 'unfiled'} className="flex justify-between gap-3 py-2.5 border-b border-line last:border-b-0 text-sm">
+              <li
+                key={r.group?.id ?? "unfiled"}
+                className="flex justify-between gap-3 py-2.5 border-b border-line last:border-b-0 text-sm"
+              >
                 <span className="min-w-0">
-                  <span className="font-semibold">{r.group?.label ?? 'Not filed under a tax group'}</span>
-                  {r.group?.cogs && <span className="ml-1.5 text-[11px] font-bold text-ink-2">COGS</span>}
+                  <span className="font-semibold">
+                    {r.group?.label ?? "Not filed under a tax group"}
+                  </span>
+                  {r.group?.cogs && (
+                    <span className="ml-1.5 text-[11px] font-bold text-ink-2">
+                      COGS
+                    </span>
+                  )}
                   <span className="block text-[12px] text-ink-2 truncate">
-                    {r.group ? r.group.taxLine : 'Add these categories in Settings → Categories'} · {Array.from(r.categories).join(', ')}
+                    {r.group
+                      ? r.group.taxLine
+                      : "Add these categories in Settings → Categories"}{" "}
+                    · {Array.from(r.categories).join(", ")}
                   </span>
                 </span>
-                <span className="num whitespace-nowrap font-semibold">${centsToDollars(r.cents)}</span>
+                <span className="num whitespace-nowrap font-semibold">
+                  ${centsToDollars(r.cents)}
+                </span>
               </li>
             ))}
           </ul>
@@ -307,16 +468,26 @@ export function BudgetView({
       )}
 
       <div className="flex items-center justify-between gap-3 flex-wrap mb-2.5">
-        <h2 className="text-lg font-bold m-0">Expenses in {monthLabel(month, 'short')}</h2>
+        <h2 className="text-lg font-bold m-0">
+          Expenses in {monthLabel(month, "short")}
+        </h2>
         <div className="flex gap-2 flex-wrap">
-          <button className="btn btn-tonal btn-sm" onClick={exportCsv} disabled={!current}>
+          <button
+            className="btn btn-tonal btn-sm"
+            onClick={exportCsv}
+            disabled={!current}
+          >
             <Download size={16} />
             CSV
           </button>
           {qb?.connected ? (
-            <button className="btn btn-tonal btn-sm" onClick={pushToQuickBooks} disabled={pushing}>
+            <button
+              className="btn btn-tonal btn-sm"
+              onClick={pushToQuickBooks}
+              disabled={pushing}
+            >
               <Send size={16} />
-              {pushing ? 'Sending…' : 'Send to QuickBooks'}
+              {pushing ? "Sending…" : "Send to QuickBooks"}
             </button>
           ) : (
             <button className="btn btn-text btn-sm" onClick={onOpenSettings}>
@@ -333,7 +504,8 @@ export function BudgetView({
         </div>
       ) : items.length === 0 ? (
         <EmptyState title="No expenses yet this month">
-          Log rent, supplies or stock bought outside the scanner. A receipt photo fills it in for you.
+          Log rent, supplies or stock bought outside the scanner. A receipt
+          photo fills it in for you.
         </EmptyState>
       ) : (
         <ul className="list-none m-0 p-0 bg-white border border-line rounded-2xl px-4">
@@ -344,21 +516,34 @@ export function BudgetView({
                 onClick={() => setEditing(e)}
               >
                 <div className="w-11 text-center shrink-0">
-                  <b className="num block text-lg leading-none">{Number(e.spentOn.slice(8))}</b>
-                  <span className="text-[11px] text-ink-2 uppercase">{monthLabel(e.spentOn.slice(0, 7), 'short')}</span>
+                  <b className="num block text-lg leading-none">
+                    {Number(e.spentOn.slice(8))}
+                  </b>
+                  <span className="text-[11px] text-ink-2 uppercase">
+                    {monthLabel(e.spentOn.slice(0, 7), "short")}
+                  </span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold truncate">{e.vendor || e.category || 'Expense'}</div>
+                  <div className="font-semibold truncate">
+                    {e.vendor || e.category || "Expense"}
+                  </div>
                   <div className="text-[13px] text-ink-2 truncate">
-                    {[e.category, e.note, e.staffName && `by ${e.staffName}`].filter(Boolean).join(' · ')}
+                    {[e.category, e.note, e.staffName && `by ${e.staffName}`]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </div>
                 </div>
                 <div className="text-right whitespace-nowrap">
                   <b className="num block">${centsToDollars(e.amountCents)}</b>
-                  {e.quickbooksId && <span className="text-[11px] font-semibold text-good">In QuickBooks</span>}
+                  {e.quickbooksId && (
+                    <span className="text-[11px] font-semibold text-good">
+                      In QuickBooks
+                    </span>
+                  )}
                   {e.hasReceipt && (
                     <span className="flex items-center justify-end gap-1 text-[11px] text-ink-2">
-                      <ReceiptText size={12} /> {e.quickbooksReceiptId ? 'Receipt attached' : 'Receipt'}
+                      <ReceiptText size={12} />{" "}
+                      {e.quickbooksReceiptId ? "Receipt attached" : "Receipt"}
                     </span>
                   )}
                 </div>
@@ -371,52 +556,73 @@ export function BudgetView({
       <Sheet
         open={editing !== null}
         onClose={() => setEditing(null)}
-        title={editing === 'new' ? 'Add expense' : 'Edit expense'}
-        subtitle={editing === 'new' ? 'Snap the receipt and Bintro fills in the total, store and date.' : undefined}
+        title={editing === "new" ? "Add expense" : "Edit expense"}
+        subtitle={
+          editing === "new"
+            ? "Snap the receipt and Bintro fills in the total, store and date."
+            : undefined
+        }
       >
         {editing !== null && (
           <ExpenseForm
-            expense={editing === 'new' ? undefined : editing}
+            expense={editing === "new" ? undefined : editing}
             defaultDay={month === thisMonth ? dayKey() : `${month}-01`}
             categories={type.expenseCategories}
             vendors={vendorSuggestions}
             staffName={staffName}
             onCancel={() => setEditing(null)}
             onSaved={(message) => {
-              setEditing(null)
-              toast(message)
-              reload()
+              setEditing(null);
+              toast(message);
+              reload();
             }}
           />
         )}
       </Sheet>
 
-      <Sheet open={budgetOpen} onClose={() => setBudgetOpen(false)} title={`Budget for ${monthLabel(month)}`}>
+      <Sheet
+        open={budgetOpen}
+        onClose={() => setBudgetOpen(false)}
+        title={`Budget for ${monthLabel(month)}`}
+      >
         {budgetOpen && (
           <BudgetForm
             month={month}
             current={current}
             onCancel={() => setBudgetOpen(false)}
             onSaved={() => {
-              setBudgetOpen(false)
-              toast('Budget saved')
-              reload()
+              setBudgetOpen(false);
+              toast("Budget saved");
+              reload();
             }}
           />
         )}
       </Sheet>
     </div>
-  )
+  );
 }
 
 /**
  * Rolling six-month spend: one stacked bar per month (stock received + other
  * expenses) with a tick for that month's budget. Tap a month to open it.
  */
-function SpendChart({ data, selected, onSelect }: { data: MonthSpend[]; selected: string; onSelect: (m: string) => void }) {
-  const [hover, setHover] = useState<string | null>(null)
-  const max = Math.max(1, ...data.map((m) => Math.max(m.inventoryCents + m.expenseCents, m.budgetCents)))
-  const H = 160
+function SpendChart({
+  data,
+  selected,
+  onSelect,
+}: {
+  data: MonthSpend[];
+  selected: string;
+  onSelect: (m: string) => void;
+}) {
+  const [hover, setHover] = useState<string | null>(null);
+  const max = Math.max(
+    1,
+    ...data.map((m) =>
+      Math.max(m.inventoryCents + m.expenseCents, m.budgetCents),
+    ),
+  );
+  const H = 160;
 
   return (
     <section className="bg-white border border-line rounded-2xl p-4 mb-5">
@@ -434,14 +640,17 @@ function SpendChart({ data, selected, onSelect }: { data: MonthSpend[]; selected
           </span>
         </div>
       </div>
-      <div className="flex items-end gap-2 min-[560px]:gap-4" style={{ height: H + 28 }}>
+      <div
+        className="flex items-end gap-2 min-[560px]:gap-4"
+        style={{ height: H + 28 }}
+      >
         {data.map((m) => {
-          const total = m.inventoryCents + m.expenseCents
-          const inv = (m.inventoryCents / max) * H
-          const exp = (m.expenseCents / max) * H
-          const over = m.budgetCents > 0 && total > m.budgetCents
-          const active = m.month === selected
-          const showTip = hover === m.month
+          const total = m.inventoryCents + m.expenseCents;
+          const inv = (m.inventoryCents / max) * H;
+          const exp = (m.expenseCents / max) * H;
+          const over = m.budgetCents > 0 && total > m.budgetCents;
+          const active = m.month === selected;
+          const showTip = hover === m.month;
           return (
             <button
               key={m.month}
@@ -452,17 +661,25 @@ function SpendChart({ data, selected, onSelect }: { data: MonthSpend[]; selected
               onFocus={() => setHover(m.month)}
               onBlur={() => setHover(null)}
               aria-pressed={active}
-              aria-label={`${monthLabel(m.month)}: ${dollarsShort(total)} spent${m.budgetCents ? ` of ${dollarsShort(m.budgetCents)} budget` : ''}`}
+              aria-label={`${monthLabel(m.month)}: ${dollarsShort(total)} spent${m.budgetCents ? ` of ${dollarsShort(m.budgetCents)} budget` : ""}`}
               className="relative flex-1 h-full flex flex-col justify-end items-center border-0 bg-transparent cursor-pointer p-0"
             >
               {showTip && (
                 <span className="absolute z-10 bottom-full mb-1 left-1/2 -translate-x-1/2 bg-ink text-white text-[12px] rounded-lg px-2.5 py-1.5 whitespace-nowrap text-left shadow-card pointer-events-none">
                   <b className="block">{monthLabel(m.month)}</b>
-                  Stock {dollarsShort(m.inventoryCents)} · Other {dollarsShort(m.expenseCents)}
-                  {m.budgetCents > 0 && <span className="block">Budget {dollarsShort(m.budgetCents)}</span>}
+                  Stock {dollarsShort(m.inventoryCents)} · Other{" "}
+                  {dollarsShort(m.expenseCents)}
+                  {m.budgetCents > 0 && (
+                    <span className="block">
+                      Budget {dollarsShort(m.budgetCents)}
+                    </span>
+                  )}
                 </span>
               )}
-              <span className="relative w-full max-w-[44px] flex flex-col justify-end" style={{ height: H }}>
+              <span
+                className="relative w-full max-w-[44px] flex flex-col justify-end"
+                style={{ height: H }}
+              >
                 {m.budgetCents > 0 && (
                   <span
                     className="absolute -left-1 -right-1 border-t-2 border-dashed border-ink"
@@ -471,47 +688,53 @@ function SpendChart({ data, selected, onSelect }: { data: MonthSpend[]; selected
                 )}
                 {exp > 0 && (
                   <span
-                    className={`block w-full bg-gold ${inv > 0 ? 'rounded-t-[4px] mb-[2px]' : 'rounded-t-[4px]'} ${active ? '' : 'opacity-70'}`}
+                    className={`block w-full bg-gold ${inv > 0 ? "rounded-t-[4px] mb-[2px]" : "rounded-t-[4px]"} ${active ? "" : "opacity-70"}`}
                     style={{ height: Math.max(2, exp - (inv > 0 ? 2 : 0)) }}
                   />
                 )}
                 {inv > 0 && (
                   <span
-                    className={`block w-full bg-action ${exp > 0 ? '' : 'rounded-t-[4px]'} ${active ? '' : 'opacity-70'}`}
+                    className={`block w-full bg-action ${exp > 0 ? "" : "rounded-t-[4px]"} ${active ? "" : "opacity-70"}`}
                     style={{ height: Math.max(2, inv) }}
                   />
                 )}
               </span>
-              <span className={`text-[12px] mt-1.5 ${active ? 'font-bold text-ink' : 'text-ink-2'} ${over ? 'underline decoration-bad decoration-2' : ''}`}>
-                {monthLabel(m.month, 'short')}
+              <span
+                className={`text-[12px] mt-1.5 ${active ? "font-bold text-ink" : "text-ink-2"} ${over ? "underline decoration-bad decoration-2" : ""}`}
+              >
+                {monthLabel(m.month, "short")}
               </span>
             </button>
-          )
+          );
         })}
       </div>
-      <table className="sr-only">
-        <caption>Monthly spending</caption>
-        <thead>
-          <tr>
-            <th>Month</th>
-            <th>Stock</th>
-            <th>Other expenses</th>
-            <th>Budget</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((m) => (
-            <tr key={m.month}>
-              <td>{monthLabel(m.month)}</td>
-              <td>{dollarsShort(m.inventoryCents)}</td>
-              <td>{dollarsShort(m.expenseCents)}</td>
-              <td>{m.budgetCents ? dollarsShort(m.budgetCents) : 'Not set'}</td>
+      <div className="sr-only">
+        <table>
+          <caption>Monthly spending</caption>
+          <thead>
+            <tr>
+              <th>Month</th>
+              <th>Stock</th>
+              <th>Other expenses</th>
+              <th>Budget</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {data.map((m) => (
+              <tr key={m.month}>
+                <td>{monthLabel(m.month)}</td>
+                <td>{dollarsShort(m.inventoryCents)}</td>
+                <td>{dollarsShort(m.expenseCents)}</td>
+                <td>
+                  {m.budgetCents ? dollarsShort(m.budgetCents) : "Not set"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
-  )
+  );
 }
 
 function Breakdown({
@@ -520,10 +743,10 @@ function Breakdown({
   rows,
   empty,
 }: {
-  title: string
-  total: number
-  rows: { label: string; sub?: string; cents: number }[]
-  empty: string
+  title: string;
+  total: number;
+  rows: { label: string; sub?: string; cents: number }[];
+  empty: string;
 }) {
   return (
     <section className="bg-surface rounded-2xl px-4 py-1">
@@ -536,18 +759,23 @@ function Breakdown({
       ) : (
         <ul className="list-none m-0 p-0">
           {rows.map((r) => (
-            <li key={r.label} className="flex justify-between gap-3 py-2.5 border-b border-line last:border-b-0 text-sm">
+            <li
+              key={r.label}
+              className="flex justify-between gap-3 py-2.5 border-b border-line last:border-b-0 text-sm"
+            >
               <span className="min-w-0">
                 <span className="font-semibold">{r.label}</span>
                 {r.sub && <span className="text-ink-2"> · {r.sub}</span>}
               </span>
-              <span className="num whitespace-nowrap">${centsToDollars(r.cents)}</span>
+              <span className="num whitespace-nowrap">
+                ${centsToDollars(r.cents)}
+              </span>
             </li>
           ))}
         </ul>
       )}
     </section>
-  )
+  );
 }
 
 function ExpenseForm({
@@ -559,125 +787,151 @@ function ExpenseForm({
   onCancel,
   onSaved,
 }: {
-  expense?: Expense
-  defaultDay: string
-  categories: string[]
-  vendors: string[]
-  staffName: string
-  onCancel: () => void
-  onSaved: (message: string) => void
+  expense?: Expense;
+  defaultDay: string;
+  categories: string[];
+  vendors: string[];
+  staffName: string;
+  onCancel: () => void;
+  onSaved: (message: string) => void;
 }) {
-  const [amount, setAmount] = useState(expense ? centsToDollars(expense.amountCents) : '')
-  const [spentOn, setSpentOn] = useState(expense?.spentOn ?? defaultDay)
-  const [category, setCategory] = useState(expense?.category ?? '')
-  const [vendor, setVendor] = useState(expense?.vendor ?? '')
-  const [note, setNote] = useState(expense?.note ?? '')
-  const [reading, setReading] = useState(false)
-  const [info, setInfo] = useState('')
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
+  const [amount, setAmount] = useState(
+    expense ? centsToDollars(expense.amountCents) : "",
+  );
+  const [spentOn, setSpentOn] = useState(expense?.spentOn ?? defaultDay);
+  const [category, setCategory] = useState(expense?.category ?? "");
+  const [vendor, setVendor] = useState(expense?.vendor ?? "");
+  const [note, setNote] = useState(expense?.note ?? "");
+  const [reading, setReading] = useState(false);
+  const [info, setInfo] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   // The receipt photo kept with this expense (and attached in QuickBooks when the month is sent).
-  const [receipt, setReceipt] = useState<{ data: string; preview: string } | null>(null)
-  const [savedReceipt, setSavedReceipt] = useState<string | null>(null)
-  const [removeReceipt, setRemoveReceipt] = useState(false)
-  const [liveCamera, setLiveCamera] = useState(false)
-  const hasOldReceipt = Boolean(expense?.hasReceipt) && !removeReceipt
+  const [receipt, setReceipt] = useState<{
+    data: string;
+    preview: string;
+  } | null>(null);
+  const [savedReceipt, setSavedReceipt] = useState<string | null>(null);
+  const [removeReceipt, setRemoveReceipt] = useState(false);
+  const [liveCamera, setLiveCamera] = useState(false);
+  const hasOldReceipt = Boolean(expense?.hasReceipt) && !removeReceipt;
 
   function openCamera() {
-    const touch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
+    const touch =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(pointer: coarse)").matches;
     if (touch) {
-      if (fileRef.current) fileRef.current.value = ''
-      fileRef.current?.click()
-    } else setLiveCamera(true)
+      if (fileRef.current) fileRef.current.value = "";
+      fileRef.current?.click();
+    } else setLiveCamera(true);
   }
 
   async function viewSavedReceipt() {
-    if (!expense) return
+    if (!expense) return;
     try {
-      const r = await getExpenseReceipt({ data: { id: expense.id } })
-      setSavedReceipt(r?.url ?? null)
-      if (!r) setError('That receipt photo couldn’t be found.')
+      const r = await getExpenseReceipt({ data: { id: expense.id } });
+      setSavedReceipt(r?.url ?? null);
+      if (!r) setError("That receipt photo couldn’t be found.");
     } catch {
-      setError('Couldn’t load the receipt. Try again.')
+      setError("Couldn’t load the receipt. Try again.");
     }
   }
 
   async function onReceipt(file: File) {
-    setLiveCamera(false)
-    setReading(true)
-    setError('')
-    setInfo('')
+    setLiveCamera(false);
+    setReading(true);
+    setError("");
+    setInfo("");
     try {
-      const image = await shrinkImage(file, 1600)
-      setReceipt({ data: image, preview: `data:image/jpeg;base64,${image}` })
-      setRemoveReceipt(false)
-      const r = await readReceiptPhoto({ data: { image, mediaType: 'image/jpeg' } })
+      const image = await shrinkImage(file, 1600);
+      setReceipt({ data: image, preview: `data:image/jpeg;base64,${image}` });
+      setRemoveReceipt(false);
+      const r = await readReceiptPhoto({
+        data: { image, mediaType: "image/jpeg" },
+      });
       if (!r.ok) {
-        setInfo(`Photo saved with this expense. ${r.message} Type in the total yourself.`)
-        return
+        setInfo(
+          `Photo saved with this expense. ${r.message} Type in the total yourself.`,
+        );
+        return;
       }
-      setAmount(centsToDollars(r.amountCents))
-      if (r.vendor) setVendor(r.vendor)
-      if (r.spentOn) setSpentOn(r.spentOn)
-      if (r.category) setCategory((v) => v || r.category)
-      if (r.note) setNote((v) => v || r.note)
-      setInfo('Read from your receipt. Check the total before saving.')
+      setAmount(centsToDollars(r.amountCents));
+      if (r.vendor) setVendor(r.vendor);
+      if (r.spentOn) setSpentOn(r.spentOn);
+      if (r.category) setCategory((v) => v || r.category);
+      if (r.note) setNote((v) => v || r.note);
+      setInfo("Read from your receipt. Check the total before saving.");
       // The same photo keeps product costs current (prices only, no stock change).
-      applyReceiptPrices({ data: { data: image, mediaType: 'image/jpeg' } })
+      applyReceiptPrices({ data: { data: image, mediaType: "image/jpeg" } })
         .then((p) => {
           if (p.updated > 0) {
             setInfo(
-              `Read from your receipt. Also updated the cost of ${p.updated} product${p.updated === 1 ? '' : 's'} (${p.names.join(', ')}${p.updated > p.names.length ? '…' : ''}).`,
-            )
+              `Read from your receipt. Also updated the cost of ${p.updated} product${p.updated === 1 ? "" : "s"} (${p.names.join(", ")}${p.updated > p.names.length ? "…" : ""}).`,
+            );
           }
         })
-        .catch(() => {})
+        .catch(() => {});
     } catch {
-      setError('That photo could not be opened. Try another one.')
+      setError("That photo could not be opened. Try another one.");
     } finally {
-      setReading(false)
+      setReading(false);
     }
   }
 
   async function submit(e: React.FormEvent) {
-    e.preventDefault()
-    const cents = Math.round((Number(amount) || 0) * 100)
+    e.preventDefault();
+    const cents = Math.round((Number(amount) || 0) * 100);
     if (cents <= 0) {
-      setError('Enter the amount spent.')
-      return
+      setError("Enter the amount spent.");
+      return;
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(spentOn)) {
-      setError('Pick the date it was spent.')
-      return
+      setError("Pick the date it was spent.");
+      return;
     }
-    setSaving(true)
-    setError('')
-    const values = { spentOn, amountCents: cents, category: category.trim(), vendor: vendor.trim(), note: note.trim() }
-    const photo = receipt ? { receipt: { data: receipt.data, mediaType: 'image/jpeg' as const } } : {}
+    setSaving(true);
+    setError("");
+    const values = {
+      spentOn,
+      amountCents: cents,
+      category: category.trim(),
+      vendor: vendor.trim(),
+      note: note.trim(),
+    };
+    const photo = receipt
+      ? { receipt: { data: receipt.data, mediaType: "image/jpeg" as const } }
+      : {};
     try {
       if (expense) {
-        await editExpense({ data: { id: expense.id, ...values, ...photo, removeReceipt: removeReceipt && !receipt } })
-        onSaved('Expense updated')
+        await editExpense({
+          data: {
+            id: expense.id,
+            ...values,
+            ...photo,
+            removeReceipt: removeReceipt && !receipt,
+          },
+        });
+        onSaved("Expense updated");
       } else {
-        await createExpense({ data: { ...values, staffName, ...photo } })
-        onSaved(`$${centsToDollars(cents)} expense added`)
+        await createExpense({ data: { ...values, staffName, ...photo } });
+        onSaved(`$${centsToDollars(cents)} expense added`);
       }
     } catch {
-      setError('Could not save. Check your connection and try again.')
-      setSaving(false)
+      setError("Could not save. Check your connection and try again.");
+      setSaving(false);
     }
   }
 
   async function onDelete() {
-    if (!expense || !window.confirm('Delete this expense?')) return
-    setSaving(true)
+    if (!expense || !window.confirm("Delete this expense?")) return;
+    setSaving(true);
     try {
-      await removeExpense({ data: { id: expense.id } })
-      onSaved('Expense deleted')
+      await removeExpense({ data: { id: expense.id } });
+      onSaved("Expense deleted");
     } catch {
-      setError('Could not delete. Try again.')
-      setSaving(false)
+      setError("Could not delete. Try again.");
+      setSaving(false);
     }
   }
 
@@ -690,7 +944,11 @@ function ExpenseForm({
         onClick={openCamera}
       >
         <Camera size={18} />
-        {reading ? 'Reading the receipt…' : receipt || hasOldReceipt ? 'Retake the receipt photo' : 'Snap the receipt'}
+        {reading
+          ? "Reading the receipt…"
+          : receipt || hasOldReceipt
+            ? "Retake the receipt photo"
+            : "Snap the receipt"}
       </button>
       <LiveCamera
         open={liveCamera}
@@ -699,18 +957,26 @@ function ExpenseForm({
         onClose={() => setLiveCamera(false)}
         onPhoto={(file) => onReceipt(file)}
         onChooseFile={() => {
-          setLiveCamera(false)
-          if (fileRef.current) fileRef.current.value = ''
-          fileRef.current?.click()
+          setLiveCamera(false);
+          if (fileRef.current) fileRef.current.value = "";
+          fileRef.current?.click();
         }}
       />
       {(receipt || hasOldReceipt) && (
         <div className="flex items-center gap-3 rounded-xl bg-surface p-2.5 mb-2">
           {receipt ? (
-            <img src={receipt.preview} alt="Receipt photo" className="w-14 h-14 object-cover rounded-lg border border-line" />
+            <img
+              src={receipt.preview}
+              alt="Receipt photo"
+              className="w-14 h-14 object-cover rounded-lg border border-line"
+            />
           ) : savedReceipt ? (
             <a href={savedReceipt} target="_blank" rel="noreferrer">
-              <img src={savedReceipt} alt="Saved receipt photo" className="w-14 h-14 object-cover rounded-lg border border-line" />
+              <img
+                src={savedReceipt}
+                alt="Saved receipt photo"
+                className="w-14 h-14 object-cover rounded-lg border border-line"
+              />
             </a>
           ) : (
             <span className="w-14 h-14 rounded-lg bg-white grid place-items-center border border-line">
@@ -718,14 +984,22 @@ function ExpenseForm({
             </span>
           )}
           <span className="flex-1 min-w-0 text-[13px]">
-            <b className="block">{receipt ? 'Receipt photo ready' : 'Receipt photo saved'}</b>
+            <b className="block">
+              {receipt ? "Receipt photo ready" : "Receipt photo saved"}
+            </b>
             <span className="text-ink-2">
-              {expense?.quickbooksReceiptId && !receipt ? 'Attached in QuickBooks.' : 'It goes to QuickBooks with this expense.'}
+              {expense?.quickbooksReceiptId && !receipt
+                ? "Attached in QuickBooks."
+                : "It goes to QuickBooks with this expense."}
             </span>
           </span>
           <span className="flex flex-col items-end gap-1">
             {!receipt && hasOldReceipt && !savedReceipt && (
-              <button type="button" className="btn btn-text btn-sm !py-0" onClick={viewSavedReceipt}>
+              <button
+                type="button"
+                className="btn btn-text btn-sm !py-0"
+                onClick={viewSavedReceipt}
+              >
                 View
               </button>
             )}
@@ -733,9 +1007,9 @@ function ExpenseForm({
               type="button"
               className="btn btn-text btn-sm !py-0 !text-bad"
               onClick={() => {
-                setReceipt(null)
-                setSavedReceipt(null)
-                if (expense?.hasReceipt) setRemoveReceipt(true)
+                setReceipt(null);
+                setSavedReceipt(null);
+                if (expense?.hasReceipt) setRemoveReceipt(true);
               }}
             >
               Remove
@@ -750,8 +1024,8 @@ function ExpenseForm({
         capture="environment"
         hidden
         onChange={(e) => {
-          const file = e.target.files?.[0]
-          if (file) onReceipt(file)
+          const file = e.target.files?.[0];
+          if (file) onReceipt(file);
         }}
       />
       <p className="text-[13px] text-ink-2 min-h-[18px] mt-0 mb-2">{info}</p>
@@ -759,7 +1033,9 @@ function ExpenseForm({
       <div className="grid grid-cols-2 gap-2.5">
         <Field label="Amount" htmlFor="ex-amount">
           <div className="relative">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-2">$</span>
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-2">
+              $
+            </span>
             <input
               id="ex-amount"
               className="field-input num !pl-7"
@@ -775,27 +1051,62 @@ function ExpenseForm({
           </div>
         </Field>
         <Field label="Date" htmlFor="ex-date">
-          <input id="ex-date" className="field-input" type="date" value={spentOn} onChange={(e) => setSpentOn(e.target.value)} />
+          <input
+            id="ex-date"
+            className="field-input"
+            type="date"
+            value={spentOn}
+            onChange={(e) => setSpentOn(e.target.value)}
+          />
         </Field>
       </div>
       <Field label="Category" htmlFor="ex-category">
-        <AutoInput id="ex-category" value={category} onChange={setCategory} suggestions={categories} />
+        <AutoInput
+          id="ex-category"
+          value={category}
+          onChange={setCategory}
+          suggestions={categories}
+        />
       </Field>
-      <QuickChips label="Categories" options={categories} value={category} onPick={setCategory} />
+      <QuickChips
+        label="Categories"
+        options={categories}
+        value={category}
+        onPick={setCategory}
+      />
       <Field label="Paid to" htmlFor="ex-vendor">
-        <AutoInput id="ex-vendor" value={vendor} onChange={setVendor} suggestions={vendors} placeholder="Store or supplier" />
+        <AutoInput
+          id="ex-vendor"
+          value={vendor}
+          onChange={setVendor}
+          suggestions={vendors}
+          placeholder="Store or supplier"
+        />
       </Field>
       <Field label="Note" htmlFor="ex-note">
-        <input id="ex-note" className="field-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" />
+        <input
+          id="ex-note"
+          className="field-input"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Optional"
+        />
       </Field>
       {expense?.quickbooksId && (
-        <p className="text-[13px] text-ink-2 m-0">Already sent to QuickBooks — edits here won’t update it there.</p>
+        <p className="text-[13px] text-ink-2 m-0">
+          Already sent to QuickBooks — edits here won’t update it there.
+        </p>
       )}
 
       {error && <p className="text-bad text-sm mt-3 mb-0">{error}</p>}
       <SheetActions>
         {expense ? (
-          <button type="button" className="btn btn-tonal !text-bad" onClick={onDelete} disabled={saving}>
+          <button
+            type="button"
+            className="btn btn-tonal !text-bad"
+            onClick={onDelete}
+            disabled={saving}
+          >
             Delete
           </button>
         ) : (
@@ -803,12 +1114,16 @@ function ExpenseForm({
             Cancel
           </button>
         )}
-        <button type="submit" className="btn btn-primary" disabled={saving || reading}>
-          {saving ? 'Saving…' : 'Save'}
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={saving || reading}
+        >
+          {saving ? "Saving…" : "Save"}
         </button>
       </SheetActions>
     </form>
-  )
+  );
 }
 
 function BudgetForm({
@@ -817,37 +1132,41 @@ function BudgetForm({
   onCancel,
   onSaved,
 }: {
-  month: string
-  current?: MonthSpend
-  onCancel: () => void
-  onSaved: () => void
+  month: string;
+  current?: MonthSpend;
+  onCancel: () => void;
+  onSaved: () => void;
 }) {
-  const [amount, setAmount] = useState(current?.budgetCents ? String(Math.round(current.budgetCents / 100)) : '')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
+  const [amount, setAmount] = useState(
+    current?.budgetCents ? String(Math.round(current.budgetCents / 100)) : "",
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   async function save(amountCents: number | null) {
-    setSaving(true)
-    setError('')
+    setSaving(true);
+    setError("");
     try {
-      await saveMonthBudget({ data: { month, amountCents } })
-      onSaved()
+      await saveMonthBudget({ data: { month, amountCents } });
+      onSaved();
     } catch {
-      setError('Could not save. Try again.')
-      setSaving(false)
+      setError("Could not save. Try again.");
+      setSaving(false);
     }
   }
 
   return (
     <form
       onSubmit={(e) => {
-        e.preventDefault()
-        save(Math.max(0, Math.round((Number(amount) || 0) * 100)))
+        e.preventDefault();
+        save(Math.max(0, Math.round((Number(amount) || 0) * 100)));
       }}
     >
       <Field label="Budget for stock and expenses" htmlFor="bf-amount">
         <div className="relative">
-          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-2">$</span>
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-2">
+            $
+          </span>
           <input
             id="bf-amount"
             className="field-input num !pl-7"
@@ -861,10 +1180,16 @@ function BudgetForm({
         </div>
       </Field>
       <p className="text-ink-2 text-[13px] m-0">
-        Only changes {monthLabel(month)}. Your standing monthly budget lives in Settings → Business profile.
+        Only changes {monthLabel(month)}. Your standing monthly budget lives in
+        Settings → Business profile.
       </p>
       {current?.hasOverride && (
-        <button type="button" className="btn btn-text btn-sm !px-0 mt-2" onClick={() => save(null)} disabled={saving}>
+        <button
+          type="button"
+          className="btn btn-text btn-sm !px-0 mt-2"
+          onClick={() => save(null)}
+          disabled={saving}
+        >
           Use the standing monthly budget instead
         </button>
       )}
@@ -874,9 +1199,9 @@ function BudgetForm({
           Cancel
         </button>
         <button type="submit" className="btn btn-primary" disabled={saving}>
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? "Saving…" : "Save"}
         </button>
       </SheetActions>
     </form>
-  )
+  );
 }

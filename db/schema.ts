@@ -73,7 +73,7 @@ export const businessProfile = pgTable("business_profile", {
   /** Email as soon as items start selling out faster than expected. */
   fastMoverAlertEmail: boolean("fast_mover_alert_email").notNull().default(true),
   /** Display color palette id from PALETTES (src/lib/palettes.ts), shared by every device. */
-  palette: text().notNull().default("burgundy-olive"),
+  palette: text().notNull().default("bintro"),
   /** How often the business places orders, in days. Smart par keeps about this much stock above the reorder point. */
   orderEveryDays: integer("order_every_days").notNull().default(7),
   /** Two-letter US state the business files taxes in (Calendar → state tax dates); "" = not chosen. */

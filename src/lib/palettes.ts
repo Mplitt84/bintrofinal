@@ -2,14 +2,14 @@
  * Display color palettes a business can pick in Settings → Look & feel to match its brand.
  * Each palette swaps the theme tokens in `src/styles.css` (`--color-*`); status colors
  * (good / warn / bad) stay the same so stock levels read the same everywhere.
- * `burgundy-olive` is the default; `royal` is the original Bintro look.
+ * `bintro` (the brand's royal blue and mustard) is the default for new businesses.
  */
 
 export type PaletteFamily = 'warm' | 'cool' | 'earthy' | 'mono'
 
 export const PALETTE_FAMILIES: { id: PaletteFamily; label: string; blurb: string }[] = [
   { id: 'warm', label: 'Warm', blurb: 'Burgundy, olive, terracotta and rose gold' },
-  { id: 'cool', label: 'Cool', blurb: 'Royal blue, ocean teal and lavender' },
+  { id: 'cool', label: 'Cool', blurb: 'Bintro blue & mustard, royal blue, ocean teal and lavender' },
   { id: 'earthy', label: 'Earthy', blurb: 'Sage, olive, walnut and sand' },
   { id: 'mono', label: 'Black & grey', blurb: 'Charcoal, graphite and silver' },
 ]
@@ -35,6 +35,16 @@ type Tokens = {
 export type Palette = { id: string; family: PaletteFamily; label: string; colors: Tokens }
 
 export const PALETTES: Palette[] = [
+  {
+    id: 'bintro',
+    family: 'cool',
+    label: 'Bintro blue & mustard',
+    colors: {
+      page: '#fffdf7', surface: '#f6f2e6', 'surface-2': '#ece6d3', ink: '#0f1a3d', 'ink-2': '#565d76', line: '#e7e1cf',
+      action: '#002CB7', 'action-press': '#001f85', 'action-tint': '#e6ebfb', royal: '#001a70', 'royal-2': '#1a4be0',
+      gold: '#d9a400', 'gold-bright': '#F2C033', 'gold-ink': '#7a5a00', 'gold-tint': '#fdf4d3',
+    },
+  },
   {
     id: 'burgundy-olive',
     family: 'warm',
@@ -137,7 +147,7 @@ export const PALETTES: Palette[] = [
   },
 ]
 
-export const DEFAULT_PALETTE_ID = 'burgundy-olive'
+export const DEFAULT_PALETTE_ID = 'bintro'
 
 export function paletteById(id: string | null | undefined): Palette {
   return PALETTES.find((p) => p.id === id) ?? PALETTES.find((p) => p.id === DEFAULT_PALETTE_ID)!

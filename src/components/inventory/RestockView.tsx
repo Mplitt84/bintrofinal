@@ -59,7 +59,7 @@ export function RestockView({
             role="tab"
             aria-selected={mode === t.id}
             onClick={() => onMode(t.id)}
-            className={`px-4 py-2 rounded-full border-0 text-sm font-semibold cursor-pointer ${
+            className={`px-3 min-[420px]:px-4 py-2 rounded-full border-0 text-[13px] min-[420px]:text-sm font-semibold cursor-pointer whitespace-nowrap ${
               mode === t.id ? 'bg-white text-ink shadow-card' : 'bg-transparent text-ink-2'
             }`}
           >
