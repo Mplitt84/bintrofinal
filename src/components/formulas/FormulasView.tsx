@@ -94,10 +94,13 @@ function blankVisit(
 /** Formulas tab: client records (color formula or ink log, retail prescription, photos) + color theory. */
 export function FormulasView({
   staffName,
+  team,
   products,
   onChanged,
 }: {
   staffName: string;
+  /** Saved team member names, for "whose client is this". */
+  team: string[];
   products: Product[];
   onChanged: () => void;
 }) {
@@ -145,6 +148,7 @@ export function FormulasView({
         <ClientRecords
           kind={kind}
           staffName={staffName}
+          team={team}
           products={products}
           onChanged={onChanged}
         />
@@ -158,11 +162,13 @@ export function FormulasView({
 function ClientRecords({
   kind,
   staffName,
+  team,
   products,
   onChanged,
 }: {
   kind: FormulaKind;
   staffName: string;
+  team: string[];
   products: Product[];
   onChanged: () => void;
 }) {
@@ -191,7 +197,26 @@ function ClientRecords({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  const clients = useMemo(() => groupByClient(rows ?? []), [rows]);
+  const [member, setMember] = useState("");
+  const allClients = useMemo(() => groupByClient(rows ?? []), [rows]);
+  // Everyone who has a client on record, plus the saved team.
+  const members = useMemo(
+    () =>
+      [
+        ...new Set(
+          [...team, ...(rows ?? []).map((r) => r.staffName)].filter(Boolean),
+        ),
+      ].sort(),
+    [team, rows],
+  );
+  // A client belongs to whoever saw them last.
+  const clients = useMemo(
+    () =>
+      member
+        ? allClients.filter((c) => c.visits[0]?.staffName === member)
+        : allClients,
+    [allClients, member],
+  );
   const current =
     clients.find((c) => c.name.toLowerCase() === openClient?.toLowerCase()) ??
     null;
@@ -218,7 +243,7 @@ function ClientRecords({
             ...last,
             id: undefined,
             serviceDate: today(),
-            staffName,
+            staffName: staffName || last.staffName,
             retail: [],
             followUpOn: "",
             notes: "",
@@ -240,6 +265,21 @@ function ClientRecords({
             onChange={(e) => setSearch(e.target.value)}
           />
         </label>
+        {members.length > 0 && (
+          <select
+            className="field-input !w-auto !rounded-full"
+            value={member}
+            onChange={(e) => setMember(e.target.value)}
+            aria-label="Show clients of"
+          >
+            <option value="">Everyone’s clients</option>
+            {members.map((m) => (
+              <option key={m} value={m}>
+                {m}’s clients
+              </option>
+            ))}
+          </select>
+        )}
         <button
           type="button"
           className="btn btn-primary"
@@ -291,6 +331,11 @@ function ClientRecords({
                       {c.visits.length} visit{c.visits.length === 1 ? "" : "s"}{" "}
                       · last {prettyDate(c.lastVisit)}
                     </span>
+                    {last.staffName && (
+                      <span className="block text-[12px] font-semibold text-action truncate">
+                        {last.staffName}’s client
+                      </span>
+                    )}
                   </span>
                   <ChevronRight size={18} className="text-ink-2" />
                 </span>
@@ -329,6 +374,7 @@ function ClientRecords({
             >
               <Copy size={16} /> New visit (start from the last one)
             </button>
+            <ClientOwner visits={current.visits} />
             <ol className="m-0 p-0 list-none space-y-3">
               {current.visits.map((v) => (
                 <VisitCard
@@ -351,6 +397,7 @@ function ClientRecords({
           value={editing}
           products={products}
           aftercareTemplate={aftercare}
+          team={members}
           onClose={() => setEditing(null)}
           onSaved={(saved, soldAny, template) => {
             setEditing(null);
@@ -362,6 +409,34 @@ function ClientRecords({
         />
       )}
     </>
+  );
+}
+
+/** Whose client this is now (latest visit) and who saw them before. */
+function ClientOwner({ visits }: { visits: ClientFormula[] }) {
+  const current = visits[0]?.staffName ?? "";
+  const before = [
+    ...new Set(
+      visits.map((v) => v.staffName).filter((n) => n && n !== current),
+    ),
+  ];
+  if (!current && before.length === 0) return null;
+  return (
+    <p className="text-sm bg-surface rounded-xl px-3.5 py-2.5 mt-0 mb-3">
+      {current ? (
+        <>
+          <b>{current}</b>’s client
+        </>
+      ) : (
+        "No team member set on the latest visit"
+      )}
+      {before.length > 0 && (
+        <span className="text-ink-2">
+          {" "}
+          · previously with {before.join(", ")}
+        </span>
+      )}
+    </p>
   );
 }
 
@@ -631,12 +706,14 @@ function VisitForm({
   value,
   products,
   aftercareTemplate,
+  team,
   onClose,
   onSaved,
 }: {
   value: FormulaInput & { id?: number };
   products: Product[];
   aftercareTemplate: string;
+  team: string[];
   onClose: () => void;
   onSaved: (saved: ClientFormula, soldAny: boolean, template?: string) => void;
 }) {
@@ -753,6 +830,19 @@ function VisitForm({
           />
         </Field>
       </div>
+      <Field label="Team member (whose client)" htmlFor="v-staff">
+        <select
+          id="v-staff"
+          className="field-input"
+          value={f.staffName}
+          onChange={(e) => set({ staffName: e.target.value })}
+        >
+          <option value="">Not set</option>
+          {[...new Set([...team, f.staffName].filter(Boolean))].map((m) => (
+            <option key={m}>{m}</option>
+          ))}
+        </select>
+      </Field>
       <Field label={spec.serviceLabel} htmlFor="v-service">
         {!spec.services ? (
           <input

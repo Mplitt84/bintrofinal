@@ -798,6 +798,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
             {tab === "formulas" && showColor && (
               <FormulasView
                 staffName={staffName}
+                team={team.map((t) => t.name)}
                 products={products}
                 onChanged={refresh}
               />
