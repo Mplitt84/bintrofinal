@@ -5,19 +5,19 @@
  */
 export const LEGAL = {
   /** The legal entity that owns and runs Bintro. */
-  company: '[Company legal name]',
+  company: 'Bintro',
   product: 'Bintro',
   /** Where customers send legal and privacy requests. */
-  email: '[legal or privacy email]',
+  email: 'hello@bintroapp.com',
   /** Where customers get help from inside the app (Settings → Help & support). */
   supportEmail: 'hello@bintroapp.com',
   /** Mailing address for legal notices. */
-  address: '[Mailing address]',
+  address: '3518 Shiraz Loop, Round Rock, TX 78665',
   /** State whose law governs the Terms. */
   governingState: 'Texas',
   /** County for disputes. */
-  venue: '[County], Texas',
-  effectiveDate: '[Effective date]',
+  venue: 'Travis County, Texas',
+  effectiveDate: 'November 11, 2026',
 }
 
 export const LEGAL_IS_DRAFT = Object.values(LEGAL).some((v) => v.includes('['))
