@@ -185,7 +185,7 @@ export function AskBintro() {
         onClick={() => setOpen(true)}
         aria-label="Ask Bintro a question about your data"
         title="Ask Bintro"
-        className="bin-buddy-button fixed z-[41] left-4 bottom-[calc(env(safe-area-inset-bottom)+84px)] min-[1060px]:bottom-6 w-[64px] h-[64px] rounded-full bg-white border border-line shadow-lg grid place-items-center cursor-pointer print:hidden"
+        className="bin-buddy-button fixed z-[41] left-4 min-[1060px]:left-[264px] bottom-[calc(env(safe-area-inset-bottom)+84px)] min-[1060px]:bottom-6 w-[64px] h-[64px] rounded-full bg-white border border-line shadow-lg grid place-items-center cursor-pointer print:hidden"
       >
         <BinBuddy size={50} />
       </button>

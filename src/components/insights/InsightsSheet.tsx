@@ -634,7 +634,7 @@ export function InsightPopup({
     <aside
       role="status"
       aria-label={title}
-      className="tip-nudge print:hidden fixed z-40 right-4 left-4 min-[560px]:left-auto min-[560px]:w-[400px] bottom-[calc(92px+env(safe-area-inset-bottom,0px))] min-[1060px]:bottom-6 min-[1060px]:right-6"
+      className="tip-nudge print:hidden fixed z-[42] min-[560px]:z-40 right-4 left-4 min-[560px]:left-auto min-[560px]:w-[400px] bottom-[calc(92px+env(safe-area-inset-bottom,0px))] min-[1060px]:bottom-6 min-[1060px]:right-6"
     >
       <div className="rounded-[20px] bg-white overflow-hidden" style={{ boxShadow: 'var(--shadow-lift), inset 0 0 0 1px color-mix(in srgb, var(--color-gold) 35%, transparent)' }}>
         <div className="bg-gradient-to-br from-royal to-royal-2 text-white px-4 py-3 flex items-center gap-3">

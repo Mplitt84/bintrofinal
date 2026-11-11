@@ -4,6 +4,7 @@ import type { IntegrationStatus, Product, TeamMember } from '@/components/invent
 import { ImportView } from '@/components/business/ImportView'
 import { SetupCheck } from '@/components/business/SetupCheck'
 import { ConnectionDirectory } from '@/components/business/ConnectionDirectory'
+import { EmailOrdersCard } from '@/components/business/EmailOrdersCard'
 import { LEGAL_LINKS } from '@/components/legal/LegalPage'
 import { LEGAL } from '@/lib/legal'
 import type { AuthState } from '@/lib/auth'
@@ -147,6 +148,7 @@ export function SettingsView({
       {section === 'integrations' && (
         <>
           <Integrations onChanged={onChanged} />
+          <EmailOrdersCard isOwner={auth.user?.role !== 'staff'} />
           <ConnectionDirectory />
         </>
       )}

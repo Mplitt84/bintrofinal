@@ -687,6 +687,55 @@ export async function extractImportDocument(
   };
 }
 
+/**
+ * Reads a vendor's order confirmation email (forwarded to Bintro) into the products ordered.
+ * Same line fields as an invoice; shipping, tax, discounts and "you may also like" items are left out.
+ */
+export async function extractOrderEmail(
+  email: { subject: string; from: string; text: string },
+  business: { itemNoun: string; categories: string[] },
+): Promise<ExtractResult> {
+  const r = await callTool(
+    extractTool(business.categories),
+    [
+      {
+        type: "text",
+        text:
+          `Below is an order confirmation email a small business (it stocks ${business.itemNoun}s) received from a vendor and forwarded on. ` +
+          `It may start with the forwarding person's note and "Forwarded message" headers; the vendor is the store that confirmed the order (not the person forwarding). ` +
+          `Record every product the business ORDERED, with quantity and the per-unit price paid (line total ÷ quantity when only a total is shown). ` +
+          `Leave out shipping, tax, tips, discounts, gift cards, totals, and any recommended or advertised products. Set document_type to receipt. ` +
+          `vendor is only the store name (no order number). Leave fields empty rather than guessing.\n\n` +
+          `Subject: ${email.subject}\nFrom: ${email.from}\n\n${email.text}`,
+      },
+    ],
+    { maxTokens: 6000, timeoutMs: 55_000 },
+  );
+  if (!r.ok) return r;
+  const items = Array.isArray(r.input.items) ? (r.input.items as Array<Record<string, unknown>>) : [];
+  const lines = items
+    .map((i) => ({
+      barcode: clean(i.code, 60),
+      name: clean(i.name),
+      brand: clean(i.brand),
+      size: clean(i.size, 40),
+      category: clean(i.category, 60),
+      qty: toQty(i.qty),
+      unitCostCents: toCents(i.unit_cost),
+      retailPriceCents: 0,
+    }))
+    .filter((l) => (l.name || l.barcode) && (l.qty ?? 0) > 0);
+  if (lines.length === 0) return { ok: false, message: "No ordered products found in that email." };
+  const date = clean(r.input.date, 10);
+  return {
+    ok: true,
+    docType: "receipt",
+    vendor: clean(r.input.vendor, 80),
+    date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "",
+    lines,
+  };
+}
+
 export const CSV_FIELDS = ["barcode", "name", "brand", "size", "category", "vendor", "qty", "unit_cost", "retail_price"] as const;
 export type CsvField = (typeof CSV_FIELDS)[number];
 export type CsvMapping = { headerRow: number; docType: ImportDocType; columns: Record<CsvField, number> };
