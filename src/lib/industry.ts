@@ -10,6 +10,8 @@ import { directoryFor } from "./connection-directory";
 import { TIPS } from "./tips";
 
 /** How the client-records tab is worded and which fields it shows. null = no client records (bars). */
+export type TagGroup = { label: string; options: string[] }
+
 export type RecordSpec = {
   tabLabel: string;
   lead: string;
@@ -29,6 +31,8 @@ export type RecordSpec = {
   mix: boolean;
   aftercare: boolean;
   followUpLabel: string;
+  /** Tap-to-select practices for a visit, grouped (treatments, styles, skin notes…). */
+  tagGroups: TagGroup[];
   notesPlaceholder: string;
 };
 
@@ -65,7 +69,11 @@ const HAIR: RecordSpec = {
   mix: true,
   aftercare: false,
   followUpLabel: "",
-  notesPlaceholder: "Porosity, grey %, what you’d change next time",
+  tagGroups: [
+    { label: 'Technique', options: ['Single process', 'Foils', 'Balayage', 'Foilyage', 'Color melt', 'Gloss', 'Bleach & tone', 'Grey coverage', 'Color correction'] },
+    { label: 'Hair notes', options: ['Curly / coily', 'Fine', 'Coarse', 'Resistant grey', 'High porosity', 'Low porosity', 'Previously colored', 'Box dye history', 'Sensitive scalp'] },
+  ],
+      notesPlaceholder: "Porosity, grey %, what you’d change next time",
 };
 
 export const INDUSTRIES: Industry[] = [
@@ -98,6 +106,10 @@ export const INDUSTRIES: Industry[] = [
         "Grey blending",
         "Kids cut",
       ],
+      tagGroups: [
+        { label: 'Cut', options: ['Skin fade', 'Low fade', 'Mid fade', 'High fade', 'Taper', 'Scissor cut', 'Buzz cut', 'Line-up', 'Beard shape-up', 'Hot towel shave', 'Design'] },
+        { label: 'Hair & skin notes', options: ['Curly / coily', 'Cowlick', 'Thinning', 'Sensitive skin', 'Razor bumps', 'Ingrown hairs'] },
+      ],
       notesPlaceholder: "Cowlicks, part side, how short they like it",
     },
   },
@@ -126,6 +138,11 @@ export const INDUSTRIES: Industry[] = [
         "Nail art",
       ],
       mix: false,
+      tagGroups: [
+        { label: 'Service type', options: ['Gel', 'Acrylic', 'Builder gel', 'Dip powder', 'Regular polish', 'Gel-X / tips', 'French', 'Chrome', 'Ombré', 'Nail art'] },
+        { label: 'Shape', options: ['Square', 'Round', 'Oval', 'Almond', 'Coffin', 'Stiletto', 'Squoval'] },
+        { label: 'Nail notes', options: ['Thin nails', 'Lifting', 'Nail biter', 'Sensitive cuticles', 'Product sensitivity'] },
+      ],
       notesPlaceholder: "Shape, length, sensitivities, nail art notes",
     },
   },
@@ -155,6 +172,11 @@ export const INDUSTRIES: Industry[] = [
       mix: false,
       aftercare: true,
       followUpLabel: "Next fill / check",
+      tagGroups: [
+        { label: 'Lash style', options: ['Classic', 'Hybrid', 'Volume', 'Mega volume', 'Wispy', 'Cat eye', 'Doll eye', 'Natural'] },
+        { label: 'Brow service', options: ['Tint', 'Lamination', 'Wax', 'Thread', 'Henna', 'Shape'] },
+        { label: 'Notes', options: ['Sensitive eyes', 'Sensitive skin', 'Adhesive sensitivity', 'Patch test done', 'Oily lids', 'Sparse natural lashes'] },
+      ],
       notesPlaceholder: "Sensitivities, patch test date, retention notes",
     },
   },
@@ -177,6 +199,10 @@ export const INDUSTRIES: Industry[] = [
       mix: false,
       aftercare: true,
       followUpLabel: "Touch-up / healing check",
+      tagGroups: [
+        { label: 'Style', options: ['Traditional', 'Neo-traditional', 'Fine line', 'Black and grey', 'Blackwork', 'Color', 'Realism', 'Japanese', 'Script / lettering', 'Watercolor', 'Dotwork', 'Tribal', 'Freehand', 'Flash', 'Cover-up', 'Touch-up'] },
+        { label: 'Skin notes', options: ['Keloid-prone skin', 'Sensitive skin', 'Scar tissue', 'Stretch marks', 'Sun-damaged skin', 'Deeper skin tone', 'Very fair skin', 'Heavy bleeder', 'Dry skin'] },
+      ],
       notesPlaceholder: "Skin, needle, how it healed last time",
     },
   },
@@ -207,6 +233,11 @@ export const INDUSTRIES: Industry[] = [
       mix: false,
       aftercare: true,
       followUpLabel: "Follow-up",
+      tagGroups: [
+        { label: 'Facial & skin treatments', options: ['Hydrating facial', 'Hydrodermabrasion', 'Extractions', 'Dermaplaning', 'Chemical peel', 'Microneedling', 'LED light therapy', 'Microdermabrasion', 'Enzyme treatment', 'Lymphatic facial'] },
+        { label: 'Massage', options: ['Swedish', 'Deep tissue', 'Sports', 'Hot stone', 'Prenatal', 'Lymphatic drainage', 'Trigger point', 'Myofascial release', 'Reflexology', 'Aromatherapy', 'Cupping'] },
+        { label: 'Skin & client notes', options: ['Sensitive skin', 'Acne-prone', 'Dry skin', 'Oily skin', 'Combination skin', 'Rosacea', 'Hyperpigmentation', 'Mature skin', 'Firm pressure', 'Light pressure'] },
+      ],
       notesPlaceholder: "Skin type, sensitivities, how they responded",
     },
   },
@@ -266,6 +297,14 @@ export function industrySetup(id: string): SetupLine[] {
       title: `${spec.tabLabel} tab`,
       detail: `${spec.linesHeading}${spec.mix ? ", developer, ratio and timing" : ""}${spec.aftercare ? ", aftercare" : ""}, take-home products and before/after photos for each client.`,
     });
+    if (spec.tagGroups.length)
+      lines.push({
+        title: "Tap-to-pick practices",
+        detail: `${spec.tagGroups.map((g) => g.label).join(", ")}: ${spec.tagGroups
+          .flatMap((g) => g.options.slice(0, 2))
+          .slice(0, 6)
+          .join(", ")} and more, one tap each on every visit.`,
+      });
   } else {
     lines.push({
       title: "A simpler menu",

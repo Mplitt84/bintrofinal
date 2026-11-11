@@ -16,6 +16,7 @@ export type FormulaInput = {
   serviceDate: string
   service: string
   lines: FormulaLine[]
+  tags: string[]
   retail: RetailLine[]
   developer: string
   ratio: string
@@ -66,9 +67,9 @@ const csvCell = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
 
 /** Every saved formula as a spreadsheet, so a copy can be kept outside Bintro. */
 export function formulasCsv(rows: ClientFormula[]) {
-  const head = ['Client', 'Date', 'Type', 'Service / placement', 'Products / colors', 'Retail prescription', 'Developer', 'Ratio', 'Minutes', 'Left over', 'Aftercare', 'Follow-up', 'Notes', 'Team member']
+  const head = ['Client', 'Date', 'Type', 'Service / placement', 'Practices', 'Products / colors', 'Retail prescription', 'Developer', 'Ratio', 'Minutes', 'Left over', 'Aftercare', 'Follow-up', 'Notes', 'Team member']
   const body = rows.map((r) =>
-    [r.clientName, r.serviceDate, r.kind, r.service, linesText(r.lines), r.retail.map((x) => `${x.qty} × ${x.name}${x.sold ? ' (sold)' : ''}`).join('; '), r.developer, r.ratio, r.processingMinutes || '', r.leftover, r.aftercare, r.followUpOn, r.notes, r.staffName]
+    [r.clientName, r.serviceDate, r.kind, r.service, r.tags.join('; '), linesText(r.lines), r.retail.map((x) => `${x.qty} × ${x.name}${x.sold ? ' (sold)' : ''}`).join('; '), r.developer, r.ratio, r.processingMinutes || '', r.leftover, r.aftercare, r.followUpOn, r.notes, r.staffName]
       .map(csvCell)
       .join(','),
   )

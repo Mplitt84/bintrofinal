@@ -66,6 +66,76 @@ const prettyDate = (ymd: string) => {
 const FALLBACK_SPEC = recordSpecFor("other")!;
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
+/** Selected practices shown as small pills on a visit. */
+function TagPills({ tags }: { tags: string[] }) {
+  if (!tags.length) return null;
+  return (
+    <span className="flex flex-wrap gap-1 mt-1.5">
+      {tags.map((t) => (
+        <span
+          key={t}
+          className="text-[11.5px] font-semibold px-2 py-0.5 rounded-full bg-action-tint text-action"
+        >
+          {t}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** Tap-to-select practices for the visit, grouped by the industry's lists. Keeps any saved tag that is no longer listed. */
+function PracticePicker({
+  groups,
+  value,
+  onChange,
+}: {
+  groups: RecordSpec["tagGroups"];
+  value: string[];
+  onChange: (tags: string[]) => void;
+}) {
+  if (!groups.length) return null;
+  const listed = new Set(groups.flatMap((g) => g.options));
+  const extra = value.filter((t) => !listed.has(t));
+  const toggle = (t: string) =>
+    onChange(value.includes(t) ? value.filter((x) => x !== t) : [...value, t]);
+  const all = extra.length
+    ? [...groups, { label: "Other saved", options: extra }]
+    : groups;
+  return (
+    <div className="mb-4" data-practices>
+      <span className="block text-[13px] font-semibold text-ink-2">
+        Practices for this visit
+        {value.length > 0 && (
+          <span className="font-normal"> · {value.length} picked</span>
+        )}
+      </span>
+      <span className="block text-[12px] text-ink-2 mb-2">
+        Tap all that apply. They show on the client’s record and in the backup.
+      </span>
+      {all.map((g) => (
+        <div key={g.label} className="mb-2.5" role="group" aria-label={g.label}>
+          <span className="block text-[12px] font-semibold uppercase tracking-wide text-ink-2 mb-1.5">
+            {g.label}
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {g.options.map((o) => (
+              <button
+                key={o}
+                type="button"
+                className="chip"
+                aria-pressed={value.includes(o)}
+                onClick={() => toggle(o)}
+              >
+                {o}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function blankVisit(
   kind: FormulaKind,
   spec: RecordSpec,
@@ -79,6 +149,7 @@ function blankVisit(
     serviceDate: today(),
     service: spec.services?.[0] ?? "",
     lines: [{ item: "", amount: "" }],
+    tags: [],
     retail: [],
     developer: "",
     ratio: "",
@@ -343,6 +414,11 @@ function ClientRecords({
                   <b>{last.service || spec.linesHeading}:</b>{" "}
                   {linesText(last.lines) || "no products listed"}
                 </span>
+                {last.tags.length > 0 && (
+                  <span className="block text-[12px] text-ink-2 mt-0.5 truncate">
+                    {last.tags.join(" · ")}
+                  </span>
+                )}
                 {last.retail.length > 0 && (
                   <span className="block text-[12px] text-ink-2 mt-0.5 truncate">
                     Takes home: {last.retail.map((r) => r.name).join(", ")}
@@ -526,6 +602,7 @@ function VisitCard({
             {v.service}
             {v.staffName ? ` · ${v.staffName}` : ""}
           </span>
+          <TagPills tags={v.tags} />
         </div>
         <span className="flex gap-1 shrink-0">
           <button
@@ -867,6 +944,12 @@ function VisitForm({
           </select>
         )}
       </Field>
+
+      <PracticePicker
+        groups={spec.tagGroups}
+        value={f.tags}
+        onChange={(tags) => set({ tags })}
+      />
 
       <span className="block text-[13px] font-semibold text-ink-2 mb-1.5">
         {spec.linesLabel}

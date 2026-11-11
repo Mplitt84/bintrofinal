@@ -12,6 +12,7 @@ const FormulaSchema = z.object({
   serviceDate: date,
   service: z.string().max(120),
   lines: z.array(z.object({ item: z.string().max(80), amount: z.string().max(30) })).max(20),
+  tags: z.array(z.string().max(60)).max(30),
   retail: z
     .array(z.object({ productId: z.number().int().nullable(), name: z.string().max(120), qty: z.number().int().min(0).max(99), sold: z.boolean(), logged: z.boolean().optional() }))
     .max(20),
