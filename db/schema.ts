@@ -62,6 +62,8 @@ export const businessProfile = pgTable("business_profile", {
   monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(0),
   /** Secret part of the calendar subscription URL. Empty until the feed is first shared. */
   calendarToken: text("calendar_token").notNull().default(""),
+  /** Secret part of the "email orders to Bintro" address (orders-<token>@<inbound domain>). */
+  inboundToken: text("inbound_token").notNull().default(""),
   /** Email the weekly best-sellers report (Mondays). */
   weeklyReportEmail: boolean("weekly_report_email").notNull().default(true),
   /** Email the monthly slow-movers + price-check report (1st of the month). */
@@ -395,4 +397,21 @@ export const appSessions = pgTable("app_sessions", {
   userAgent: text("user_agent").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at").notNull(),
+});
+
+/**
+ * Emails forwarded to the business's private Bintro address (vendor order confirmations).
+ * One row per received email (Resend id unique), whether it became an order or not.
+ */
+export const inboundEmails = pgTable("inbound_emails", {
+  id: serial().primaryKey(),
+  emailId: text("email_id").notNull().unique(),
+  fromAddress: text("from_address").notNull().default(""),
+  subject: text().notNull().default(""),
+  vendor: text().notNull().default(""),
+  /** 'order' (saved as an open order) | 'skipped' (no products found) | 'error' */
+  status: text().notNull().default("error"),
+  message: text().notNull().default(""),
+  orderId: integer("order_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });

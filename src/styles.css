@@ -444,3 +444,10 @@ body {
   place-items: center;
   color: #fff;
 }
+
+/* Phones & tablets: feel like an installed app (no grey tap flash, no rubber-band bounce behind sheets,
+   no text-size jumps when rotating). Computers keep normal web behaviour. */
+@media (pointer: coarse) {
+  html { -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; overscroll-behavior-y: none; }
+  button, a, .chip { touch-action: manipulation; }
+}

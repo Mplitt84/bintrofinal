@@ -172,6 +172,11 @@ function detectMode(raw: RawLine[], docType: ImportMode): ImportMode {
   return hasPrices && raw.every((l) => l.qty === null) ? "prices" : docType;
 }
 
+/** Matches lines read from a vendor's order email to products (same rules as a delivery import). */
+export async function matchOrderLines(raw: Array<ExtractedLine & { vendor: string }>): Promise<ImportLine[]> {
+  return toImportLines(raw, await findAllProducts(), "receipt");
+}
+
 function toImportLines(raw: RawLine[], all: Product[], mode: ImportMode): ImportLine[] {
   return raw.slice(0, MAX_IMPORT_LINES).map((l, key) => {
     const match = findMatch(l, all, mode === "prices" ? PRICE_MATCH_SCORE : MATCH_SCORE);

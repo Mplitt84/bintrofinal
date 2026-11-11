@@ -1,7 +1,7 @@
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { purchaseOrderLines, purchaseOrders } from "../../db/schema.js";
-import { findProductsByIds } from "./inventory.server.js";
+import { findProductByBarcode, findProductsByIds, insertProduct } from "./inventory.server.js";
 import { applyImportLines } from "./import.server.js";
 import { vendorGroupLabel, clampOrderQty } from "../lib/inventory-defaults.js";
 import type { ImportLine, ImportSummary } from "../lib/bulk-import.js";
@@ -212,4 +212,56 @@ export async function receiveDelivery(params: {
   const status = complete ? "received" : "partial";
   await db.update(purchaseOrders).set({ status, receivedAt: new Date() }).where(eq(purchaseOrders.id, order.id));
   return { summary, status, short, priceChanges };
+}
+
+/**
+ * Saves a vendor's order (read from a forwarded confirmation email) as one open order,
+ * so it shows under Deliveries and can be checked in when the box arrives. Products Bintro
+ * doesn't have yet are added with 0 on hand (stock only changes at check-in).
+ */
+export async function saveEmailedOrder(params: { vendor: string; note: string; lines: ImportLine[] }): Promise<number | null> {
+  const lines: { productId: number; name: string; brand: string; size: string; barcode: string; qty: number; cost: number }[] = [];
+  for (const l of params.lines) {
+    const qty = Math.max(0, Math.round(l.qty ?? 0));
+    if (!qty || !(l.name || l.barcode)) continue;
+    let productId = l.productId;
+    let barcode = l.barcode;
+    if (!productId) {
+      const taken = barcode ? await findProductByBarcode(barcode) : null;
+      if (taken) productId = taken.id;
+      else {
+        if (!barcode) barcode = `BT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+        const created = await insertProduct({
+          barcode,
+          name: l.name || barcode,
+          brand: l.brand,
+          size: l.size,
+          category: l.category,
+          vendor: params.vendor || l.vendor,
+          qty: 0,
+          unitCostCents: l.unitCostCents,
+        });
+        productId = created.id;
+      }
+    }
+    lines.push({ productId, name: l.name, brand: l.brand, size: l.size, barcode, qty, cost: l.unitCostCents });
+  }
+  if (lines.length === 0) return null;
+  const [order] = await db
+    .insert(purchaseOrders)
+    .values({ vendor: params.vendor, status: "open", note: params.note.slice(0, 300), staffName: "Email", sentVia: "email-in" })
+    .returning();
+  await db.insert(purchaseOrderLines).values(
+    lines.map((l) => ({
+      orderId: order.id,
+      productId: l.productId,
+      name: l.name,
+      brand: l.brand,
+      size: l.size,
+      barcode: l.barcode,
+      qtyOrdered: l.qty,
+      unitCostCents: l.cost,
+    })),
+  );
+  return order.id;
 }

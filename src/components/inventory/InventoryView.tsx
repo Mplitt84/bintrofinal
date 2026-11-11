@@ -268,7 +268,7 @@ export function InventoryView({
       )}
 
       {selecting && (
-        <div className="fixed left-0 right-0 bottom-[76px] z-[45] px-3 pointer-events-none">
+        <div className="fixed left-0 min-[1060px]:left-[240px] right-0 bottom-[calc(76px+env(safe-area-inset-bottom))] min-[1060px]:bottom-4 z-[45] px-3 pointer-events-none">
           <div className="pointer-events-auto max-w-[760px] mx-auto bg-white border border-line rounded-2xl shadow-lift px-3 py-2.5 flex items-center gap-2 flex-wrap">
             <b className="text-sm mr-1">{selected.size} selected</b>
             <button

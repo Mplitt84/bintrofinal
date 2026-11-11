@@ -327,7 +327,7 @@ export function TipNudge({
     <aside
       role="status"
       aria-label="Business tip"
-      className="tip-nudge print:hidden fixed z-40 right-4 left-4 min-[560px]:left-auto min-[560px]:w-[380px] bottom-[calc(92px+env(safe-area-inset-bottom,0px))] min-[1060px]:bottom-6 min-[1060px]:right-6"
+      className="tip-nudge print:hidden fixed z-[42] min-[560px]:z-40 right-4 left-4 min-[560px]:left-auto min-[560px]:w-[380px] bottom-[calc(92px+env(safe-area-inset-bottom,0px))] min-[1060px]:bottom-6 min-[1060px]:right-6"
     >
       <div className="tip-card p-4 pr-3" style={{ boxShadow: 'var(--shadow-lift), inset 0 0 0 1px color-mix(in srgb, var(--color-gold) 35%, transparent)' }}>
         <div className="flex items-start gap-3">
