@@ -18,8 +18,6 @@ import { orderUpTo } from "../lib/inventory-defaults.js";
 import { daysToExpiry } from "../lib/expiry.js";
 import {
   DEAD_STOCK_DAYS,
-  OVERSTOCK_RATIO,
-  THIN_MARGIN_PCT,
   type MoneyLoser,
   type MoneyMaker,
   type ProductRef,
@@ -27,10 +25,10 @@ import {
   type ProfitPeriod,
   type ProfitReport,
   type ServiceCost,
+  profitRowsFor,
 } from "../lib/profit.js";
 
 const DAY_MS = 86_400_000;
-const money = (cents: number) => `$${(Math.round(cents) / 100).toFixed(2)}`;
 
 /** Reason written on a count correction: "Count #12 · Damaged" → "Damaged". */
 function countReason(note: string) {
@@ -117,119 +115,29 @@ export async function computeProfit(
   };
 
   for (const p of all) {
-    const kind = useKindFor(p, categories, profile.businessType);
-    const units = Math.max(0, unitsById.get(p.id) ?? 0);
-    const cost = p.unitCostCents;
-    const retail = p.retailPriceCents;
-    const onHand = Math.max(0, p.qty);
-
-    if (kind === "sold" && units > 0) {
-      if (!cost) soldNoCost.push(ref(p));
-      if (!retail) soldNoRetail.push(ref(p));
-      if (cost && retail && !ex(p.id, retail <= cost ? "loss" : "maker")) {
-        const revenue = units * retail;
-        const profit = units * (retail - cost);
-        const marginPct = Math.round(((retail - cost) / retail) * 100);
-        totals.revenueCents += revenue;
-        totals.profitCents += profit;
-        totals.soldUnits += units;
-        if (profit > 0)
-          makers.push({
-            ...ref(p),
-            units,
-            revenueCents: revenue,
-            costCents: units * cost,
-            profitCents: profit,
-            marginPct,
-          });
-        if (retail <= cost) {
-          losers.push({
-            ...ref(p),
-            kind: "loss",
-            amountCents: units * (cost - retail),
-            why: `Sells for ${money(retail)} but costs you ${money(cost)}. You lost money on all ${units} sold.`,
-            fix: "Raise the price or stop carrying it.",
-          });
-        } else if (marginPct < THIN_MARGIN_PCT && !ex(p.id, "thin")) {
-          const target = Math.ceil(cost / (1 - THIN_MARGIN_PCT / 100));
-          losers.push({
-            ...ref(p),
-            kind: "thin",
-            // Money left on the table at a fair price.
-            amountCents: units * (target - retail),
-            why: `You keep only ${marginPct}% (${money(retail - cost)} each) after cost.`,
-            fix: `A price of ${money(target)} would keep ${THIN_MARGIN_PCT}%.`,
-          });
-        }
-      }
-    }
-
-    if (kind === "used" && units > 0 && cost && !ex(p.id, "service")) {
-      totals.usedCostCents += units * cost;
-      serviceCosts.push({ ...ref(p), units, costCents: units * cost });
-    }
-
-    if (!cost || onHand === 0) continue;
-    const value = onHand * cost;
-
-    const expiryDays = daysToExpiry(p.expiresOn, now);
-    if (expiryDays !== null && expiryDays < 0) {
-      if (ex(p.id, "expired")) continue;
-      totals.expiredCents += value;
-      losers.push({
+    const rows = profitRowsFor(
+      {
         ...ref(p),
-        kind: "expired",
-        amountCents: value,
-        why: `${onHand} on the shelf are past their date.`,
-        fix: "Pull them, then count them out as Expired so the numbers stay right.",
-      });
-      continue;
-    }
-    if (expiryDays !== null && expiryDays <= 60 && onHand > 0 && !ex(p.id, "expiring")) {
-      losers.push({
-        ...ref(p),
-        kind: "expiring",
-        amountCents: value,
-        why: `${onHand} expire in ${expiryDays} day${expiryDays === 1 ? "" : "s"}.`,
-        fix:
-          kind === "sold"
-            ? "Put them on special or bundle them."
-            : "Use these first.",
-      });
-    }
-
-    const last = lastOutById.get(p.id);
-    const oldEnough = p.createdAt < deadSince;
-    if (oldEnough && (!last || last < deadSince)) {
-      if (ex(p.id, "dead")) continue;
-      totals.deadStockCents += value;
-      losers.push({
-        ...ref(p),
-        kind: "dead",
-        amountCents: value,
-        why: last
-          ? `Not ${kind === "sold" ? "sold" : "used"} since ${last.toLocaleDateString("en-US", { month: "short", day: "numeric" })}. ${money(value)} is sitting on the shelf.`
-          : `Never ${kind === "sold" ? "sold" : "used"} in Bintro. ${money(value)} is sitting on the shelf.`,
-        fix:
-          kind === "sold"
-            ? "Mark it down, bundle it, or ask the vendor about a return."
-            : "Stop reordering it, or check if staff use something else.",
-      });
-      continue;
-    }
-
-    // Only when the business has set a Fill to; the default par alone is too low a bar.
-    const fillTo = p.maxQty > 0 ? orderUpTo(p) : 0;
-    if (fillTo > 0 && onHand > fillTo * OVERSTOCK_RATIO && !ex(p.id, "overstock")) {
-      const extra = onHand - fillTo;
-      totals.overstockCents += extra * cost;
-      losers.push({
-        ...ref(p),
-        kind: "overstock",
-        amountCents: extra * cost,
-        why: `${onHand} on hand but Fill to is ${fillTo}. ${extra} extra = ${money(extra * cost)} of cash on the shelf.`,
-        fix: "Skip the next order for this one.",
-      });
+        useKind: useKindFor(p, categories, profile.businessType) === "used" ? "used" : "sold",
+        unitsOut: unitsById.get(p.id) ?? 0,
+        onHand: p.qty,
+        costCents: p.unitCostCents,
+        retailCents: p.retailPriceCents,
+        expiryDays: daysToExpiry(p.expiresOn, now),
+        oldEnough: p.createdAt < deadSince,
+        lastOutAt: lastOutById.get(p.id) ?? null,
+        noRecentOut: !(lastOutById.get(p.id) ?? null) || lastOutById.get(p.id)! < deadSince,
+        fillTo: p.maxQty > 0 ? orderUpTo(p) : 0,
+      },
+      (key) => ex(p.id, key),
+    );
+    if (rows.maker) makers.push(rows.maker);
+    if (rows.serviceCost) serviceCosts.push(rows.serviceCost);
+    if (rows.gapNoCost) soldNoCost.push(ref(p));
+    if (rows.gapNoRetail) soldNoRetail.push(ref(p));
+    losers.push(...rows.losers);
+    for (const [key, value] of Object.entries(rows.totals)) {
+      totals[key as keyof typeof rows.totals] += value;
     }
   }
 

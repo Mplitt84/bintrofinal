@@ -478,3 +478,30 @@ export const profitExclusions = pgTable(
   },
   (t) => [unique().on(t.productId, t.listKey)],
 );
+
+/**
+ * Breakage the business can see: errors caught in the app or on the server, grouped
+ * so one bad screen doesn't fill the table. Kept 30 days, never any client data
+ * beyond the message itself.
+ */
+export const errorReports = pgTable(
+  "error_reports",
+  {
+    id: serial().primaryKey(),
+    /** Error message, trimmed. */
+    message: text().notNull(),
+    /** Where it happened: a tab id, "server", or a screen name. */
+    where: text().notNull().default(""),
+    /** First line(s) of the stack, for whoever fixes it. */
+    detail: text().notNull().default(""),
+    /** Browser and device, so a problem on one phone is recognisable. */
+    device: text().notNull().default(""),
+    staffName: text("staff_name").notNull().default(""),
+    /** How many times this same error has happened. */
+    hits: integer().notNull().default(1),
+    // With the zone, so the time reads right whatever time zone the database is in.
+    firstSeen: timestamp("first_seen", { withTimezone: true }).defaultNow().notNull(),
+    lastSeen: timestamp("last_seen", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [unique().on(t.message, t.where)],
+);

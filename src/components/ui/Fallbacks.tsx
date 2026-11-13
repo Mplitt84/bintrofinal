@@ -1,3 +1,6 @@
+import { useEffect } from "react";
+import { reportError } from "@/lib/report-error";
+import { reportAppError } from "@/server/errors.functions";
 import { BinBuddy } from "@/components/assistant/AskBintro";
 
 function Shell({
@@ -40,7 +43,14 @@ export function NotFoundPage() {
 }
 
 /** Shown if a page crashes, instead of a blank screen. */
-export function ErrorPage({ reset }: { error: unknown; reset?: () => void }) {
+export function ErrorPage({ error, reset }: { error: unknown; reset?: () => void }) {
+  // A screen that failed to render is exactly what the owner needs to hear about.
+  useEffect(() => {
+    void reportError(error, "screen", (report) =>
+      reportAppError({ data: { ...report, staffName: "" } }),
+    );
+  }, [error]);
+
   return (
     <Shell
       title="Something went wrong"
