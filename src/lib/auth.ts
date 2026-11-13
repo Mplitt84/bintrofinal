@@ -7,6 +7,8 @@ export type AuthState = {
   user: AuthUser | null
   /** BINTRO_OWNER_EMAIL is set, so the owner can make the first sign-in. */
   ownerConfigured: boolean
+  /** BINTRO_SIGNUP_OPEN is on, so a new business can start itself here. */
+  signupOpen: boolean
 }
 
 export type AccessUser = AuthUser & { lastSignInAt: string | null }

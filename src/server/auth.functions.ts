@@ -3,6 +3,7 @@ import { deleteCookie, getCookie } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import type { AuthState } from '@/lib/auth'
 import { SESSION_COOKIE, addUser, authEnabled, endSession, listUsers, ownerEmail, removeUser, userForToken } from './auth.server'
+import { signupOpen } from './signup.server'
 import { requireOwner } from './auth.middleware'
 
 /** Public: whether sign-in is on and who is signed in. */
@@ -16,6 +17,7 @@ export const getAuthState = createServerFn({ method: 'GET' }).handler(async (): 
     // The business id stays on the server; the app only needs who is signed in.
     user: enabled ? stripBusiness(await userForToken(getCookie(SESSION_COOKIE))) : null,
     ownerConfigured: Boolean(ownerEmail()),
+    signupOpen: enabled && signupOpen(),
   }
 })
 

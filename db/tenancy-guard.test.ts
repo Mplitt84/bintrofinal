@@ -77,9 +77,9 @@ describe("the table lists", () => {
     const schema = await import("./schema.js");
     const named = new Set<string>([...TENANT_TABLES, ...SHARED_TABLES]);
     const inSchema = Object.values(schema)
-      .filter((v): v is { _: { name: string } } => typeof v === "object" && v !== null && "_" in v)
-      .map((t) => t._.name)
-      .filter(Boolean);
+      .filter((v) => typeof v === "object" && v !== null && "_" in v)
+      .map((t) => (t as unknown as { _: { name?: string } })._?.name)
+      .filter((n): n is string => Boolean(n));
     for (const name of inSchema) {
       // A new table must be listed as one or the other, so the guard knows about it.
       expect(named, `${name} is missing from TENANT_TABLES / SHARED_TABLES`).toContain(name);
