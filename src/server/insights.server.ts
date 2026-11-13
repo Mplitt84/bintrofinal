@@ -121,12 +121,12 @@ export async function computeInsights(now = new Date()): Promise<Omit<Insights, 
         month: sql<number>`coalesce(sum(${used}) filter (where ${movements.createdAt} >= ${m1}::timestamp), 0)::int`,
       })
       .from(movements)
-      .where(and(eq(movements.type, "out"), gte(movements.createdAt, since)))
+      .where(and(mine(movements), eq(movements.type, "out"), gte(movements.createdAt, since)))
       .groupBy(movements.productId),
     db
       .select({ productId: movements.productId, at: sql<string>`max(${movements.createdAt})` })
       .from(movements)
-      .where(eq(movements.type, "out"))
+      .where(and(mine(movements), eq(movements.type, "out")))
       .groupBy(movements.productId),
   ]);
 

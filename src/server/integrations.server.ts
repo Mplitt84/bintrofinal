@@ -133,7 +133,7 @@ export async function integrationStatus() {
   const [lastError] = await db
     .select({ error: squareOutbox.error })
     .from(squareOutbox)
-    .where(eq(squareOutbox.status, "error"))
+    .where(and(mine(squareOutbox), eq(squareOutbox.status, "error")))
     .orderBy(sql`${squareOutbox.id} desc`)
     .limit(1);
   return PROVIDERS.map((provider) => {
@@ -529,13 +529,13 @@ export async function importSquareCatalog() {
             category: match.category || category,
             updatedAt: new Date(),
           })
-          .where(eq(products.id, match.id));
+          .where(and(mine(products), eq(products.id, match.id)));
         linkedExisting.push({ id: match.id, variationId: v.id, qty: match.qty });
         updated++;
       } else {
         const [row] = await db
           .insert(products)
-          .values({ barcode, name, category, retailPriceCents: price, squareVariationId: v.id })
+          .values({ ...owned(), barcode, name, category, retailPriceCents: price, squareVariationId: v.id })
           .returning({ id: products.id });
         if (row) newlyCreated.push({ id: row.id, variationId: v.id });
         created++;

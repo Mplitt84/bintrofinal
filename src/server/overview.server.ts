@@ -3,6 +3,7 @@ import { db } from "../../db/index.js";
 import { movements, products } from "../../db/schema.js";
 import type { Overview, OverviewBucket, OverviewTopItem, OverviewTotals } from "../lib/overview.js";
 import { findBusinessProfile, findProductCategories } from "./business.server.js";
+import { mine } from "./tenant.js";
 import { useKindFor } from "./insights.server.js";
 
 const empty = (): OverviewTotals => ({
@@ -35,13 +36,14 @@ export async function computeOverview(w: { start: Date; end: Date; prevStart: Da
         retailPriceCents: products.retailPriceCents,
         unitCostCents: products.unitCostCents,
       })
-      .from(products),
+      .from(products)
+      .where(mine(products)),
     findProductCategories(),
     findBusinessProfile(),
     db
       .select({ productId: movements.productId, type: movements.type, delta: movements.delta, createdAt: movements.createdAt })
       .from(movements)
-      .where(and(gte(movements.createdAt, w.prevStart < w.start ? w.prevStart : w.start), lt(movements.createdAt, w.end))),
+      .where(and(mine(movements), gte(movements.createdAt, w.prevStart < w.start ? w.prevStart : w.start), lt(movements.createdAt, w.end))),
   ]);
 
   const byId = new Map(all.map((p) => [p.id, { ...p, kind: useKindFor(p, categories, profile.businessType) }]));

@@ -67,7 +67,7 @@ export async function approveCount(params: {
     await db
       .update(products)
       .set({ lastCountedAt: count.createdAt, lastCountedBy: params.staffName.trim() })
-      .where(inArray(products.id, countedIds));
+      .where(and(mine(products), inArray(products.id, countedIds)));
   }
   await flushSquareSoon();
   return summarize(count);
@@ -106,7 +106,7 @@ export async function undoCount(countId: number, staffName: string) {
   const [count] = await db
     .update(stockCounts)
     .set({ undoneAt: new Date(), undoneBy: staffName.trim() })
-    .where(and(eq(stockCounts.id, countId), isNull(stockCounts.undoneAt)))
+    .where(and(mine(stockCounts), eq(stockCounts.id, countId), isNull(stockCounts.undoneAt)))
     .returning();
   if (!count) throw new Error("That count was already undone.");
 
@@ -136,13 +136,21 @@ export async function undoCount(countId: number, staffName: string) {
       .select({ at: stockCounts.createdAt, by: stockCounts.staffName })
       .from(stockCountLines)
       .innerJoin(stockCounts, eq(stockCounts.id, stockCountLines.countId))
-      .where(and(eq(stockCountLines.productId, id), ne(stockCounts.id, countId), isNull(stockCounts.undoneAt)))
+      .where(
+        and(
+          mine(stockCountLines),
+          mine(stockCounts),
+          eq(stockCountLines.productId, id),
+          ne(stockCounts.id, countId),
+          isNull(stockCounts.undoneAt),
+        ),
+      )
       .orderBy(desc(stockCounts.createdAt))
       .limit(1);
     await db
       .update(products)
       .set({ lastCountedAt: prev?.at ?? null, lastCountedBy: prev?.by ?? "" })
-      .where(eq(products.id, id));
+      .where(and(mine(products), eq(products.id, id)));
   }
   await flushSquareSoon();
   return { count: summarize(count), reversed };

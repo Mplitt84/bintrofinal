@@ -38,7 +38,7 @@ async function snapshot(timeZone: string) {
         lastAt: sql<Date>`max(${movements.createdAt})`,
       })
       .from(movements)
-      .where(gte(movements.createdAt, since90))
+      .where(and(mine(movements), gte(movements.createdAt, since90)))
       .groupBy(movements.productId),
     db
       .select({
@@ -50,6 +50,7 @@ async function snapshot(timeZone: string) {
         createdAt: movements.createdAt,
       })
       .from(movements)
+      .where(mine(movements))
       .orderBy(desc(movements.id))
       .limit(40),
     db.select().from(purchaseOrders).where(and(mine(purchaseOrders), inArray(purchaseOrders.status, ["open", "partial"]))).orderBy(desc(purchaseOrders.id)).limit(15),
