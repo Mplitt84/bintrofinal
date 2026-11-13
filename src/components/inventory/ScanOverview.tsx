@@ -13,7 +13,7 @@ import { getOverview } from "@/server/overview.functions";
 import { countIdFromNote } from "@/lib/counts";
 import { CountDetailSheet } from "@/components/inventory/CountDetailSheet";
 import {
-  OVERVIEW_PERIODS,
+  GLANCE_PERIODS,
   changeLabel,
   movementKind,
   overviewWindows,
@@ -75,7 +75,7 @@ export function ScanOverview({
       const saved = window.localStorage.getItem(
         PERIOD_KEY,
       ) as OverviewPeriod | null;
-      if (saved && OVERVIEW_PERIODS.some((p) => p.id === saved))
+      if (saved && GLANCE_PERIODS.some((p) => p.id === saved))
         setPeriod(saved);
     } catch {}
   }, []);
@@ -120,7 +120,7 @@ export function ScanOverview({
       ),
     [products],
   );
-  const compare = OVERVIEW_PERIODS.find((p) => p.id === period)!.compare;
+  const compare = GLANCE_PERIODS.find((p) => p.id === period)?.compare ?? "";
   const soldIds = useMemo(() => new Set(data?.soldIds ?? []), [data]);
   const c = data?.current;
   const prev = data?.previous;
@@ -147,7 +147,7 @@ export function ScanOverview({
           role="tablist"
           aria-label="Period"
         >
-          {OVERVIEW_PERIODS.map((p) => (
+          {GLANCE_PERIODS.map((p) => (
             <button
               key={p.id}
               role="tab"

@@ -1,12 +1,16 @@
 /** Scan page "at a glance" overview (client-safe). */
-export type OverviewPeriod = 'today' | 'week' | 'month' | 'quarter'
+export type OverviewPeriod = 'today' | 'week' | 'month' | 'quarter' | 'year'
 
 export const OVERVIEW_PERIODS: { id: OverviewPeriod; label: string; compare: string }[] = [
   { id: 'today', label: 'Today', compare: 'vs. yesterday' },
   { id: 'week', label: 'Week', compare: 'vs. last week' },
   { id: 'month', label: 'Month', compare: 'vs. last month' },
   { id: 'quarter', label: 'Quarter', compare: 'vs. last quarter' },
+  { id: 'year', label: 'Year', compare: 'vs. last year' },
 ]
+
+/** The periods the Scan tab's "At a glance" offers; Reports adds the year. */
+export const GLANCE_PERIODS = OVERVIEW_PERIODS.filter((p) => p.id !== 'year')
 
 export type OverviewTotals = {
   soldUnits: number
@@ -87,6 +91,17 @@ export function overviewWindows(period: OverviewPeriod, now = new Date()) {
       d.setDate(1 + i)
       edges.push(d)
       if (i < days) labels.push(i === 0 || (i + 1) % 5 === 0 ? String(i + 1) : '')
+    }
+  } else if (period === 'year') {
+    start.setMonth(0, 1)
+    prevStart = new Date(start)
+    prevStart.setFullYear(prevStart.getFullYear() - 1)
+    // One bar a month, January to December.
+    for (let i = 0; i <= 12; i++) {
+      const d = new Date(start)
+      d.setMonth(i, 1)
+      edges.push(d)
+      if (i < 12) labels.push('JFMAMJJASOND'[i])
     }
   } else {
     start.setDate(1)
