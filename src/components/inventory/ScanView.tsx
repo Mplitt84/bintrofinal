@@ -20,6 +20,7 @@ type SnapKind = 'label' | 'receipt'
 import { approveStockCount } from '@/server/counts.functions'
 import { CameraScanner } from './CameraScanner'
 import { PhotoStockSheet } from './PhotoStockSheet'
+import { looksOffline, queueScan, waitingLabel } from '@/lib/offline-queue'
 import { SalesReportSheet } from './SalesReportSheet'
 import { ToolButton, ToolRow } from '@/components/ui/ToolButton'
 import { ProductForm } from './ProductForm'
@@ -106,6 +107,7 @@ export function ScanView({
   onChanged,
   onOpenRestock,
   onReceiveDelivery,
+  onQueued,
 }: {
   staffName: string
   /** Opens the centered "Who's scanning?" picker; resolves with the name or null. */
@@ -120,6 +122,8 @@ export function ScanView({
   /** Opens Restock › Deliveries with the receive-a-delivery sheet. */
   /** Opens delivery check-in; with a receipt photo from Snap & log, reads it right away. */
   onReceiveDelivery?: (file?: File) => void
+  /** A scan was kept on the device because there was no signal. */
+  onQueued?: () => void
 }) {
   const toast = useToast()
   const [mode, setMode] = useState<Mode>('out')
@@ -233,7 +237,20 @@ export function ScanView({
       let result: Awaited<ReturnType<typeof scanMovement>>
       try {
         result = await scanMovement({ data: { barcode: trimmed, type: direction, qty, staffName: who } })
-      } catch {
+      } catch (error) {
+        // No signal in the back room: keep the scan on the device and send it later.
+        if (looksOffline(error)) {
+          const waiting = queueScan({ barcode: trimmed, type: direction, qty, staffName: who })
+          beep(true)
+          showOrb({
+            kind: 'warn',
+            title: 'Saved on this phone',
+            sub: `No signal — ${waitingLabel(waiting.length)}. It sends itself when you're back.`,
+          })
+          onQueued?.()
+          setBusy(false)
+          return
+        }
         beep(false)
         showOrb({ kind: 'bad', title: 'Scan failed', sub: 'Check your connection and try again' })
         setBusy(false)
