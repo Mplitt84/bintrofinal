@@ -1,9 +1,25 @@
 import { sql } from "drizzle-orm";
-import { pgTable, serial, text, integer, timestamp, jsonb, boolean, unique } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, jsonb, boolean, unique, index } from "drizzle-orm/pg-core";
+
+/**
+ * One business using Bintro. Every other table below carries a `businessId`, and every
+ * query is filtered by it, so two businesses on the same database never see each other.
+ * Business 1 is the original deployment; it keeps working exactly as before.
+ */
+export const businesses = pgTable("businesses", {
+  id: serial().primaryKey(),
+  /** Name at sign-up; the editable one lives in business_profile. */
+  name: text().notNull().default(""),
+  /** Email of whoever signed the business up. */
+  createdByEmail: text("created_by_email").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
 
 export const products = pgTable("products", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
-  barcode: text().notNull().unique(),
+  barcode: text().notNull(),
   name: text().notNull(),
   category: text().notNull().default(""),
   brand: text().notNull().default(""),
@@ -34,9 +50,14 @@ export const products = pgTable("products", {
   priceUpdatedAt: timestamp("price_updated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (t) => [
+  unique("products_business_barcode").on(t.businessId, t.barcode),
+  index("products_business").on(t.businessId),
+]);
 
 export const movements = pgTable("movements", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   productId: integer("product_id").notNull().references(() => products.id),
   type: text().notNull(), // 'in' | 'out' | 'adjust' | 'receive'
@@ -45,10 +66,14 @@ export const movements = pgTable("movements", {
   staffName: text("staff_name").notNull().default(""),
   note: text().notNull().default(""),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  index("movements_business").on(t.businessId),
+]);
 
 /** Single-row table (id = 1) holding the business name and contact details shown across the app. */
 export const businessProfile = pgTable("business_profile", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: integer().primaryKey(),
   name: text().notNull().default(""),
   /** Salon, barbershop, nail studio, tattoo shop… Tunes AI prompts and category suggestions. */
@@ -79,20 +104,28 @@ export const businessProfile = pgTable("business_profile", {
   /** Two-letter US state the business files taxes in (Calendar → state tax dates); "" = not chosen. */
   taxState: text("tax_state").notNull().default(""),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (t) => [
+  unique("business_profile_business").on(t.businessId),
+]);
 
 export const teamMembers = pgTable("team_members", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
-  name: text().notNull().unique(),
+  name: text().notNull(),
   /** Sees clients (stylist, barber, artist, provider…): listed where a client record names its team member. */
   isProvider: boolean("is_provider").notNull().default(true),
   /** Works the admin side (inventory, ordering, books). A label; sign-in access is still Settings → Access. */
   isAdmin: boolean("is_admin").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  unique("team_members_business_name").on(t.businessId, t.name),
+]);
 
 /** Money spent outside of scanned-in stock: supplies, rent, utilities, or stock bought off-app. */
 export const expenses = pgTable("expenses", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   /** Local calendar date the money was spent, YYYY-MM-DD. */
   spentOn: text("spent_on").notNull(),
@@ -110,6 +143,8 @@ export const expenses = pgTable("expenses", {
 
 /** Receipt photo kept with an expense (shrunk JPEG, base64), sent to QuickBooks as an attachment. */
 export const expenseReceipts = pgTable("expense_receipts", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   expenseId: integer("expense_id").notNull().unique(),
   mediaType: text("media_type").notNull().default("image/jpeg"),
@@ -119,12 +154,16 @@ export const expenseReceipts = pgTable("expense_receipts", {
 
 /** Per-month budget overrides; months without a row use businessProfile.monthlyBudgetCents. */
 export const budgets = pgTable("budgets", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   month: text().primaryKey(), // YYYY-MM
   amountCents: integer("amount_cents").notNull(),
 });
 
 /** OAuth connections to outside systems (Square, QuickBooks). Tokens never leave the server. */
 export const integrations = pgTable("integrations", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   provider: text().primaryKey(), // 'square' | 'quickbooks'
   accessToken: text("access_token").notNull().default(""),
   refreshToken: text("refresh_token").notNull().default(""),
@@ -147,6 +186,8 @@ export const integrations = pgTable("integrations", {
  * rejected by Square and are not retried.
  */
 export const squareOutbox = pgTable("square_outbox", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   productId: integer("product_id").notNull(),
   variationId: text("variation_id").notNull(),
@@ -166,14 +207,20 @@ export const squareOutbox = pgTable("square_outbox", {
  * (see src/lib/tax-categories.ts) so spend rolls up the way an accountant books it.
  */
 export const productCategories = pgTable("product_categories", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
-  name: text().notNull().unique(),
+  name: text().notNull(),
   taxGroup: text("tax_group").notNull().default("service"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (t) => [
+  unique("product_categories_business_name").on(t.businessId, t.name),
+]);
 
 /** Business calendar: reorders, deliveries, bills, tax dates and tasks. Shared as an iCal feed. */
 export const calendarEvents = pgTable("calendar_events", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   title: text().notNull(),
   kind: text().notNull().default("task"), // 'reorder' | 'delivery' | 'bill' | 'tax' | 'count' | 'task'
@@ -197,6 +244,8 @@ export const calendarEvents = pgTable("calendar_events", {
 export const insightReports = pgTable(
   "insight_reports",
   {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
     id: serial().primaryKey(),
     kind: text().notNull(), // 'weekly' | 'monthly' | 'fast'
     /** 2026-W40, 2026-09 or 2026-09-29 depending on the kind. */
@@ -207,11 +256,13 @@ export const insightReports = pgTable(
     emailedAt: timestamp("emailed_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (t) => [unique("insight_reports_kind_period").on(t.kind, t.periodKey)],
+  (t) => [unique("insight_reports_kind_period").on(t.businessId, t.kind, t.periodKey)],
 );
 
 /** AI web price lookups (manufacturer, authorised distributor or Amazon listings) for each product. */
 export const priceChecks = pgTable("price_checks", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   productId: integer("product_id")
     .notNull()
@@ -231,6 +282,8 @@ export const priceChecks = pgTable("price_checks", {
  * state. Payment details stay with Stripe; only the card brand / last 4 are cached for display.
  */
 export const account = pgTable("account", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: integer().primaryKey(),
   plan: text().notNull().default("free"), // 'free' | 'plus' | 'premium'
   interval: text().notNull().default("month"), // 'month' | 'year'
@@ -256,10 +309,14 @@ export const account = pgTable("account", {
   pilotEndedAt: timestamp("pilot_ended_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (t) => [
+  unique("account_business").on(t.businessId),
+]);
 
 /** Plan changes, pauses, cancellations and charges, shown as the account's billing history. */
 export const billingEvents = pgTable("billing_events", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   kind: text().notNull(), // 'trial' | 'upgrade' | 'downgrade' | 'pause' | 'resume' | 'cancel' | 'reactivate' | 'charge'
   detail: text().notNull().default(""),
@@ -272,6 +329,8 @@ export const billingEvents = pgTable("billing_events", {
  * deliveries can be checked in against them and vendors scored on accuracy.
  */
 export const purchaseOrders = pgTable("purchase_orders", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   vendor: text().notNull().default(""),
   status: text().notNull().default("open"), // 'open' | 'partial' | 'received' | 'canceled'
@@ -286,6 +345,8 @@ export const purchaseOrders = pgTable("purchase_orders", {
 
 /** One product on a purchase order, with what actually arrived and at what cost. */
 export const purchaseOrderLines = pgTable("purchase_order_lines", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   orderId: integer("order_id")
     .notNull()
@@ -308,6 +369,8 @@ export const purchaseOrderLines = pgTable("purchase_order_lines", {
  * so one apply can be undone. Rows of one apply share a batchId.
  */
 export const parChanges = pgTable("par_changes", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   batchId: text("batch_id").notNull(),
   productId: integer("product_id").notNull(),
@@ -323,6 +386,8 @@ export const parChanges = pgTable("par_changes", {
 
 /** A stock count that was reviewed and approved: what was counted, by whom, and the totals over/short. */
 export const stockCounts = pgTable("stock_counts", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   /** What was counted, e.g. "Everything", "Category: Color", "Vendor: SalonCentric". */
   scope: text().notNull().default(""),
@@ -344,6 +409,8 @@ export const stockCounts = pgTable("stock_counts", {
 
 /** One product in an approved count: expected vs counted, the reason for any difference. */
 export const stockCountLines = pgTable("stock_count_lines", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   countId: integer("count_id").notNull(),
   productId: integer("product_id").notNull(),
@@ -357,6 +424,8 @@ export const stockCountLines = pgTable("stock_count_lines", {
 
 /** Connections a business asked Bintro to build (demand for partnership talks). */
 export const connectionRequests = pgTable("connection_requests", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   /** Directory id (e.g. "vagaro") or "other". */
   platform: text().notNull(),
@@ -368,6 +437,8 @@ export const connectionRequests = pgTable("connection_requests", {
 
 /** Every failed Square / QuickBooks call, kept a year so it can be shared with the provider's support. */
 export const integrationLogs = pgTable("integration_logs", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   provider: text().notNull(),
   /** What Bintro was doing, e.g. "POST /purchase", "token refresh", "connect". */
@@ -383,6 +454,8 @@ export const integrationLogs = pgTable("integration_logs", {
 
 /** People allowed to sign in (with Google). The first sign-in by BINTRO_OWNER_EMAIL creates the owner. */
 export const appUsers = pgTable("app_users", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   /** Lower-cased Google account email. */
   email: text().notNull().unique(),
@@ -410,6 +483,8 @@ export const appSessions = pgTable("app_sessions", {
  * One row per received email (Resend id unique), whether it became an order or not.
  */
 export const inboundEmails = pgTable("inbound_emails", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   emailId: text("email_id").notNull().unique(),
   fromAddress: text("from_address").notNull().default(""),
@@ -428,6 +503,8 @@ export const inboundEmails = pgTable("inbound_emails", {
  * Only the client's name is stored about the client (no contact details).
  */
 export const clientFormulas = pgTable("client_formulas", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   kind: text().notNull().default("hair"),
   clientName: text("client_name").notNull(),
@@ -456,6 +533,8 @@ export const clientFormulas = pgTable("client_formulas", {
 
 /** Before / after photos for a client visit (Formulas tab). Base64 JPEG ~1200px, kept apart so lists stay light. */
 export const formulaPhotos = pgTable("formula_photos", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
   id: serial().primaryKey(),
   formulaId: integer("formula_id")
     .notNull()
@@ -470,13 +549,15 @@ export const formulaPhotos = pgTable("formula_photos", {
 export const profitExclusions = pgTable(
   "profit_exclusions",
   {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
     id: serial().primaryKey(),
     productId: integer("product_id").notNull(),
     listKey: text("list_key").notNull(),
     staffName: text("staff_name").notNull().default(""),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (t) => [unique().on(t.productId, t.listKey)],
+  (t) => [unique().on(t.businessId, t.productId, t.listKey)],
 );
 
 /**
@@ -487,6 +568,8 @@ export const profitExclusions = pgTable(
 export const errorReports = pgTable(
   "error_reports",
   {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
     id: serial().primaryKey(),
     /** Error message, trimmed. */
     message: text().notNull(),
@@ -503,5 +586,5 @@ export const errorReports = pgTable(
     firstSeen: timestamp("first_seen", { withTimezone: true }).defaultNow().notNull(),
     lastSeen: timestamp("last_seen", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [unique().on(t.message, t.where)],
+  (t) => [unique().on(t.businessId, t.message, t.where)],
 );
