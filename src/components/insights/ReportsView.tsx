@@ -490,13 +490,15 @@ function Gaps({ report }: { report: Report }) {
   const { gaps } = report
   const lines: string[] = []
   if (gaps.unpricedSoldUnits > 0) {
+    const one = gaps.unpricedSoldUnits === 1
     lines.push(
-      `${gaps.unpricedSoldUnits} ${gaps.unpricedSoldUnits === 1 ? 'item' : 'items'} sold with no retail price saved, so they are missing from sales. Add a price on the product.`,
+      `${gaps.unpricedSoldUnits} ${one ? 'item' : 'items'} sold with no retail price saved, so ${one ? 'it is' : 'they are'} missing from sales. Add a price on the product.`,
     )
   }
   if (gaps.noCostProducts > 0) {
+    const one = gaps.noCostProducts === 1
     lines.push(
-      `${gaps.noCostProducts} ${gaps.noCostProducts === 1 ? 'product' : 'products'} that sold have no cost saved, so profit on them reads high. Products → Missing costs fills them in.`,
+      `${gaps.noCostProducts} ${one ? 'product' : 'products'} that sold ${one ? 'has' : 'have'} no cost saved, so profit on ${one ? 'it' : 'them'} reads high. Products → Missing costs fills ${one ? 'it' : 'them'} in.`,
     )
   }
   if (gaps.pricesAreShelfPrices) {
