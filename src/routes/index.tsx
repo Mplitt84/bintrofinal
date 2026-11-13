@@ -114,7 +114,7 @@ const TABS: {
     feature: "calendar",
   },
   { id: "budget", label: "Budget", Icon: Wallet, feature: "budget" },
-  { id: "activity", label: "Activity", Icon: Activity },
+  { id: "activity", label: "Reports", Icon: Activity },
 ];
 
 const TAB_IDS = new Set<string>([...TABS.map((t) => t.id), "settings"]);
@@ -137,6 +137,11 @@ function tabFromHash(hash: string): { tab: Tab; restock?: RestockMode } | null {
  */
 const ActivityView = lazy(() =>
   import("@/components/inventory/ActivityView").then((m) => ({ default: m.ActivityView })),
+);
+const ReportsView = lazy(() =>
+  import("@/components/insights/ReportsView").then((m) => ({
+    default: m.ReportsView,
+  })),
 );
 const ProfitView = lazy(() =>
   import("@/components/insights/ProfitView").then((m) => ({ default: m.ProfitView })),
@@ -258,9 +263,9 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
     text: string;
   } | null>(null);
   const [tipsOpen, setTipsOpen] = useState(false);
-  const [activityView, setActivityView] = useState<"profit" | "usage">(
-    "profit",
-  );
+  const [activityView, setActivityView] = useState<
+    "reports" | "profit" | "usage"
+  >("reports");
   const [insights, setInsights] = useState<Insights | null>(null);
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [insightSegment, setInsightSegment] = useState<InsightSegment>("fast");
@@ -840,10 +845,11 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                 <div
                   className="inline-flex bg-surface rounded-full p-1 mb-4"
                   role="tablist"
-                  aria-label="Activity views"
+                  aria-label="Report views"
                 >
                   {(
                     [
+                      ["reports", "Reports"],
                       ["profit", "Profit"],
                       ["usage", "Usage"],
                     ] as const
@@ -864,7 +870,9 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                     </button>
                   ))}
                 </div>
-                {activityView === "profit" ? (
+                {activityView === "reports" ? (
+                  <ReportsView />
+                ) : activityView === "profit" ? (
                   <ProfitView
                     products={products}
                     staffName={staffName}

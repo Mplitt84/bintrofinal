@@ -351,6 +351,9 @@ export function industrySetup(id: string): SetupLine[] {
 }
 
 /** What this business calls a team member who sees clients (Stylist, Barber, Artist, Service provider…). */
+/** What a trade with no word of its own calls the person who sees the client. */
+export const GENERIC_PROVIDER_NOUN = "Service provider";
+
 export function providerNounFor(type: string): string {
-  return recordSpecFor(type)?.providerNoun ?? "Service provider";
+  return recordSpecFor(type)?.providerNoun ?? GENERIC_PROVIDER_NOUN;
 }
