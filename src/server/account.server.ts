@@ -67,7 +67,7 @@ async function firstScanIn(): Promise<Date | null> {
   const [first] = await db
     .select({ at: movements.createdAt })
     .from(movements)
-    .where(eq(movements.type, "in"))
+    .where(and(mine(movements), eq(movements.type, "in")))
     .orderBy(asc(movements.createdAt))
     .limit(1);
   return first?.at ?? null;

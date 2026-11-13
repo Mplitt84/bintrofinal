@@ -44,7 +44,7 @@ export async function smartPars(): Promise<SmartParResult> {
         used30: sql<number>`coalesce(sum(case when ${movements.createdAt} >= ${since30} then -${movements.delta} else 0 end), 0)::int`,
       })
       .from(movements)
-      .where(and(eq(movements.type, "out"), gte(movements.createdAt, since90)))
+      .where(and(mine(movements), eq(movements.type, "out"), gte(movements.createdAt, since90)))
       .groupBy(movements.productId),
     db
       .select({
@@ -53,7 +53,7 @@ export async function smartPars(): Promise<SmartParResult> {
         used: sql<number>`coalesce(sum(-${movements.delta}), 0)::int`,
       })
       .from(movements)
-      .where(and(eq(movements.type, "out"), gte(movements.createdAt, sinceWeeks)))
+      .where(and(mine(movements), eq(movements.type, "out"), gte(movements.createdAt, sinceWeeks)))
       .groupBy(movements.productId, sql`2`),
     ordersOverview(),
     findBusinessProfile(),
@@ -178,14 +178,14 @@ export async function lastParChange(): Promise<ParChangeSummary | null> {
   const [latest] = await db
     .select({ batchId: parChanges.batchId, at: parChanges.createdAt, staffName: parChanges.staffName })
     .from(parChanges)
-    .where(isNull(parChanges.undoneAt))
+    .where(and(mine(parChanges), isNull(parChanges.undoneAt)))
     .orderBy(desc(parChanges.createdAt), desc(parChanges.id))
     .limit(1);
   if (!latest) return null;
   const [{ n }] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(parChanges)
-    .where(and(eq(parChanges.batchId, latest.batchId), isNull(parChanges.undoneAt)));
+    .where(and(mine(parChanges), eq(parChanges.batchId, latest.batchId), isNull(parChanges.undoneAt)));
   return { batchId: latest.batchId, at: latest.at.toISOString(), products: n, staffName: latest.staffName };
 }
 
@@ -282,7 +282,7 @@ export async function mergeCategoryNames(from: string[], to: string) {
   const moved = await db
     .update(products)
     .set({ category: target, updatedAt: new Date() })
-    .where(inArray(products.category, others))
+    .where(and(mine(products), inArray(products.category, others)))
     .returning({ id: products.id });
   // Keep the tax group of the spelling being kept; drop the others.
   const saved = await db.select().from(productCategories).where(mine(productCategories));

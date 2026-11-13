@@ -88,9 +88,12 @@ async function loadOrders(orders: OrderRow[]): Promise<SavedOrder[]> {
     .select()
     .from(purchaseOrderLines)
     .where(
-      inArray(
-        purchaseOrderLines.orderId,
-        orders.map((o) => o.id),
+      and(
+        mine(purchaseOrderLines),
+        inArray(
+          purchaseOrderLines.orderId,
+          orders.map((o) => o.id),
+        ),
       ),
     )
     .orderBy(asc(purchaseOrderLines.name));
