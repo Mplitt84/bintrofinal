@@ -76,6 +76,10 @@ export function SignInScreen({ auth }: { auth: AuthState }) {
             <a href="/privacy" className="text-inherit no-underline">
               Privacy
             </a>
+            <span aria-hidden="true">·</span>
+            <a href="/welcome" className="text-inherit no-underline">
+              What is Bintro?
+            </a>
           </p>
         </div>
       </div>
