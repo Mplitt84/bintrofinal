@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { mine, owned } from "./tenant.js";
 import { movements, parChanges, productCategories, products } from "../../db/schema.js";
 import { applyImportLines } from "./import.server.js";
 import { findAllProducts, updateProductFields } from "./inventory.server.js";
@@ -147,7 +148,7 @@ export async function smartPars(): Promise<SmartParResult> {
 export async function applyPars(items: { productId: number; par: number; max?: number }[], staffName = "") {
   if (items.length === 0) return { updated: 0, batchId: "" };
   const ids = items.map((i) => i.productId);
-  const before = await db.select({ id: products.id, par: products.reorderThreshold, max: products.maxQty }).from(products).where(inArray(products.id, ids));
+  const before = await db.select({ id: products.id, par: products.reorderThreshold, max: products.maxQty }).from(products).where(and(mine(products), inArray(products.id, ids)));
   const old = new Map(before.map((b) => [b.id, b]));
   const batchId = `par-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   const rows = items
@@ -162,7 +163,7 @@ export async function applyPars(items: { productId: number; par: number; max?: n
       staffName: staffName.trim(),
     }));
   // History first, so an interrupted apply can still be undone for whatever changed.
-  for (let i = 0; i < rows.length; i += 200) await db.insert(parChanges).values(rows.slice(i, i + 200));
+  for (let i = 0; i < rows.length; i += 200) await db.insert(parChanges).values(rows.slice(i, i + 200).map((r) => ({ ...r, ...owned() })));
   let updated = 0;
   for (let i = 0; i < rows.length; i += 10) {
     const chunk = rows.slice(i, i + 10);
@@ -193,13 +194,13 @@ export async function undoParChange(batchId: string) {
   const rows = await db
     .select()
     .from(parChanges)
-    .where(and(eq(parChanges.batchId, batchId), isNull(parChanges.undoneAt)));
+    .where(and(mine(parChanges), eq(parChanges.batchId, batchId), isNull(parChanges.undoneAt)));
   for (let i = 0; i < rows.length; i += 10) {
     await Promise.all(
       rows.slice(i, i + 10).map((r) => updateProductFields(r.productId, { reorderThreshold: r.oldPar, maxQty: r.oldMax }).catch(() => null)),
     );
   }
-  await db.update(parChanges).set({ undoneAt: new Date() }).where(eq(parChanges.batchId, batchId));
+  await db.update(parChanges).set({ undoneAt: new Date() }).where(and(mine(parChanges), eq(parChanges.batchId, batchId)));
   return { restored: rows.length };
 }
 
@@ -220,9 +221,9 @@ export async function categoryGroups(): Promise<CategoryGroup[]> {
     db
       .select({ name: products.category, n: sql<number>`count(*)::int` })
       .from(products)
-      .where(sql`${products.category} <> ''`)
+      .where(and(mine(products), sql`${products.category} <> ''`))
       .groupBy(products.category),
-    db.select({ name: productCategories.name }).from(productCategories),
+    db.select({ name: productCategories.name }).from(productCategories).where(mine(productCategories)),
   ]);
   const byName = new Map<string, number>();
   for (const c of counts) byName.set(c.name, c.n);
@@ -246,9 +247,9 @@ export async function categoryList(): Promise<{ name: string; products: number; 
     db
       .select({ name: products.category, n: sql<number>`count(*)::int` })
       .from(products)
-      .where(sql`${products.category} <> ''`)
+      .where(and(mine(products), sql`${products.category} <> ''`))
       .groupBy(products.category),
-    db.select({ name: productCategories.name }).from(productCategories),
+    db.select({ name: productCategories.name }).from(productCategories).where(mine(productCategories)),
   ]);
   const savedNames = new Set(saved.map((s) => s.name));
   const out = new Map<string, { name: string; products: number; saved: boolean }>();
@@ -267,9 +268,9 @@ export async function deleteCategoryName(name: string, moveTo: string) {
   const moved = await db
     .update(products)
     .set({ category: "", updatedAt: new Date() })
-    .where(eq(products.category, name))
+    .where(and(mine(products), eq(products.category, name)))
     .returning({ id: products.id });
-  await db.delete(productCategories).where(eq(productCategories.name, name));
+  await db.delete(productCategories).where(and(mine(productCategories), eq(productCategories.name, name)));
   return moved.length;
 }
 
@@ -284,12 +285,12 @@ export async function mergeCategoryNames(from: string[], to: string) {
     .where(inArray(products.category, others))
     .returning({ id: products.id });
   // Keep the tax group of the spelling being kept; drop the others.
-  const saved = await db.select().from(productCategories);
+  const saved = await db.select().from(productCategories).where(mine(productCategories));
   const keep = saved.find((c) => c.name === target);
   const donor = saved.find((c) => others.includes(c.name));
-  if (!keep && donor) await db.insert(productCategories).values({ name: target, taxGroup: donor.taxGroup }).onConflictDoNothing();
+  if (!keep && donor) await db.insert(productCategories).values({ ...owned(), name: target, taxGroup: donor.taxGroup }).onConflictDoNothing();
   const drop = saved.filter((c) => others.includes(c.name)).map((c) => c.id);
-  if (drop.length) await db.delete(productCategories).where(inArray(productCategories.id, drop));
+  if (drop.length) await db.delete(productCategories).where(and(mine(productCategories), inArray(productCategories.id, drop)));
   return moved.length;
 }
 
@@ -338,7 +339,7 @@ export async function duplicateGroups(): Promise<DuplicateGroup[]> {
 /** Stock count: sets each counted product to what's on the shelf (pulls Square sales first). */
 export async function applyCounts(params: { staffName: string; counts: { productId: number; counted: number }[] }) {
   const ids = params.counts.map((c) => c.productId);
-  const rows = ids.length ? await db.select().from(products).where(inArray(products.id, ids)) : [];
+  const rows = ids.length ? await db.select().from(products).where(and(mine(products), inArray(products.id, ids))) : [];
   const byId = new Map(rows.map((p) => [p.id, p]));
   const lines = params.counts
     .filter((c) => byId.has(c.productId))

@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { DEFAULT_BUSINESS_ID, businessId, mine, owned, runForBusiness } from "./tenant.js";
 import { account, billingEvents, movements, products, teamMembers } from "../../db/schema.js";
 import {
   FEATURE_INFO,
@@ -20,7 +21,6 @@ import {
   centsLabel,
 } from "../lib/plans.js";
 
-const ACCOUNT_ID = 1;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 type AccountRow = typeof account.$inferSelect;
@@ -88,29 +88,29 @@ function addInterval(from: Date, interval: BillingInterval, times = 1) {
 }
 
 async function logEvent(kind: string, detail: string, amountCents = 0) {
-  await db.insert(billingEvents).values({ kind, detail, amountCents });
+  await db.insert(billingEvents).values({ ...owned(), kind, detail, amountCents });
 }
 
 async function saveAccount(values: Partial<AccountRow>) {
   const [row] = await db
     .update(account)
     .set({ ...values, updatedAt: new Date() })
-    .where(eq(account.id, ACCOUNT_ID))
+    .where(mine(account))
     .returning();
   return row;
 }
 
 /** The account row, created on first use with a Premium trial so every feature can be tried. */
 async function loadAccount(): Promise<AccountRow> {
-  const rows = await db.select().from(account).where(eq(account.id, ACCOUNT_ID));
+  const rows = await db.select().from(account).where(mine(account));
   if (rows[0]) return settle(rows[0]);
   const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * DAY_MS);
   await db
     .insert(account)
-    .values({ id: ACCOUNT_ID, plan: "premium", status: "trialing", trialEndsAt, currentPeriodEnd: trialEndsAt })
+    .values({ ...owned(), id: businessId(), plan: "premium", status: "trialing", trialEndsAt, currentPeriodEnd: trialEndsAt })
     .onConflictDoNothing();
   if (!pilotPremium()) await logEvent("trial", `Started a ${TRIAL_DAYS}-day Premium trial`);
-  const [row] = await db.select().from(account).where(eq(account.id, ACCOUNT_ID));
+  const [row] = await db.select().from(account).where(mine(account));
   return settle(row);
 }
 
@@ -227,8 +227,8 @@ function summarize(row: AccountRow, usage: AccountSummary["usage"]): AccountSumm
 
 async function countUsage() {
   const [[p], [t]] = await Promise.all([
-    db.select({ n: count() }).from(products),
-    db.select({ n: count() }).from(teamMembers),
+    db.select({ n: count() }).from(products).where(mine(products)),
+    db.select({ n: count() }).from(teamMembers).where(mine(teamMembers)),
   ]);
   return { products: Number(p?.n ?? 0), team: Number(t?.n ?? 0) };
 }
@@ -415,7 +415,7 @@ export async function cancelPlan(reason: string): Promise<BillingResult> {
 }
 
 export async function listBillingHistory(): Promise<BillingEvent[]> {
-  const rows = await db.select().from(billingEvents).orderBy(desc(billingEvents.createdAt)).limit(30);
+  const rows = await db.select().from(billingEvents).where(mine(billingEvents)).orderBy(desc(billingEvents.createdAt)).limit(30);
   const events: BillingEvent[] = rows.map((r) => ({
     id: r.id,
     kind: r.kind,
@@ -613,6 +613,19 @@ export async function paymentPortalUrl(origin: string) {
 }
 
 /** Copies a Stripe subscription (plan, dates, pause, card) into the account row. */
+/**
+ * Which business a Stripe subscription belongs to. A webhook arrives with no session,
+ * so this deliberately looks across every business to find the one account that holds
+ * this subscription id; the work then runs inside that business's scope.
+ */
+export async function businessForSubscription(subscriptionId: string) {
+  const rows = await db
+    .select({ businessId: account.businessId })
+    .from(account)
+    .where(and(sql`/* cross-business: stripe webhook */ true`, eq(account.stripeSubscriptionId, subscriptionId)));
+  return rows[0]?.businessId ?? null;
+}
+
 export async function syncSubscription(subscriptionId: string) {
   const sub = await stripe<StripeSubscription>(
     `/v1/subscriptions/${subscriptionId}?expand[]=default_payment_method`,
@@ -693,10 +706,18 @@ export async function handleStripeWebhook(payload: string, signature: string) {
   if (!ok || Math.abs(Date.now() / 1000 - Number(parts.t)) > 300) throw new Error("Bad signature");
 
   const event = JSON.parse(payload) as { type: string; data: { object: { id: string; subscription?: string } } };
-  if (event.type.startsWith("customer.subscription.")) await syncSubscription(event.data.object.id);
-  else if (event.type === "checkout.session.completed" && event.data.object.subscription)
-    await syncSubscription(event.data.object.subscription);
-  else if (event.type === "invoice.payment_failed") await logEvent("charge", "A payment failed. Update your card in Billing");
+  const subscriptionId = event.type.startsWith("customer.subscription.")
+    ? event.data.object.id
+    : (event.data.object.subscription ?? "");
+
+  // Stripe knows about subscriptions, not businesses, so find whose this is first.
+  const business = subscriptionId ? await businessForSubscription(subscriptionId) : null;
+  if (subscriptionId && !business) return;
+  await runForBusiness(business ?? DEFAULT_BUSINESS_ID, async () => {
+    if (subscriptionId) await syncSubscription(subscriptionId);
+    else if (event.type === "invoice.payment_failed")
+      await logEvent("charge", "A payment failed. Update your card in Billing");
+  });
 }
 
 export type StripeCheck = {

@@ -1,5 +1,6 @@
-import { asc, desc, eq, ilike, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { businessId, mine, owned } from "./tenant.js";
 import { businessProfile, clientFormulas, formulaPhotos } from "../../db/schema.js";
 import { applyMovement } from "./inventory.server.js";
 import { EMPTY_PROFILE } from "../lib/business-types.js";
@@ -56,7 +57,7 @@ export async function listFormulas(search: string, limit = 80) {
   const rows = await db
     .select()
     .from(clientFormulas)
-    .where(q ? ilike(clientFormulas.clientName, `%${q}%`) : undefined)
+    .where(and(mine(clientFormulas), q ? ilike(clientFormulas.clientName, `%${q}%`) : undefined))
     .orderBy(desc(clientFormulas.serviceDate), desc(clientFormulas.id))
     .limit(limit);
   return withPhotoCounts(rows);
@@ -67,7 +68,7 @@ async function withPhotoCounts(rows: Row[]) {
   const counts = await db
     .select({ formulaId: formulaPhotos.formulaId, n: sql<number>`count(*)::int` })
     .from(formulaPhotos)
-    .where(inArray(formulaPhotos.formulaId, rows.map((r) => r.id)))
+    .where(and(mine(formulaPhotos), inArray(formulaPhotos.formulaId, rows.map((r) => r.id))))
     .groupBy(formulaPhotos.formulaId);
   const byId = new Map(counts.map((c) => [c.formulaId, c.n]));
   return rows.map((r) => toFormula(r, byId.get(r.id) ?? 0));
@@ -75,7 +76,7 @@ async function withPhotoCounts(rows: Row[]) {
 
 /** Everything, oldest first, for the CSV backup. */
 export async function allFormulas() {
-  const rows = await db.select().from(clientFormulas).orderBy(asc(clientFormulas.clientName), asc(clientFormulas.serviceDate));
+  const rows = await db.select().from(clientFormulas).where(mine(clientFormulas)).orderBy(asc(clientFormulas.clientName), asc(clientFormulas.serviceDate));
   return rows.map((r) => toFormula(r));
 }
 
@@ -97,41 +98,41 @@ async function logSoldRetail(f: FormulaInput) {
 export async function saveFormula(input: FormulaInput & { id?: number }) {
   const f = { ...input, retail: await logSoldRetail(input) };
   if (f.id) {
-    const [row] = await db.update(clientFormulas).set({ ...values(f), updatedAt: new Date() }).where(eq(clientFormulas.id, f.id)).returning();
+    const [row] = await db.update(clientFormulas).set({ ...values(f), updatedAt: new Date() }).where(and(mine(clientFormulas), eq(clientFormulas.id, f.id))).returning();
     if (!row) throw new Error("That formula was deleted.");
     return (await withPhotoCounts([row]))[0];
   }
-  const [row] = await db.insert(clientFormulas).values(values(f)).returning();
+  const [row] = await db.insert(clientFormulas).values({ ...values(f), ...owned() }).returning();
   return toFormula(row);
 }
 
 export async function deleteFormula(id: number) {
-  await db.delete(clientFormulas).where(eq(clientFormulas.id, id));
+  await db.delete(clientFormulas).where(and(mine(clientFormulas), eq(clientFormulas.id, id)));
 }
 
 export async function getAftercareTemplate() {
-  const rows = await db.select({ t: businessProfile.aftercareTemplate }).from(businessProfile).where(eq(businessProfile.id, 1));
+  const rows = await db.select({ t: businessProfile.aftercareTemplate }).from(businessProfile).where(mine(businessProfile));
   return rows[0]?.t ?? "";
 }
 
 export async function setAftercareTemplate(text: string) {
   await db
     .insert(businessProfile)
-    .values({ ...EMPTY_PROFILE, id: 1, aftercareTemplate: text })
-    .onConflictDoUpdate({ target: businessProfile.id, set: { aftercareTemplate: text } });
+    .values({ ...EMPTY_PROFILE, ...owned(), id: businessId(), aftercareTemplate: text })
+    .onConflictDoUpdate({ target: businessProfile.businessId, set: { aftercareTemplate: text } });
 }
 
 export async function listPhotos(formulaId: number): Promise<FormulaPhoto[]> {
-  const rows = await db.select().from(formulaPhotos).where(eq(formulaPhotos.formulaId, formulaId)).orderBy(asc(formulaPhotos.id));
+  const rows = await db.select().from(formulaPhotos).where(and(mine(formulaPhotos), eq(formulaPhotos.formulaId, formulaId))).orderBy(asc(formulaPhotos.id));
   return rows.map((p) => ({ id: p.id, label: p.label === "before" ? "before" : "after", url: `data:${p.mediaType};base64,${p.data}` }));
 }
 
 export async function addPhoto(formulaId: number, label: "before" | "after", data: string) {
-  await db.insert(formulaPhotos).values({ formulaId, label, data, mediaType: "image/jpeg" });
+  await db.insert(formulaPhotos).values({ ...owned(), formulaId, label, data, mediaType: "image/jpeg" });
   return listPhotos(formulaId);
 }
 
 export async function removePhoto(id: number) {
-  const [row] = await db.delete(formulaPhotos).where(eq(formulaPhotos.id, id)).returning({ formulaId: formulaPhotos.formulaId });
+  const [row] = await db.delete(formulaPhotos).where(and(mine(formulaPhotos), eq(formulaPhotos.id, id))).returning({ formulaId: formulaPhotos.formulaId });
   return row ? listPhotos(row.formulaId) : [];
 }

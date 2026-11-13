@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { mine, owned } from "./tenant.js";
 import { insightReports, movements, priceChecks, products } from "../../db/schema.js";
 import {
   BEST_SELLER_LIMIT,
@@ -108,7 +109,7 @@ export async function computeInsights(now = new Date()): Promise<Omit<Insights, 
   const used = sql`-${movements.delta}`;
 
   const [all, categories, profile, usage, lastUsed] = await Promise.all([
-    db.select().from(products),
+    db.select().from(products).where(mine(products)),
     findProductCategories(),
     findBusinessProfile(),
     db
@@ -422,7 +423,7 @@ async function findReport(kind: InsightKind, periodKey: string) {
   const rows = await db
     .select()
     .from(insightReports)
-    .where(and(eq(insightReports.kind, kind), eq(insightReports.periodKey, periodKey)));
+    .where(and(mine(insightReports), eq(insightReports.kind, kind), eq(insightReports.periodKey, periodKey)));
   return rows[0] ?? null;
 }
 
@@ -433,6 +434,7 @@ async function recentlyAlertedIds(now: Date) {
     .from(insightReports)
     .where(
       and(
+        mine(insightReports),
         eq(insightReports.kind, "fast"),
         gte(insightReports.createdAt, new Date(now.getTime() - FAST_REALERT_DAYS * DAY_MS)),
       ),
@@ -504,9 +506,9 @@ export async function runInsightReport(kind: InsightKind, opts: { force?: boolea
   const emailed = email?.ok ? { emailedTo: email.to, emailedAt: now } : {};
   await db
     .insert(insightReports)
-    .values({ kind, periodKey, summary, payload, ...emailed })
+    .values({ ...owned(), kind, periodKey, summary, payload, ...emailed })
     .onConflictDoUpdate({
-      target: [insightReports.kind, insightReports.periodKey],
+      target: [insightReports.businessId, insightReports.kind, insightReports.periodKey],
       set: { summary: summary || existing?.summary || "", payload, ...emailed },
     });
 
@@ -520,7 +522,7 @@ export async function findInsights(): Promise<Insights> {
     const rows = await db
       .select({ summary: insightReports.summary })
       .from(insightReports)
-      .where(eq(insightReports.kind, kind))
+      .where(and(mine(insightReports), eq(insightReports.kind, kind)))
       .orderBy(desc(insightReports.createdAt))
       .limit(1);
     return rows[0]?.summary ?? "";
@@ -544,18 +546,18 @@ export async function ensureInsightSummary(kind: InsightKind) {
   if (summary) {
     await db
       .insert(insightReports)
-      .values({ kind, periodKey, summary })
-      .onConflictDoUpdate({ target: [insightReports.kind, insightReports.periodKey], set: { summary } });
+      .values({ ...owned(), kind, periodKey, summary })
+      .onConflictDoUpdate({ target: [insightReports.businessId, insightReports.kind, insightReports.periodKey], set: { summary } });
   }
   return summary;
 }
 
 export async function insertPriceCheck(data: typeof priceChecks.$inferInsert) {
-  const [row] = await db.insert(priceChecks).values(data).returning();
+  const [row] = await db.insert(priceChecks).values({ ...data, ...owned() }).returning();
   return row!;
 }
 
 export async function findPriceCheck(id: number) {
-  const rows = await db.select().from(priceChecks).where(eq(priceChecks.id, id));
+  const rows = await db.select().from(priceChecks).where(and(mine(priceChecks), eq(priceChecks.id, id)));
   return rows[0] ?? null;
 }

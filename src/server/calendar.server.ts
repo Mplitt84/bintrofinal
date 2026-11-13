@@ -1,11 +1,11 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { db } from "../../db/index.js";
+import { businessId, mine, owned } from "./tenant.js";
 import { businessProfile, calendarEvents } from "../../db/schema.js";
 import { EMPTY_PROFILE } from "../lib/business-types.js";
 import type { CalendarEvent, EventInput, EventKind, Repeat } from "../lib/calendar.js";
 
-const PROFILE_ID = 1;
 
 function toEvent(row: typeof calendarEvents.$inferSelect): CalendarEvent {
   return {
@@ -22,41 +22,50 @@ function toEvent(row: typeof calendarEvents.$inferSelect): CalendarEvent {
 }
 
 export async function findCalendarEvents() {
-  const rows = await db.select().from(calendarEvents).orderBy(asc(calendarEvents.date), asc(calendarEvents.startTime));
+  const rows = await db.select().from(calendarEvents).where(mine(calendarEvents)).orderBy(asc(calendarEvents.date), asc(calendarEvents.startTime));
   return rows.map(toEvent);
 }
 
 export async function insertCalendarEvents(items: EventInput[]) {
-  if (items.length) await db.insert(calendarEvents).values(items);
+  if (items.length) await db.insert(calendarEvents).values(items.map((i) => ({ ...i, ...owned() })));
   return findCalendarEvents();
 }
 
 export async function updateCalendarEvent(id: number, data: Partial<EventInput>) {
-  await db.update(calendarEvents).set({ ...data, updatedAt: new Date() }).where(eq(calendarEvents.id, id));
+  await db.update(calendarEvents).set({ ...data, updatedAt: new Date() }).where(and(mine(calendarEvents), eq(calendarEvents.id, id)));
   return findCalendarEvents();
 }
 
 export async function deleteCalendarEvent(id: number) {
-  await db.delete(calendarEvents).where(eq(calendarEvents.id, id));
+  await db.delete(calendarEvents).where(and(mine(calendarEvents), eq(calendarEvents.id, id)));
   return findCalendarEvents();
 }
 
 /** The secret token in the subscription URL, created the first time the feed is shared. */
 export async function ensureCalendarToken(reset = false) {
-  const rows = await db.select({ token: businessProfile.calendarToken }).from(businessProfile).where(eq(businessProfile.id, PROFILE_ID));
+  const rows = await db.select({ token: businessProfile.calendarToken }).from(businessProfile).where(mine(businessProfile));
   const current = rows[0]?.token ?? "";
   if (current && !reset) return current;
   const token = randomBytes(18).toString("base64url");
   await db
     .insert(businessProfile)
-    .values({ ...EMPTY_PROFILE, id: PROFILE_ID, calendarToken: token })
-    .onConflictDoUpdate({ target: businessProfile.id, set: { calendarToken: token } });
+    .values({ ...EMPTY_PROFILE, ...owned(), id: businessId(), calendarToken: token })
+    .onConflictDoUpdate({ target: businessProfile.businessId, set: { calendarToken: token } });
   return token;
 }
 
-/** True when `token` is the current feed token. Empty tokens never match. */
-export async function isCalendarToken(token: string) {
-  if (!token) return false;
-  const rows = await db.select({ token: businessProfile.calendarToken }).from(businessProfile).where(eq(businessProfile.id, PROFILE_ID));
-  return Boolean(rows[0]?.token) && rows[0]!.token === token;
+/**
+ * The business whose calendar feed this secret token opens, or null.
+ *
+ * The feed URL is public and carries only the token, so this is a deliberate
+ * cross-business lookup: the token is what says which business to answer for.
+ * Everything the feed then reads runs inside that business's scope.
+ */
+export async function businessForCalendarToken(token: string) {
+  if (!token) return null;
+  const rows = await db
+    .select({ businessId: businessProfile.businessId })
+    .from(businessProfile)
+    .where(and(sql`/* cross-business: calendar feed token */ true`, eq(businessProfile.calendarToken, token)));
+  return rows[0]?.businessId ?? null;
 }

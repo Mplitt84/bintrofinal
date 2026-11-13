@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { routeUser } from '@/server/auth.server'
+import { businessForRoute, routeUser } from '@/server/auth.server'
+import { runForBusiness } from '@/server/tenant'
 import { PROVIDERS, StateMismatchError, completeAuthorization, logIntegrationError, type Provider } from '@/server/integrations.server'
 
 /** Where Square / QuickBooks send the owner back after approving (or declining) the connection. */
@@ -10,6 +11,7 @@ export const Route = createFileRoute('/api/integrations/$provider/callback')({
         // Signed-in only (owners for connections); sign-in happens on the home page.
         const who = await routeUser(request)
         if (!who || (who !== 'open' && who.role !== 'owner')) return Response.redirect(`${new URL(request.url).origin}/?auth=${who ? 'owner-only' : 'signed-out'}`, 302)
+        return runForBusiness(businessForRoute(who), async () => {
         const url = new URL(request.url)
         const provider = params.provider as Provider
         if (!PROVIDERS.includes(provider)) return new Response('Unknown integration', { status: 404 })
@@ -46,6 +48,7 @@ export const Route = createFileRoute('/api/integrations/$provider/callback')({
           })
           return back({ error: `${provider}-${error instanceof StateMismatchError ? 'expired' : 'failed'}` })
         }
+        })
       },
     },
   },

@@ -6,11 +6,15 @@ import { SESSION_COOKIE, addUser, authEnabled, endSession, listUsers, ownerEmail
 import { requireOwner } from './auth.middleware'
 
 /** Public: whether sign-in is on and who is signed in. */
+const stripBusiness = (u: { id: number; email: string; name: string; role: 'owner' | 'staff' } | null) =>
+  u ? { id: u.id, email: u.email, name: u.name, role: u.role } : null
+
 export const getAuthState = createServerFn({ method: 'GET' }).handler(async (): Promise<AuthState> => {
   const enabled = authEnabled()
   return {
     enabled,
-    user: enabled ? await userForToken(getCookie(SESSION_COOKIE)) : null,
+    // The business id stays on the server; the app only needs who is signed in.
+    user: enabled ? stripBusiness(await userForToken(getCookie(SESSION_COOKIE))) : null,
     ownerConfigured: Boolean(ownerEmail()),
   }
 })

@@ -10,8 +10,9 @@
  * app stays open as before (so a deploy never locks the business out).
  */
 import { createHash, randomBytes } from "node:crypto";
-import { and, asc, eq, gt, lt } from "drizzle-orm";
+import { and, asc, eq, gt, lt, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { DEFAULT_BUSINESS_ID, businessId, mine } from "./tenant.js";
 import { appSessions, appUsers } from "../../db/schema.js";
 import type { AuthUser } from "../lib/auth.js";
 
@@ -123,16 +124,23 @@ export async function finishGoogleSignIn(origin: string, params: { code: string;
   return { sub: claims.sub, email: claims.email.toLowerCase(), name: claims.name ?? "" } satisfies GoogleProfile;
 }
 
+/**
+ * Sign-in looks across every business on purpose: the email is how Bintro works out
+ * which business this person belongs to. Everything after sign-in is scoped to that
+ * business by the middleware.
+ */
+const signInLookup = sql`/* cross-business: sign-in */ true`;
+
 /** Finds (or, for the owner email, creates) the user for a Google account. Throws "not-allowed". */
 export async function userForGoogle(profile: GoogleProfile) {
-  let [user] = await db.select().from(appUsers).where(eq(appUsers.email, profile.email));
+  let [user] = await db.select().from(appUsers).where(and(signInLookup, eq(appUsers.email, profile.email)));
   if (!user && profile.email === ownerEmail()) {
     [user] = await db
       .insert(appUsers)
-      .values({ email: profile.email, name: profile.name, role: "owner", addedBy: "BINTRO_OWNER_EMAIL" })
+      .values({ businessId: DEFAULT_BUSINESS_ID, email: profile.email, name: profile.name, role: "owner", addedBy: "BINTRO_OWNER_EMAIL" })
       .onConflictDoNothing()
       .returning();
-    user ??= (await db.select().from(appUsers).where(eq(appUsers.email, profile.email)))[0];
+    user ??= (await db.select().from(appUsers).where(and(signInLookup, eq(appUsers.email, profile.email))))[0];
   }
   if (!user) throw new Error("not-allowed");
   // Once linked, the email must keep belonging to the same Google account.
@@ -140,7 +148,7 @@ export async function userForGoogle(profile: GoogleProfile) {
   await db
     .update(appUsers)
     .set({ googleSub: profile.sub, name: user.name || profile.name, lastSignInAt: new Date() })
-    .where(eq(appUsers.id, user.id));
+    .where(and(eq(appUsers.businessId, user.businessId), eq(appUsers.id, user.id)));
   return user;
 }
 
@@ -160,14 +168,23 @@ export async function createSession(userId: number, userAgent: string) {
   return { token, maxAge: SESSION_DAYS * 86_400 };
 }
 
+/** A signed-in person, plus the business their session belongs to (server-only). */
+export type SessionUser = AuthUser & { businessId: number };
+
 /** The signed-in user for a session token, or null. */
-export async function userForToken(token: string | undefined): Promise<AuthUser | null> {
+export async function userForToken(token: string | undefined): Promise<SessionUser | null> {
   if (!token) return null;
   const [row] = await db
-    .select({ id: appUsers.id, email: appUsers.email, name: appUsers.name, role: appUsers.role })
+    .select({
+      id: appUsers.id,
+      email: appUsers.email,
+      name: appUsers.name,
+      role: appUsers.role,
+      businessId: appUsers.businessId,
+    })
     .from(appSessions)
     .innerJoin(appUsers, eq(appUsers.id, appSessions.userId))
-    .where(and(eq(appSessions.tokenHash, sha256(token)), gt(appSessions.expiresAt, new Date())));
+    .where(and(signInLookup, eq(appSessions.tokenHash, sha256(token)), gt(appSessions.expiresAt, new Date())));
   return row ? { ...row, role: row.role === "owner" ? "owner" : "staff" } : null;
 }
 
@@ -180,7 +197,7 @@ export async function endSession(token: string | undefined) {
 // ---------------------------------------------------------------------------
 
 export async function listUsers() {
-  const rows = await db.select().from(appUsers).orderBy(asc(appUsers.createdAt));
+  const rows = await db.select().from(appUsers).where(mine(appUsers)).orderBy(asc(appUsers.createdAt));
   return rows.map((u) => ({
     id: u.id,
     email: u.email,
@@ -195,27 +212,32 @@ export async function addUser(email: string, role: "owner" | "staff", addedBy: s
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) throw new Error("That doesn't look like an email address.");
   await db
     .insert(appUsers)
-    .values({ email: clean, role, addedBy })
+    .values({ businessId: businessId(), email: clean, role, addedBy })
     .onConflictDoUpdate({ target: appUsers.email, set: { role } });
 }
 
 export async function removeUser(id: number, actingUserId: number) {
   if (id === actingUserId) throw new Error("You can't remove yourself.");
-  const [target] = await db.select().from(appUsers).where(eq(appUsers.id, id));
+  const [target] = await db.select().from(appUsers).where(and(mine(appUsers), eq(appUsers.id, id)));
   if (!target) return;
   if (target.role === "owner") {
-    const owners = await db.select({ id: appUsers.id }).from(appUsers).where(eq(appUsers.role, "owner"));
+    const owners = await db.select({ id: appUsers.id }).from(appUsers).where(and(mine(appUsers), eq(appUsers.role, "owner")));
     if (owners.length <= 1) throw new Error("Keep at least one owner.");
   }
   await db.delete(appSessions).where(eq(appSessions.userId, id));
-  await db.delete(appUsers).where(eq(appUsers.id, id));
+  await db.delete(appUsers).where(and(mine(appUsers), eq(appUsers.id, id)));
 }
 
 /**
  * For server routes: who is signed in, or "open" while sign-in is off.
  * Returns null when sign-in is on and nobody (valid) is signed in.
  */
-export async function routeUser(request: Request): Promise<AuthUser | "open" | null> {
+export async function routeUser(request: Request): Promise<SessionUser | "open" | null> {
   if (!authEnabled()) return "open";
   return userForToken(readCookie(request, SESSION_COOKIE));
+}
+
+/** The business behind a signed-in route request ("open" = sign-in is off, so business 1). */
+export function businessForRoute(who: SessionUser | "open") {
+  return who === "open" ? DEFAULT_BUSINESS_ID : who.businessId;
 }

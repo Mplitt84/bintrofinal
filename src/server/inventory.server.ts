@@ -1,5 +1,6 @@
 import { and, eq, desc, asc, like, or, sql, inArray, gte, ne } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { mine, owned } from "./tenant.js";
 import { products, movements, integrations, squareOutbox } from "../../db/schema.js";
 import { DEFAULT_REORDER_THRESHOLD, clampOrderQty, deriveInitials, onHandQty, selectBelowPar, stockStats } from "../lib/inventory-defaults.js";
 import type { PurchaseOrderLine } from "../lib/purchase-order.js";
@@ -8,14 +9,14 @@ export type Product = typeof products.$inferSelect;
 export type Movement = typeof movements.$inferSelect;
 
 export async function findAllProducts() {
-  return db.select().from(products).orderBy(asc(products.name));
+  return db.select().from(products).where(mine(products)).orderBy(asc(products.name));
 }
 
 export async function findProductByBarcode(barcode: string) {
   const rows = await db
     .select()
     .from(products)
-    .where(or(eq(products.barcode, barcode), sql`${barcode} = any(${products.extraBarcodes})`))
+    .where(and(mine(products), or(eq(products.barcode, barcode), sql`${barcode} = any(${products.extraBarcodes})`)))
     .orderBy(sql`${products.barcode} = ${barcode} desc`)
     .limit(1);
   return rows[0] ?? null;
@@ -27,20 +28,23 @@ export async function findBarcodeOwner(barcode: string, exceptId = 0) {
     .select()
     .from(products)
     .where(
-      sql`${products.id} <> ${exceptId} and (${products.barcode} = ${barcode} or ${barcode} = any(${products.extraBarcodes}))`,
+      and(
+        mine(products),
+        sql`${products.id} <> ${exceptId} and (${products.barcode} = ${barcode} or ${barcode} = any(${products.extraBarcodes}))`,
+      ),
     )
     .limit(1);
   return rows[0] ?? null;
 }
 
 export async function findProductById(productId: number) {
-  const rows = await db.select().from(products).where(eq(products.id, productId));
+  const rows = await db.select().from(products).where(and(mine(products), eq(products.id, productId)));
   return rows[0] ?? null;
 }
 
 export async function findProductsByIds(ids: number[]) {
   if (ids.length === 0) return [];
-  return db.select().from(products).where(inArray(products.id, ids));
+  return db.select().from(products).where(and(mine(products), inArray(products.id, ids)));
 }
 
 export async function searchProductsByText(query: string) {
@@ -49,12 +53,15 @@ export async function searchProductsByText(query: string) {
     .select()
     .from(products)
     .where(
+      and(
+        mine(products),
       or(
         like(sql`lower(${products.name})`, q),
         like(sql`lower(${products.barcode})`, q),
         like(sql`lower(array_to_string(${products.extraBarcodes}, ' '))`, q),
         like(sql`lower(${products.brand})`, q),
         like(sql`lower(${products.category})`, q),
+      ),
       ),
     )
     .orderBy(asc(products.name))
@@ -80,6 +87,7 @@ export async function insertProduct(data: {
   const [row] = await db
     .insert(products)
     .values({
+      ...owned(),
       barcode: data.barcode,
       name: data.name,
       category: data.category ?? "",
@@ -104,7 +112,7 @@ export async function updateProductBarcode(productId: number, barcode: string) {
   const [row] = await db
     .update(products)
     .set({ barcode, updatedAt: new Date() })
-    .where(eq(products.id, productId))
+    .where(and(mine(products), eq(products.id, productId)))
     .returning();
   return row;
 }
@@ -140,7 +148,7 @@ export async function updateProductFields(
   const [row] = await db
     .update(products)
     .set({ ...data, ...(priceUpdatedAt ? { priceUpdatedAt } : {}), updatedAt: new Date() })
-    .where(eq(products.id, productId))
+    .where(and(mine(products), eq(products.id, productId)))
     .returning();
   return row;
 }
@@ -150,7 +158,7 @@ export async function markPricesChecked(productId: number, prices: { unitCostCen
   const [row] = await db
     .update(products)
     .set({ ...prices, priceUpdatedAt: new Date(), updatedAt: new Date() })
-    .where(eq(products.id, productId))
+    .where(and(mine(products), eq(products.id, productId)))
     .returning();
   return row ?? null;
 }
@@ -163,7 +171,7 @@ async function squareConnected() {
   const rows = await db
     .select({ provider: integrations.provider })
     .from(integrations)
-    .where(and(eq(integrations.provider, "square"), ne(integrations.accessToken, "")));
+    .where(and(mine(integrations), eq(integrations.provider, "square"), ne(integrations.accessToken, "")));
   return rows.length > 0;
 }
 
@@ -177,8 +185,8 @@ async function queueSquareChange(product: Product | undefined, movement: Movemen
   if (!(await squareConnected())) return false;
   await db.insert(squareOutbox).values(
     type === "adjust"
-      ? { productId: product.id, variationId: product.squareVariationId, kind: "count", quantity: Math.max(0, product.qty), movementId: movement.id }
-      : { productId: product.id, variationId: product.squareVariationId, kind: "delta", quantity: movement.delta, movementId: movement.id },
+      ? { ...owned(), productId: product.id, variationId: product.squareVariationId, kind: "count", quantity: Math.max(0, product.qty), movementId: movement.id }
+      : { ...owned(), productId: product.id, variationId: product.squareVariationId, kind: "delta", quantity: movement.delta, movementId: movement.id },
   );
   return true;
 }
@@ -205,12 +213,13 @@ export async function applyMovement(params: {
   const [updated] = await db
     .update(products)
     .set({ qty: sql`${products.qty} + ${params.delta}`, updatedAt: new Date() })
-    .where(eq(products.id, params.productId))
+    .where(and(mine(products), eq(products.id, params.productId)))
     .returning();
 
   const [movement] = await db
     .insert(movements)
     .values({
+      ...owned(),
       productId: params.productId,
       type: params.type,
       delta: params.delta,
@@ -247,6 +256,7 @@ export async function findRecentMovements(limit: number) {
     })
     .from(movements)
     .innerJoin(products, eq(movements.productId, products.id))
+    .where(mine(movements))
     .orderBy(desc(movements.createdAt))
     .limit(limit);
 }
@@ -273,12 +283,14 @@ export async function findMovementsSince(since: Date | null, limit = 5000) {
     })
     .from(movements)
     .innerJoin(products, eq(movements.productId, products.id));
-  const filtered = since ? query.where(gte(movements.createdAt, since)) : query;
+  const filtered = since
+    ? query.where(and(mine(movements), gte(movements.createdAt, since)))
+    : query.where(mine(movements));
   return filtered.orderBy(desc(movements.createdAt)).limit(limit);
 }
 
 export async function findMovementById(id: number) {
-  const rows = await db.select().from(movements).where(eq(movements.id, id));
+  const rows = await db.select().from(movements).where(and(mine(movements), eq(movements.id, id)));
   return rows[0] ?? null;
 }
 
@@ -289,10 +301,10 @@ export async function reverseAndDeleteMovement(id: number) {
   const [product] = await db
     .update(products)
     .set({ qty: sql`${products.qty} - ${movement.delta}`, updatedAt: new Date() })
-    .where(eq(products.id, movement.productId))
+    .where(and(mine(products), eq(products.id, movement.productId)))
     .returning();
 
-  await db.delete(movements).where(eq(movements.id, id));
+  await db.delete(movements).where(and(mine(movements), eq(movements.id, id)));
   await undoSquareChange(movement, product);
 
   return product;
@@ -304,16 +316,16 @@ export async function reverseAndDeleteMovement(id: number) {
  */
 async function undoSquareChange(movement: Movement, product: Product | undefined) {
   try {
-    const queued = await db.select().from(squareOutbox).where(eq(squareOutbox.movementId, movement.id));
+    const queued = await db.select().from(squareOutbox).where(and(mine(squareOutbox), eq(squareOutbox.movementId, movement.id)));
     if (queued.length === 0) return;
     const pending = queued.filter((r) => r.status === "pending");
-    if (pending.length) await db.delete(squareOutbox).where(inArray(squareOutbox.id, pending.map((r) => r.id)));
+    if (pending.length) await db.delete(squareOutbox).where(and(mine(squareOutbox), inArray(squareOutbox.id, pending.map((r) => r.id))));
     const sent = queued.find((r) => r.status === "sent");
     if (!sent || !product) return;
     await db.insert(squareOutbox).values(
       sent.kind === "count"
-        ? { productId: product.id, variationId: sent.variationId, kind: "count", quantity: Math.max(0, product.qty) }
-        : { productId: product.id, variationId: sent.variationId, kind: "delta", quantity: -sent.quantity },
+        ? { ...owned(), productId: product.id, variationId: sent.variationId, kind: "count", quantity: Math.max(0, product.qty) }
+        : { ...owned(), productId: product.id, variationId: sent.variationId, kind: "delta", quantity: -sent.quantity },
     );
     await flushSquareSoon();
   } catch (error) {
@@ -338,16 +350,16 @@ export async function mergeProductsInto(sourceId: number, targetId: number) {
   }
 
   // Drop starting counts copied from Square; keep real scans and sales and move them over.
-  const sourceMoves = await db.select().from(movements).where(eq(movements.productId, sourceId));
+  const sourceMoves = await db.select().from(movements).where(and(mine(movements), eq(movements.productId, sourceId)));
   const seeded = sourceMoves.filter((m) => m.staffName === SQUARE_STAFF_NAME && m.type === "adjust");
   const carried = sourceMoves.filter((m) => !seeded.includes(m));
   const carriedDelta = carried.reduce((sum, m) => sum + m.delta, 0);
-  if (seeded.length) await db.delete(movements).where(inArray(movements.id, seeded.map((m) => m.id)));
+  if (seeded.length) await db.delete(movements).where(and(mine(movements), inArray(movements.id, seeded.map((m) => m.id))));
   if (carried.length) {
-    await db.update(movements).set({ productId: targetId }).where(inArray(movements.id, carried.map((m) => m.id)));
+    await db.update(movements).set({ productId: targetId }).where(and(mine(movements), inArray(movements.id, carried.map((m) => m.id))));
   }
-  await db.delete(squareOutbox).where(and(eq(squareOutbox.productId, sourceId), eq(squareOutbox.status, "pending")));
-  await db.delete(products).where(eq(products.id, sourceId));
+  await db.delete(squareOutbox).where(and(mine(squareOutbox), eq(squareOutbox.productId, sourceId), eq(squareOutbox.status, "pending")));
+  await db.delete(products).where(and(mine(products), eq(products.id, sourceId)));
 
   const codes = [source.barcode, ...source.extraBarcodes].filter((c) => c && !c.startsWith("SQ-") && c !== target.barcode);
   const extraBarcodes = Array.from(new Set([...target.extraBarcodes, ...codes]));
@@ -366,11 +378,12 @@ export async function mergeProductsInto(sourceId: number, targetId: number) {
       retailPriceCents: target.retailPriceCents || source.retailPriceCents,
       updatedAt: new Date(),
     })
-    .where(eq(products.id, targetId))
+    .where(and(mine(products), eq(products.id, targetId)))
     .returning();
 
   if (merged?.squareVariationId && (await squareConnected())) {
     await db.insert(squareOutbox).values({
+      ...owned(),
       productId: merged.id,
       variationId: merged.squareVariationId,
       kind: "count",
@@ -386,14 +399,14 @@ export async function mergeProductsInto(sourceId: number, targetId: number) {
  * reference the product), so past spend for it drops out of Activity and Budget.
  */
 export async function deleteProductById(productId: number) {
-  await db.delete(squareOutbox).where(and(eq(squareOutbox.productId, productId), eq(squareOutbox.status, "pending")));
-  await db.delete(movements).where(eq(movements.productId, productId));
-  const [row] = await db.delete(products).where(eq(products.id, productId)).returning();
+  await db.delete(squareOutbox).where(and(mine(squareOutbox), eq(squareOutbox.productId, productId), eq(squareOutbox.status, "pending")));
+  await db.delete(movements).where(and(mine(movements), eq(movements.productId, productId)));
+  const [row] = await db.delete(products).where(and(mine(products), eq(products.id, productId))).returning();
   return row ?? null;
 }
 
 export async function computeStats() {
-  return stockStats(await db.select().from(products));
+  return stockStats(await db.select().from(products).where(mine(products)));
 }
 
 /**
@@ -440,6 +453,6 @@ export async function buildPurchaseOrderLines(
 
 /** How many movements carry exactly this note (used to stop the same sales report being logged twice). */
 export async function countMovementsWithNote(note: string) {
-  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(movements).where(eq(movements.note, note));
+  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(movements).where(and(mine(movements), eq(movements.note, note)));
   return row?.n ?? 0;
 }
