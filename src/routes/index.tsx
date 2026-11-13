@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Boxes,
@@ -19,24 +19,19 @@ import type {
   TeamMember,
 } from "@/components/inventory/types";
 import { ScanView } from "@/components/inventory/ScanView";
+import { OfflineScans } from "@/components/inventory/OfflineScans";
 import { InventoryView } from "@/components/inventory/InventoryView";
-import { ActivityView } from "@/components/inventory/ActivityView";
-import { ProfitView } from "@/components/insights/ProfitView";
-import { FormulasView } from "@/components/formulas/FormulasView";
+
+
+
 import { formulaTabLabel } from "@/lib/formulas";
 import { providerNounFor, recordSpecFor } from "@/lib/industry";
 import { watchForErrors } from "@/lib/report-error";
 import { reportAppError } from "@/server/errors.functions";
-import {
-  RestockView,
-  type RestockMode,
-} from "@/components/inventory/RestockView";
-import { CalendarView } from "@/components/business/CalendarView";
-import { BudgetView } from "@/components/business/BudgetView";
-import {
-  SettingsView,
-  type SettingsSection,
-} from "@/components/business/SettingsView";
+import type { RestockMode } from "@/components/inventory/RestockView";
+
+
+import type { SettingsSection } from "@/components/business/SettingsView";
 import { BusinessProvider } from "@/components/business/BusinessContext";
 import { PlanGate } from "@/components/business/PlanGate";
 import type { AccountPanel } from "@/components/business/AccountView";
@@ -135,6 +130,45 @@ function tabFromHash(hash: string): { tab: Tab; restock?: RestockMode } | null {
   return TAB_IDS.has(id) ? { tab: id as Tab } : null;
 }
 
+/**
+ * Screens the app doesn't open on are fetched the first time someone visits them,
+ * so the first load on a phone carries the Scan tab and little else. `Loading`
+ * fills the space for the moment a screen takes to arrive.
+ */
+const ActivityView = lazy(() =>
+  import("@/components/inventory/ActivityView").then((m) => ({ default: m.ActivityView })),
+);
+const ProfitView = lazy(() =>
+  import("@/components/insights/ProfitView").then((m) => ({ default: m.ProfitView })),
+);
+const FormulasView = lazy(() =>
+  import("@/components/formulas/FormulasView").then((m) => ({ default: m.FormulasView })),
+);
+const CalendarView = lazy(() =>
+  import("@/components/business/CalendarView").then((m) => ({ default: m.CalendarView })),
+);
+const BudgetView = lazy(() =>
+  import("@/components/business/BudgetView").then((m) => ({ default: m.BudgetView })),
+);
+const RestockView = lazy(() =>
+  import("@/components/inventory/RestockView").then((m) => ({ default: m.RestockView })),
+);
+const SettingsView = lazy(() =>
+  import("@/components/business/SettingsView").then((m) => ({ default: m.SettingsView })),
+);
+
+/** Holds the space while a screen loads, so the page doesn't jump. */
+function Loading() {
+  return (
+    <div className="grid gap-3" aria-busy="true">
+      <span className="sr-only">Loading…</span>
+      <div className="skel h-12 rounded-2xl" />
+      <div className="skel h-40 rounded-2xl" />
+      <div className="skel h-24 rounded-2xl" />
+    </div>
+  );
+}
+
 export const Route = createFileRoute("/")({
   loader: async () => {
     const auth = await getAuthState();
@@ -231,6 +265,8 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [insightSegment, setInsightSegment] = useState<InsightSegment>("fast");
   const [insightPopupShowing, setInsightPopupShowing] = useState(false);
+  // Bumped when a scan is kept on the device, so the waiting band shows at once.
+  const [queuedAt, setQueuedAt] = useState(0);
   const { fresh: freshTip, markSeen: markTipSeen } = useFreshTip();
   const businessName = displayBusinessName(profile);
 
@@ -739,6 +775,11 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
           </header>
 
           <main className="max-w-[1100px] min-[1060px]:max-w-[1240px] mx-auto px-4 min-[1060px]:px-8 pt-4 min-[1060px]:pt-6 pb-[calc(96px+env(safe-area-inset-bottom))] min-[1060px]:pb-12">
+            <Suspense fallback={<Loading />}>
+            <OfflineScans
+              signal={queuedAt}
+              onSent={() => refresh({ quiet: true })}
+            />
             {!profile.name.trim() && tab === "scan" && (
               <button
                 onClick={() => openSettings("profile")}
@@ -773,6 +814,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                 belowParCount={belowPar.length}
                 onProduct={applyProduct}
                 onChanged={refresh}
+                onQueued={() => setQueuedAt(Date.now())}
                 onOpenRestock={() => {
                   setRestockMode("below-par");
                   selectTab("restock");
@@ -899,6 +941,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                 <CalendarView belowPar={belowPar} staffName={staffName} />
               </PlanGate>
             )}
+            </Suspense>
           </main>
 
           <AskBintro />

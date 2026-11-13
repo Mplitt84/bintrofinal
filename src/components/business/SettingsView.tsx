@@ -1,10 +1,14 @@
 import { Sheet } from "@/components/ui/Sheet";
 import { providerNounFor } from "@/lib/industry";
 import { dismissAppError, getAppErrors } from "@/server/errors.functions";
+import { exportEverything } from "@/server/export.functions";
+import { downloadZip } from "@/lib/zip";
+import { exportStamp } from "@/lib/csv";
 import type { ErrorReport as AppError } from "@/lib/report-error";
 import { useEffect, useState } from "react";
 import {
   AlertTriangle,
+  Download,
   ArrowUpFromLine,
   Check,
   ExternalLink,
@@ -239,6 +243,7 @@ export function SettingsView({
         </>
       )}
       <AccessPanel auth={auth} />
+      <YourDataCard />
       <ProblemsCard />
       <HelpSupport />
       <nav
@@ -1247,6 +1252,66 @@ function ErrorLogLink({
 }
 
 /** Settings → Help & support: emails Bintro support with the details support needs already filled in. */
+/**
+ * Settings → "Your data": everything the business has put into Bintro, as
+ * spreadsheets in one zip. The Privacy Policy promises an export on request —
+ * this is that promise, self-service. Owner-only, like the rest of the account.
+ */
+function YourDataCard() {
+  const toast = useToast();
+  const { name } = useBusiness();
+  const [busy, setBusy] = useState(false);
+  const [allowed, setAllowed] = useState(true);
+
+  async function download() {
+    setBusy(true);
+    try {
+      const result = (await exportEverything()) as {
+        files: { name: string; csv: string }[];
+      };
+      downloadZip(
+        result.files.map((f) => ({ name: f.name, text: f.csv })),
+        `${exportStamp(name)}-bintro-export.zip`,
+      );
+      toast(`Downloaded ${result.files.length} spreadsheets`);
+    } catch (err) {
+      if (err instanceof Error && /owner/i.test(err.message)) {
+        setAllowed(false);
+        return;
+      }
+      toast("Could not build the download. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!allowed) return null;
+
+  return (
+    <section className="mt-4 bg-white border border-line rounded-2xl p-4" data-your-data>
+      <h3 className="m-0 mb-1 text-[17px] font-bold flex items-center gap-2">
+        <Download size={18} className="text-ink-2" />
+        Your data
+      </h3>
+      <p className="text-ink-2 text-sm mt-0 mb-3">
+        Everything you’ve put into Bintro — products, stock history, expenses,
+        client records, orders, counts, your team, categories and calendar — as
+        spreadsheets in one zip. It’s yours to keep, and it opens in Excel,
+        Numbers or Google Sheets.
+      </p>
+      <button
+        type="button"
+        className="btn btn-primary btn-sm"
+        onClick={download}
+        disabled={busy}
+      >
+        <Download size={16} />
+        {busy ? "Building your download…" : "Download all my data"}
+      </button>
+    </section>
+  );
+}
+
 /**
  * Settings → "Problems Bintro noticed": anything the app couldn't handle, so breakage
  * on a stylist's phone reaches the owner instead of being shrugged off. Owner-only;
