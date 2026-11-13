@@ -1,6 +1,10 @@
+import { Sheet } from "@/components/ui/Sheet";
 import { providerNounFor } from "@/lib/industry";
+import { dismissAppError, getAppErrors } from "@/server/errors.functions";
+import type { ErrorReport as AppError } from "@/lib/report-error";
 import { useEffect, useState } from "react";
 import {
+  AlertTriangle,
   ArrowUpFromLine,
   Check,
   ExternalLink,
@@ -235,6 +239,7 @@ export function SettingsView({
         </>
       )}
       <AccessPanel auth={auth} />
+      <ProblemsCard />
       <HelpSupport />
       <nav
         className="mt-6 pt-4 border-t border-line flex flex-wrap gap-x-4 gap-y-1 text-[13px]"
@@ -1242,6 +1247,143 @@ function ErrorLogLink({
 }
 
 /** Settings → Help & support: emails Bintro support with the details support needs already filled in. */
+/**
+ * Settings → "Problems Bintro noticed": anything the app couldn't handle, so breakage
+ * on a stylist's phone reaches the owner instead of being shrugged off. Owner-only;
+ * the card simply doesn't appear for anyone else.
+ */
+function ProblemsCard() {
+  const toast = useToast();
+  const [errors, setErrors] = useState<AppError[] | null>(null);
+  const [open, setOpen] = useState(false);
+  const [shown, setShown] = useState<AppError | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    getAppErrors()
+      .then((r) => live && setErrors((r as { errors: AppError[] }).errors))
+      .catch(() => live && setErrors([])); // not the owner, or signed out
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function dismiss(id: number | null) {
+    const had = errors ?? [];
+    setErrors(id === null ? [] : had.filter((e) => e.id !== id));
+    setShown(null);
+    try {
+      await dismissAppError({ data: { id } });
+    } catch {
+      setErrors(had);
+      toast("Could not clear that. Try again.");
+    }
+  }
+
+  if (!errors || errors.length === 0) return null;
+  const recent = errors.slice(0, open ? 50 : 3);
+
+  return (
+    <section className="mt-4 bg-white border border-line rounded-2xl p-4" data-problems>
+      <h3 className="m-0 mb-1 text-[17px] font-bold flex items-center gap-2">
+        <AlertTriangle size={18} className="text-warn" />
+        Problems Bintro noticed ({errors.length})
+      </h3>
+      <p className="text-ink-2 text-sm mt-0 mb-3">
+        Something went wrong for someone using Bintro. Nothing was lost. Send
+        these to support if they keep happening, then clear them.
+      </p>
+      <ul className="list-none m-0 p-0 bg-surface rounded-2xl px-3.5">
+        {recent.map((e) => (
+          <li
+            key={e.id}
+            className="flex items-center gap-3 py-2.5 border-b border-line last:border-b-0"
+          >
+            <button
+              type="button"
+              className="flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-pointer"
+              onClick={() => setShown(e)}
+            >
+              <b className="block text-[14px] truncate">{e.message}</b>
+              <span className="block text-[12.5px] text-ink-2 truncate">
+                {[
+                  timeAgo(e.lastSeen),
+                  e.hits > 1 ? `${e.hits} times` : null,
+                  e.device,
+                  e.staffName,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="btn btn-text btn-sm shrink-0"
+              onClick={() => dismiss(e.id)}
+              aria-label={`Clear ${e.message}`}
+            >
+              Clear
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="flex flex-wrap gap-2 mt-3">
+        {errors.length > 3 && (
+          <button
+            type="button"
+            className="btn btn-tonal btn-sm"
+            onClick={() => setOpen((v) => !v)}
+          >
+            {open ? "Show fewer" : `Show all ${errors.length}`}
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn btn-text btn-sm"
+          onClick={() => dismiss(null)}
+        >
+          Clear all
+        </button>
+      </div>
+
+      <Sheet
+        open={shown !== null}
+        onClose={() => setShown(null)}
+        title="What went wrong"
+        subtitle={shown ? timeAgo(shown.lastSeen) : undefined}
+      >
+        {shown && (
+          <div>
+            <b className="block text-[15px] mb-2">{shown.message}</b>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm m-0 mb-3">
+              <dt className="text-ink-2">Where</dt>
+              <dd className="m-0">{shown.where || "—"}</dd>
+              <dt className="text-ink-2">Device</dt>
+              <dd className="m-0">{shown.device || "—"}</dd>
+              <dt className="text-ink-2">Who</dt>
+              <dd className="m-0">{shown.staffName || "—"}</dd>
+              <dt className="text-ink-2">Times</dt>
+              <dd className="m-0">{shown.hits}</dd>
+            </dl>
+            {shown.detail && (
+              <pre className="bg-surface rounded-xl p-3 text-[12px] overflow-auto m-0 mb-3 whitespace-pre-wrap break-words">
+                {shown.detail}
+              </pre>
+            )}
+            <button
+              type="button"
+              className="btn btn-tonal"
+              onClick={() => dismiss(shown.id)}
+            >
+              Clear this
+            </button>
+          </div>
+        )}
+      </Sheet>
+    </section>
+  );
+}
+
 function HelpSupport() {
   const { name } = useBusiness();
   const ready = !LEGAL.supportEmail.includes("[");

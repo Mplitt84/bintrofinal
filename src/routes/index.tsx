@@ -25,6 +25,8 @@ import { ProfitView } from "@/components/insights/ProfitView";
 import { FormulasView } from "@/components/formulas/FormulasView";
 import { formulaTabLabel } from "@/lib/formulas";
 import { providerNounFor, recordSpecFor } from "@/lib/industry";
+import { watchForErrors } from "@/lib/report-error";
+import { reportAppError } from "@/server/errors.functions";
 import {
   RestockView,
   type RestockMode,
@@ -235,6 +237,15 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
       window.removeEventListener("unhandledrejection", onRejection);
     };
   }, [auth.enabled]);
+
+  // Write down anything the app can't handle, so Settings can show the owner.
+  useEffect(
+    () =>
+      watchForErrors((report) =>
+        reportAppError({ data: { ...report, staffName } }),
+      ),
+    [staffName],
+  );
 
   useEffect(() => {
     const saved =
