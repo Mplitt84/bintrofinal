@@ -38,7 +38,9 @@ export function SignInScreen({ auth }: { auth: AuthState }) {
             Sign in to Bintro
           </h1>
           <p className="hidden lg:block text-ink-2 text-sm mt-1 mb-6">
-            Use the Google account your business added you with.
+            {auth.signupOpen
+              ? "Sign in, or start your own business with the same button."
+              : "Use the Google account your business added you with."}
           </p>
           {error && (
             <div className="bg-bad-tint text-bad rounded-xl px-3.5 py-2.5 text-sm mb-3 text-left">
@@ -58,6 +60,12 @@ export function SignInScreen({ auth }: { auth: AuthState }) {
             <GoogleMark />
             Continue with Google
           </a>
+          {auth.signupOpen && (
+            <p className="text-[#002CB7]/90 lg:text-ink-2 text-[13px] mt-3 mb-0">
+              New to Bintro? The same button starts your own business — sign in
+              with Google and we’ll set it up.
+            </p>
+          )}
           <p className="text-[#002CB7]/80 lg:text-ink-2 text-[12px] mt-2.5 lg:mt-4 mb-0 flex items-center justify-center gap-1.5 flex-wrap">
             <ShieldCheck size={14} /> Google 2-Step Verification
             <span aria-hidden="true">·</span>

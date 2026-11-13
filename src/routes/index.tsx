@@ -75,6 +75,8 @@ import type { ProductCategory } from "@/lib/tax-categories";
 import { listProducts, getRecentMovements } from "@/server/inventory.functions";
 import { getInsights } from "@/server/insights.functions";
 import type { Insights } from "@/lib/insights";
+import { WelcomeSetup } from "@/components/business/WelcomeSetup";
+import { getWelcomeState } from "@/server/signup.functions";
 import { SignInScreen } from "@/components/auth/SignInScreen";
 import { AskBintro } from "@/components/assistant/AskBintro";
 import { getAuthState } from "@/server/auth.functions";
@@ -138,7 +140,7 @@ export const Route = createFileRoute("/")({
     const auth = await getAuthState();
     // Sign-in is on and nobody is signed in: load nothing else (every other call would be refused).
     if (auth.enabled && !auth.user) return { auth, data: null };
-    const [products, recent, profile, team, categories, account] =
+    const [products, recent, profile, team, categories, account, welcome] =
       await Promise.all([
         listProducts(),
         getRecentMovements({ data: { limit: 25 } }),
@@ -146,20 +148,39 @@ export const Route = createFileRoute("/")({
         listTeamMembers(),
         listProductCategories(),
         getAccount(),
+        getWelcomeState(),
       ]);
     return {
       auth,
-      data: { products, recent, profile, team, categories, account },
+      data: { products, recent, profile, team, categories, account, welcome },
     };
   },
   component: Gate,
 });
 
-/** Shows the sign-in screen until someone is signed in (once Google sign-in is set up). */
+/**
+ * Shows the sign-in screen until someone is signed in (once Google sign-in is set
+ * up), then the welcome screen until a brand-new business has told Bintro its name.
+ */
 function Gate() {
   const { auth, data } = Route.useLoaderData();
+  const [profile, setProfile] = useState(data?.profile ?? null);
+  // Decided once, on arrival: saving the name mid-way must not whisk the screen
+  // away before the business has picked its categories.
+  const [setupNeeded] = useState(() => Boolean(data?.welcome?.needed));
+  const [setupDone, setSetupDone] = useState(false);
   if (!data) return <SignInScreen auth={auth} />;
-  return <Home auth={auth} initial={data} />;
+  const current = profile ?? data.profile;
+  if (setupNeeded && !setupDone) {
+    return (
+      <WelcomeSetup
+        profile={current}
+        onProfile={setProfile}
+        onDone={() => setSetupDone(true)}
+      />
+    );
+  }
+  return <Home auth={auth} initial={{ ...data, profile: current }} />;
 }
 
 type HomeData = NonNullable<ReturnType<typeof Route.useLoaderData>["data"]>;
