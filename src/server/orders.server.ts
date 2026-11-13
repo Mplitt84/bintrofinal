@@ -1,5 +1,6 @@
-import { asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { mine, owned } from "./tenant.js";
 import { purchaseOrderLines, purchaseOrders } from "../../db/schema.js";
 import { findProductByBarcode, findProductsByIds, insertProduct } from "./inventory.server.js";
 import { applyImportLines } from "./import.server.js";
@@ -58,12 +59,13 @@ export async function saveOrders(params: {
   for (const [vendor, lines] of groups) {
     const [order] = await db
       .insert(purchaseOrders)
-      .values({ vendor, note: params.note, staffName: params.staffName, sentVia: params.sentVia })
+      .values({ ...owned(), vendor, note: params.note, staffName: params.staffName, sentVia: params.sentVia })
       .returning();
     await db.insert(purchaseOrderLines).values(
       lines.map((l) => {
         const p = byId.get(l.productId)!;
         return {
+          ...owned(),
           orderId: order.id,
           productId: p.id,
           name: p.name,
@@ -140,7 +142,7 @@ function scoreVendors(orders: SavedOrder[]): VendorScore[] {
 
 /** Open and part-received orders, recent finished ones, units still on order per product, and vendor scores. */
 export async function ordersOverview(): Promise<OrdersOverview> {
-  const recent = await db.select().from(purchaseOrders).orderBy(desc(purchaseOrders.createdAt)).limit(200);
+  const recent = await db.select().from(purchaseOrders).where(mine(purchaseOrders)).orderBy(desc(purchaseOrders.createdAt)).limit(200);
   const all = await loadOrders(recent);
   const open = all.filter((o) => o.status === "open" || o.status === "partial");
   const onOrder: Record<number, number> = {};
@@ -159,7 +161,7 @@ export async function ordersOverview(): Promise<OrdersOverview> {
 }
 
 export async function cancelOrder(orderId: number) {
-  await db.update(purchaseOrders).set({ status: "canceled" }).where(eq(purchaseOrders.id, orderId));
+  await db.update(purchaseOrders).set({ status: "canceled" }).where(and(mine(purchaseOrders), eq(purchaseOrders.id, orderId)));
 }
 
 /**
@@ -180,9 +182,9 @@ export async function receiveDelivery(params: {
 
   if (!params.orderId) return { summary, status: null, short: [], priceChanges: [] };
 
-  const [order] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, params.orderId));
+  const [order] = await db.select().from(purchaseOrders).where(and(mine(purchaseOrders), eq(purchaseOrders.id, params.orderId)));
   if (!order) return { summary, status: null, short: [], priceChanges: [] };
-  const orderLines = await db.select().from(purchaseOrderLines).where(eq(purchaseOrderLines.orderId, order.id));
+  const orderLines = await db.select().from(purchaseOrderLines).where(and(mine(purchaseOrderLines), eq(purchaseOrderLines.orderId, order.id)));
 
   const arrived = new Map<number, { qty: number; cost: number }>();
   for (const l of lines) {
@@ -199,7 +201,7 @@ export async function receiveDelivery(params: {
     const qtyReceived = l.qtyReceived + (got?.qty ?? 0);
     const receivedCostCents = got?.cost || l.receivedCostCents;
     if (got) {
-      await db.update(purchaseOrderLines).set({ qtyReceived, receivedCostCents }).where(eq(purchaseOrderLines.id, l.id));
+      await db.update(purchaseOrderLines).set({ qtyReceived, receivedCostCents }).where(and(mine(purchaseOrderLines), eq(purchaseOrderLines.id, l.id)));
     }
     if (qtyReceived < l.qtyOrdered) {
       complete = false;
@@ -210,7 +212,7 @@ export async function receiveDelivery(params: {
     }
   }
   const status = complete ? "received" : "partial";
-  await db.update(purchaseOrders).set({ status, receivedAt: new Date() }).where(eq(purchaseOrders.id, order.id));
+  await db.update(purchaseOrders).set({ status, receivedAt: new Date() }).where(and(mine(purchaseOrders), eq(purchaseOrders.id, order.id)));
   return { summary, status, short, priceChanges };
 }
 
@@ -249,10 +251,11 @@ export async function saveEmailedOrder(params: { vendor: string; note: string; l
   if (lines.length === 0) return null;
   const [order] = await db
     .insert(purchaseOrders)
-    .values({ vendor: params.vendor, status: "open", note: params.note.slice(0, 300), staffName: "Email", sentVia: "email-in" })
+    .values({ ...owned(), vendor: params.vendor, status: "open", note: params.note.slice(0, 300), staffName: "Email", sentVia: "email-in" })
     .returning();
   await db.insert(purchaseOrderLines).values(
     lines.map((l) => ({
+      ...owned(),
       orderId: order.id,
       productId: l.productId,
       name: l.name,

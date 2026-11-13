@@ -5,6 +5,7 @@
  */
 import { and, desc, gte, inArray, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { mine } from "./tenant.js";
 import { expenses, movements, products, purchaseOrderLines, purchaseOrders, stockCounts } from "../../db/schema.js";
 import { stockStatus, suggestedOrderQty } from "../lib/inventory-defaults.js";
 import { findBusinessProfile, findProductCategories } from "./business.server.js";
@@ -26,7 +27,7 @@ async function snapshot(timeZone: string) {
   const [profile, categories, all, usage, recent, openOrders, counts, spend] = await Promise.all([
     findBusinessProfile(),
     findProductCategories(),
-    db.select().from(products),
+    db.select().from(products).where(mine(products)),
     db
       .select({
         productId: movements.productId,
@@ -51,12 +52,12 @@ async function snapshot(timeZone: string) {
       .from(movements)
       .orderBy(desc(movements.id))
       .limit(40),
-    db.select().from(purchaseOrders).where(inArray(purchaseOrders.status, ["open", "partial"])).orderBy(desc(purchaseOrders.id)).limit(15),
-    db.select().from(stockCounts).orderBy(desc(stockCounts.id)).limit(8),
+    db.select().from(purchaseOrders).where(and(mine(purchaseOrders), inArray(purchaseOrders.status, ["open", "partial"]))).orderBy(desc(purchaseOrders.id)).limit(15),
+    db.select().from(stockCounts).where(mine(stockCounts)).orderBy(desc(stockCounts.id)).limit(8),
     db
       .select({ spentOn: expenses.spentOn, amountCents: expenses.amountCents, category: expenses.category, vendor: expenses.vendor })
       .from(expenses)
-      .where(and(gte(expenses.spentOn, new Date(now - 62 * DAY).toISOString().slice(0, 10))))
+      .where(and(mine(expenses), gte(expenses.spentOn, new Date(now - 62 * DAY).toISOString().slice(0, 10))))
       .orderBy(desc(expenses.spentOn))
       .limit(80),
   ]);
@@ -64,7 +65,7 @@ async function snapshot(timeZone: string) {
   const byId = new Map(all.map((p) => [p.id, p]));
   const use = new Map(usage.map((u) => [u.productId, u]));
   const orderLines = openOrders.length
-    ? await db.select().from(purchaseOrderLines).where(inArray(purchaseOrderLines.orderId, openOrders.map((o) => o.id)))
+    ? await db.select().from(purchaseOrderLines).where(and(mine(purchaseOrderLines), inArray(purchaseOrderLines.orderId, openOrders.map((o) => o.id))))
     : [];
 
   const lines: string[] = [];

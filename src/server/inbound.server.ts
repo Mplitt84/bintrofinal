@@ -7,8 +7,9 @@
  * BINTRO_INBOUND_DOMAIN (the Resend receiving domain, e.g. abc123.resend.app or in.bintroapp.com).
  */
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { businessId, mine, owned, runForBusiness } from "./tenant.js";
 import { businessProfile, inboundEmails } from "../../db/schema.js";
 import { EMPTY_PROFILE } from "../lib/business-types.js";
 import { extractOrderEmail } from "./product-lookup.server.js";
@@ -16,7 +17,6 @@ import { matchOrderLines } from "./import.server.js";
 import { saveEmailedOrder } from "./orders.server.js";
 import { findBusinessContext } from "./business.server.js";
 
-const PROFILE_ID = 1;
 const LOCAL_PREFIX = "orders-";
 
 export function inboundDomain() {
@@ -24,13 +24,13 @@ export function inboundDomain() {
 }
 
 export async function ensureInboundToken(reset = false) {
-  const rows = await db.select({ token: businessProfile.inboundToken }).from(businessProfile).where(eq(businessProfile.id, PROFILE_ID));
+  const rows = await db.select({ token: businessProfile.inboundToken }).from(businessProfile).where(mine(businessProfile));
   const current = rows[0]?.token ?? "";
   if (current && !reset) return current;
   const token = randomBytes(9).toString("hex");
   await db
     .insert(businessProfile)
-    .values({ ...EMPTY_PROFILE, id: PROFILE_ID, inboundToken: token })
+    .values({ ...EMPTY_PROFILE, ...owned(), id: businessId(), inboundToken: token })
     .onConflictDoUpdate({ target: businessProfile.id, set: { inboundToken: token } });
   return token;
 }
@@ -39,7 +39,7 @@ export async function ensureInboundToken(reset = false) {
 export async function inboundSetup() {
   const domain = inboundDomain();
   const token = await ensureInboundToken();
-  const recent = await db.select().from(inboundEmails).orderBy(desc(inboundEmails.createdAt)).limit(8);
+  const recent = await db.select().from(inboundEmails).where(mine(inboundEmails)).orderBy(desc(inboundEmails.createdAt)).limit(8);
   return {
     address: domain ? `${LOCAL_PREFIX}${token}@${domain}` : "",
     missing: [
@@ -110,7 +110,7 @@ async function fetchReceivedEmail(emailId: string): Promise<ReceivedEmail> {
 async function record(row: typeof inboundEmails.$inferInsert) {
   await db
     .insert(inboundEmails)
-    .values(row)
+    .values({ ...row, ...owned() })
     .onConflictDoUpdate({ target: inboundEmails.emailId, set: { status: row.status, message: row.message, vendor: row.vendor, orderId: row.orderId } });
 }
 
@@ -124,15 +124,42 @@ export async function handleInboundEvent(event: {
 }): Promise<string> {
   if (event.type !== "email.received" || !event.data?.email_id) return "ignored";
   const domain = inboundDomain();
-  const token = await ensureInboundToken();
-  const mine = `${LOCAL_PREFIX}${token}@${domain}`.toLowerCase();
+  if (!domain) return "not for this site";
   const recipients = [...(event.data.to ?? []), ...(event.data.received_for ?? [])].map((a) =>
     (a.match(/<([^>]+)>/)?.[1] ?? a).trim().toLowerCase(),
   );
-  if (!domain || !recipients.includes(mine)) return "not for this site";
+  // The secret token in the address says which business the vendor email is for.
+  const business = await businessForInboundAddress(recipients, domain);
+  if (!business) return "not for this site";
+  return runForBusiness(business, () => readOrderEmail(event));
+}
+
+/**
+ * Which business owns one of these recipient addresses. The webhook arrives with no
+ * session, and several businesses share one receiving domain, so this deliberately
+ * looks across every business for the secret token in the address.
+ */
+async function businessForInboundAddress(recipients: string[], domain: string) {
+  const tokens = recipients
+    .filter((a) => a.endsWith(`@${domain}`) && a.startsWith(LOCAL_PREFIX))
+    .map((a) => a.slice(LOCAL_PREFIX.length, a.indexOf("@")))
+    .filter(Boolean);
+  if (!tokens.length) return null;
+  const rows = await db
+    .select({ businessId: businessProfile.businessId, token: businessProfile.inboundToken })
+    .from(businessProfile)
+    .where(and(sql`/* cross-business: inbound email address */ true`, inArray(businessProfile.inboundToken, tokens)));
+  return rows[0]?.businessId ?? null;
+}
+
+/** Reads one vendor order email, already scoped to the business it was sent to. */
+async function readOrderEmail(event: {
+  data?: { email_id?: string; from?: string; subject?: string };
+}): Promise<string> {
+  if (!event.data?.email_id) return "ignored";
 
   const emailId = event.data.email_id;
-  const already = await db.select({ id: inboundEmails.id, status: inboundEmails.status }).from(inboundEmails).where(eq(inboundEmails.emailId, emailId));
+  const already = await db.select({ id: inboundEmails.id, status: inboundEmails.status }).from(inboundEmails).where(and(mine(inboundEmails), eq(inboundEmails.emailId, emailId)));
   if (already[0]?.status === "order") return "duplicate";
 
   const base = { emailId, fromAddress: (event.data.from ?? "").slice(0, 200), subject: (event.data.subject ?? "").slice(0, 300) };

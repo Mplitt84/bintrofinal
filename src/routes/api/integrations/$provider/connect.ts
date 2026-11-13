@@ -2,6 +2,8 @@ import { createFileRoute } from '@tanstack/react-router'
 import { routeUser } from '@/server/auth.server'
 import { PROVIDERS, buildAuthorizeUrl, isConfigured, type Provider } from '@/server/integrations.server'
 import { hasFeature } from '@/server/account.server'
+import { businessForRoute } from '@/server/auth.server'
+import { runForBusiness } from '@/server/tenant'
 
 /** Starts the Square / QuickBooks OAuth handshake by redirecting to the provider. */
 export const Route = createFileRoute('/api/integrations/$provider/connect')({
@@ -11,6 +13,7 @@ export const Route = createFileRoute('/api/integrations/$provider/connect')({
         // Signed-in only (owners for connections); sign-in happens on the home page.
         const who = await routeUser(request)
         if (!who || (who !== 'open' && who.role !== 'owner')) return Response.redirect(`${new URL(request.url).origin}/?auth=${who ? 'owner-only' : 'signed-out'}`, 302)
+        return runForBusiness(businessForRoute(who), async () => {
         const origin = new URL(request.url).origin
         const provider = params.provider as Provider
         if (!PROVIDERS.includes(provider)) return new Response('Unknown integration', { status: 404 })
@@ -21,6 +24,7 @@ export const Route = createFileRoute('/api/integrations/$provider/connect')({
           return Response.redirect(`${origin}/?settings=integrations&error=${provider}-not-configured`, 302)
         }
         return Response.redirect(await buildAuthorizeUrl(provider, origin), 302)
+        })
       },
     },
   },

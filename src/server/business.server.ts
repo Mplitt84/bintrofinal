@@ -1,13 +1,13 @@
 import { and, asc, desc, eq, gt, gte, inArray, like, lt, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { businessId, mine, owned } from "./tenant.js";
 import { budgets, businessProfile, expenseReceipts, expenses, movements, productCategories, products, teamMembers } from "../../db/schema.js";
 import { EMPTY_PROFILE, businessTypeById, type BusinessProfile, type BusinessType } from "../lib/business-types.js";
 import { DEFAULT_TAX_GROUP, isTaxGroupId, type ProductCategory, type TaxGroupId } from "../lib/tax-categories.js";
 
-const PROFILE_ID = 1;
 
 export async function findBusinessProfile(): Promise<BusinessProfile> {
-  const rows = await db.select().from(businessProfile).where(eq(businessProfile.id, PROFILE_ID));
+  const rows = await db.select().from(businessProfile).where(mine(businessProfile));
   const row = rows[0];
   if (!row) return { ...EMPTY_PROFILE };
   return {
@@ -32,15 +32,15 @@ export async function saveBusinessProfile(data: Partial<BusinessProfile>) {
   const values = { ...data, updatedAt: new Date() };
   await db
     .insert(businessProfile)
-    .values({ ...EMPTY_PROFILE, ...values, id: PROFILE_ID })
-    .onConflictDoUpdate({ target: businessProfile.id, set: values });
+    .values({ ...EMPTY_PROFILE, ...values, ...owned(), id: businessId() })
+    .onConflictDoUpdate({ target: businessProfile.businessId, set: values });
   return findBusinessProfile();
 }
 
 // --- Product categories ------------------------------------------------------
 
 export async function findProductCategories(): Promise<ProductCategory[]> {
-  const rows = await db.select().from(productCategories).orderBy(asc(productCategories.name));
+  const rows = await db.select().from(productCategories).where(mine(productCategories)).orderBy(asc(productCategories.name));
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
@@ -58,10 +58,10 @@ export async function upsertProductCategories(items: { name: string; taxGroup: T
     const found = byName.get(name.toLowerCase());
     if (found) {
       if (found.taxGroup !== item.taxGroup) {
-        await db.update(productCategories).set({ taxGroup: item.taxGroup }).where(eq(productCategories.id, found.id));
+        await db.update(productCategories).set({ taxGroup: item.taxGroup }).where(and(mine(productCategories), eq(productCategories.id, found.id)));
       }
     } else {
-      await db.insert(productCategories).values({ name, taxGroup: item.taxGroup }).onConflictDoNothing();
+      await db.insert(productCategories).values({ ...owned(), name, taxGroup: item.taxGroup }).onConflictDoNothing();
       byName.set(name.toLowerCase(), { id: 0, name, taxGroup: item.taxGroup });
     }
   }
@@ -69,7 +69,7 @@ export async function upsertProductCategories(items: { name: string; taxGroup: T
 }
 
 export async function deleteProductCategories(ids: number[]) {
-  if (ids.length) await db.delete(productCategories).where(inArray(productCategories.id, ids));
+  if (ids.length) await db.delete(productCategories).where(and(mine(productCategories), inArray(productCategories.id, ids)));
   return findProductCategories();
 }
 
@@ -84,25 +84,25 @@ export async function findBusinessContext(): Promise<BusinessType> {
 }
 
 export async function findTeamMembers() {
-  return db.select().from(teamMembers).orderBy(asc(teamMembers.name));
+  return db.select().from(teamMembers).where(mine(teamMembers)).orderBy(asc(teamMembers.name));
 }
 
 export async function insertTeamMember(name: string, roles: { isProvider?: boolean; isAdmin?: boolean } = {}) {
   await db
     .insert(teamMembers)
-    .values({ name, isProvider: roles.isProvider ?? true, isAdmin: roles.isAdmin ?? false })
+    .values({ ...owned(), name, isProvider: roles.isProvider ?? true, isAdmin: roles.isAdmin ?? false })
     .onConflictDoNothing();
   return findTeamMembers();
 }
 
 /** Set whether a team member sees clients and/or works the admin side. */
 export async function setTeamMemberRoles(id: number, roles: { isProvider: boolean; isAdmin: boolean }) {
-  await db.update(teamMembers).set(roles).where(eq(teamMembers.id, id));
+  await db.update(teamMembers).set(roles).where(and(mine(teamMembers), eq(teamMembers.id, id)));
   return findTeamMembers();
 }
 
 export async function deleteTeamMember(id: number) {
-  await db.delete(teamMembers).where(eq(teamMembers.id, id));
+  await db.delete(teamMembers).where(and(mine(teamMembers), eq(teamMembers.id, id)));
   return findTeamMembers();
 }
 
@@ -119,6 +119,7 @@ export async function insertExpense(data: ExpenseInput) {
   const [row] = await db
     .insert(expenses)
     .values({
+      ...owned(),
       spentOn: data.spentOn,
       amountCents: data.amountCents,
       category: data.category ?? "",
@@ -131,20 +132,20 @@ export async function insertExpense(data: ExpenseInput) {
 }
 
 export async function updateExpense(id: number, data: Partial<ExpenseInput>) {
-  const [row] = await db.update(expenses).set(data).where(eq(expenses.id, id)).returning();
+  const [row] = await db.update(expenses).set(data).where(and(mine(expenses), eq(expenses.id, id))).returning();
   return row;
 }
 
 export async function deleteExpense(id: number) {
-  await db.delete(expenseReceipts).where(eq(expenseReceipts.expenseId, id));
-  await db.delete(expenses).where(eq(expenses.id, id));
+  await db.delete(expenseReceipts).where(and(mine(expenseReceipts), eq(expenseReceipts.expenseId, id)));
+  await db.delete(expenses).where(and(mine(expenses), eq(expenses.id, id)));
 }
 
 export async function findExpensesForMonth(month: string) {
   const rows = await db
     .select()
     .from(expenses)
-    .where(like(expenses.spentOn, `${month}-%`))
+    .where(and(mine(expenses), like(expenses.spentOn, `${month}-%`)))
     .orderBy(desc(expenses.spentOn), desc(expenses.id));
   const withReceipt = await expenseIdsWithReceipt(rows.map((r) => r.id));
   return rows.map((r) => ({ ...r, hasReceipt: withReceipt.has(r.id) }));
@@ -154,7 +155,7 @@ export async function findExpensesForMonth(month: string) {
 
 export async function expenseIdsWithReceipt(ids: number[]) {
   if (!ids.length) return new Set<number>();
-  const rows = await db.select({ id: expenseReceipts.expenseId }).from(expenseReceipts).where(inArray(expenseReceipts.expenseId, ids));
+  const rows = await db.select({ id: expenseReceipts.expenseId }).from(expenseReceipts).where(and(mine(expenseReceipts), inArray(expenseReceipts.expenseId, ids)));
   return new Set(rows.map((r) => r.id));
 }
 
@@ -162,33 +163,33 @@ export async function expenseIdsWithReceipt(ids: number[]) {
 export async function saveExpenseReceipt(expenseId: number, mediaType: string, data: string) {
   await db
     .insert(expenseReceipts)
-    .values({ expenseId, mediaType, data })
+    .values({ ...owned(), expenseId, mediaType, data })
     .onConflictDoUpdate({ target: expenseReceipts.expenseId, set: { mediaType, data, createdAt: new Date() } });
-  await db.update(expenses).set({ quickbooksReceiptId: "" }).where(eq(expenses.id, expenseId));
+  await db.update(expenses).set({ quickbooksReceiptId: "" }).where(and(mine(expenses), eq(expenses.id, expenseId)));
 }
 
 export async function findExpenseReceipt(expenseId: number) {
-  const [row] = await db.select().from(expenseReceipts).where(eq(expenseReceipts.expenseId, expenseId));
+  const [row] = await db.select().from(expenseReceipts).where(and(mine(expenseReceipts), eq(expenseReceipts.expenseId, expenseId)));
   return row ?? null;
 }
 
 export async function deleteExpenseReceipt(expenseId: number) {
-  await db.delete(expenseReceipts).where(eq(expenseReceipts.expenseId, expenseId));
+  await db.delete(expenseReceipts).where(and(mine(expenseReceipts), eq(expenseReceipts.expenseId, expenseId)));
 }
 
 export async function findExpensesByIds(ids: number[]) {
   if (ids.length === 0) return [];
-  return db.select().from(expenses).where(inArray(expenses.id, ids));
+  return db.select().from(expenses).where(and(mine(expenses), inArray(expenses.id, ids)));
 }
 
 export async function setMonthBudget(month: string, amountCents: number | null) {
   if (amountCents === null) {
-    await db.delete(budgets).where(eq(budgets.month, month));
+    await db.delete(budgets).where(and(mine(budgets), eq(budgets.month, month)));
     return;
   }
   await db
     .insert(budgets)
-    .values({ month, amountCents })
+    .values({ ...owned(), month, amountCents })
     .onConflictDoUpdate({ target: budgets.month, set: { amountCents } });
 }
 
@@ -206,6 +207,7 @@ async function inventorySpend(start: Date, end: Date) {
     .innerJoin(products, eq(movements.productId, products.id))
     .where(
       and(
+        mine(movements),
         inArray(movements.type, ["in", "receive"]),
         gt(movements.delta, 0),
         gte(movements.createdAt, start),
@@ -226,6 +228,7 @@ async function inventorySpendByCategory(start: Date, end: Date) {
     .innerJoin(products, eq(movements.productId, products.id))
     .where(
       and(
+        mine(movements),
         inArray(movements.type, ["in", "receive"]),
         gt(movements.delta, 0),
         gte(movements.createdAt, start),
@@ -242,7 +245,7 @@ async function inventorySpendByCategory(start: Date, end: Date) {
 export async function computeBudgetOverview(months: MonthWindow[]) {
   const profile = await findBusinessProfile();
   const keys = months.map((m) => m.key);
-  const overrides = keys.length ? await db.select().from(budgets).where(inArray(budgets.month, keys)) : [];
+  const overrides = keys.length ? await db.select().from(budgets).where(and(mine(budgets), inArray(budgets.month, keys))) : [];
   const overrideByMonth = new Map(overrides.map((b) => [b.month, b.amountCents]));
 
   return Promise.all(
@@ -256,7 +259,7 @@ export async function computeBudgetOverview(months: MonthWindow[]) {
             cents: sql<number>`coalesce(sum(${expenses.amountCents}), 0)::int`,
           })
           .from(expenses)
-          .where(like(expenses.spentOn, `${m.key}-%`))
+          .where(and(mine(expenses), like(expenses.spentOn, `${m.key}-%`)))
           .groupBy(expenses.category),
       ]);
       const inventoryCents = vendors.reduce((s, v) => s + Number(v.cents), 0);

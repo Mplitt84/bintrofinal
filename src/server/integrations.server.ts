@@ -12,6 +12,7 @@
 import { randomBytes } from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { mine, owned } from "./tenant.js";
 import { expenses, integrationLogs, integrations, products, squareOutbox } from "../../db/schema.js";
 import { SQUARE_STAFF_NAME, applyMovement, findProductByBarcode } from "./inventory.server.js";
 import { findExpenseReceipt, findExpensesForMonth, findInventorySpend, findProductCategories, upsertProductCategories, type MonthWindow } from "./business.server.js";
@@ -69,15 +70,15 @@ function quickbooksApiBase() {
 }
 
 async function findIntegration(provider: Provider) {
-  const rows = await db.select().from(integrations).where(eq(integrations.provider, provider));
+  const rows = await db.select().from(integrations).where(and(mine(integrations), eq(integrations.provider, provider)));
   return rows[0] ?? null;
 }
 
 async function saveIntegration(provider: Provider, values: Partial<Omit<Integration, "provider">>) {
   await db
     .insert(integrations)
-    .values({ provider, ...values })
-    .onConflictDoUpdate({ target: integrations.provider, set: values });
+    .values({ ...owned(), provider, ...values })
+    .onConflictDoUpdate({ target: [integrations.businessId, integrations.provider], set: values });
 }
 
 const LOG_DAYS = 365;
@@ -93,6 +94,7 @@ export async function logIntegrationError(entry: {
 }) {
   try {
     await db.insert(integrationLogs).values({
+      ...owned(),
       provider: entry.provider,
       action: entry.action.slice(0, 200),
       status: entry.status ?? 0,
@@ -100,7 +102,7 @@ export async function logIntegrationError(entry: {
       intuitTid: entry.intuitTid ?? "",
       message: entry.message.slice(0, 2000),
     });
-    await db.delete(integrationLogs).where(lt(integrationLogs.createdAt, new Date(Date.now() - LOG_DAYS * 86_400_000)));
+    await db.delete(integrationLogs).where(and(mine(integrationLogs), lt(integrationLogs.createdAt, new Date(Date.now() - LOG_DAYS * 86_400_000))));
   } catch (error) {
     console.error("Couldn't save integration log", error);
   }
@@ -111,22 +113,22 @@ export async function integrationErrorLog(provider: Provider) {
   const rows = await db
     .select()
     .from(integrationLogs)
-    .where(and(eq(integrationLogs.provider, provider), gte(integrationLogs.createdAt, new Date(Date.now() - LOG_DAYS * 86_400_000))))
+    .where(and(mine(integrationLogs), eq(integrationLogs.provider, provider), gte(integrationLogs.createdAt, new Date(Date.now() - LOG_DAYS * 86_400_000))))
     .orderBy(desc(integrationLogs.id))
     .limit(5000);
   return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
 }
 
 export async function disconnectIntegration(provider: Provider) {
-  await db.delete(integrations).where(eq(integrations.provider, provider));
+  await db.delete(integrations).where(and(mine(integrations), eq(integrations.provider, provider)));
 }
 
 export async function integrationStatus() {
-  const rows = await db.select().from(integrations);
+  const rows = await db.select().from(integrations).where(mine(integrations));
   const outbox = await db
     .select({ status: squareOutbox.status, n: sql<number>`count(*)::int` })
     .from(squareOutbox)
-    .where(inArray(squareOutbox.status, ["pending", "error"]))
+    .where(and(mine(squareOutbox), inArray(squareOutbox.status, ["pending", "error"])))
     .groupBy(squareOutbox.status);
   const [lastError] = await db
     .select({ error: squareOutbox.error })
@@ -492,7 +494,7 @@ export async function importSquareCatalog() {
     .filter((name) => name && !known.has(name.toLowerCase()));
   if (newCategories.length) await upsertProductCategories(newCategories.map((name) => ({ name, taxGroup: "resale" as const })));
   let skipped = 0;
-  const existing = await db.select().from(products);
+  const existing = await db.select().from(products).where(mine(products));
   const byVariation = new Map(existing.filter((p) => p.squareVariationId).map((p) => [p.squareVariationId, p]));
 
   let created = 0;
@@ -557,7 +559,7 @@ export async function importSquareCatalog() {
       }
       if (linkedExisting.length) {
         await db.insert(squareOutbox).values(
-          linkedExisting.map((p) => ({ productId: p.id, variationId: p.variationId, kind: "count", quantity: Math.max(0, p.qty) })),
+          linkedExisting.map((p) => ({ ...owned(), productId: p.id, variationId: p.variationId, kind: "count", quantity: Math.max(0, p.qty) })),
         );
         countsSent = (await flushSquareOutbox()).sent;
       }
@@ -588,7 +590,7 @@ export async function syncSquareSales() {
   if (locationIds.length === 0) return { sales: 0, units: 0, skipped: 0 };
 
   const since = row.lastSyncAt ?? row.connectedAt ?? new Date(Date.now() - 86_400_000);
-  const mapped = await db.select({ id: products.id, variation: products.squareVariationId }).from(products);
+  const mapped = await db.select({ id: products.id, variation: products.squareVariationId }).from(products).where(mine(products));
   const productByVariation = new Map(mapped.filter((p) => p.variation).map((p) => [p.variation, p.id]));
 
   let cursor = "";
@@ -729,7 +731,7 @@ export async function flushSquareOutbox() {
   const pending = await db
     .select()
     .from(squareOutbox)
-    .where(eq(squareOutbox.status, "pending"))
+    .where(and(mine(squareOutbox), eq(squareOutbox.status, "pending")))
     .orderBy(asc(squareOutbox.id))
     .limit(500);
   if (pending.length === 0) return { sent: 0, failed: 0 };
@@ -741,14 +743,14 @@ export async function flushSquareOutbox() {
   let sent = 0;
   let failed = 0;
   const markSent = async (ids: number[]) => {
-    await db.update(squareOutbox).set({ status: "sent", error: "", sentAt: new Date() }).where(inArray(squareOutbox.id, ids));
+    await db.update(squareOutbox).set({ status: "sent", error: "", sentAt: new Date() }).where(and(mine(squareOutbox), inArray(squareOutbox.id, ids)));
     sent += ids.length;
   };
   const markFailed = async (ids: number[], message: string, final: boolean) => {
     await db
       .update(squareOutbox)
       .set({ status: final ? "error" : "pending", error: message.slice(0, 500), attempts: sql`${squareOutbox.attempts} + 1` })
-      .where(inArray(squareOutbox.id, ids));
+      .where(and(mine(squareOutbox), inArray(squareOutbox.id, ids)));
     if (final) failed += ids.length;
   };
 
@@ -779,12 +781,12 @@ export async function sendAllCountsToSquare() {
   await activeIntegration("square");
   // Count any Square sales first so the counts sent already reflect them.
   await syncSquareSales();
-  const linked = await db.select().from(products).where(sql`${products.squareVariationId} is not null and ${products.squareVariationId} <> ''`);
+  const linked = await db.select().from(products).where(and(mine(products), sql`${products.squareVariationId} is not null and ${products.squareVariationId} <> ''`));
   if (linked.length === 0) return { queued: 0, sent: 0, failed: 0 };
   // Older queued changes are superseded by the full count.
-  await db.delete(squareOutbox).where(eq(squareOutbox.status, "pending"));
+  await db.delete(squareOutbox).where(and(mine(squareOutbox), eq(squareOutbox.status, "pending")));
   await db.insert(squareOutbox).values(
-    linked.map((p) => ({ productId: p.id, variationId: p.squareVariationId!, kind: "count", quantity: Math.max(0, p.qty) })),
+    linked.map((p) => ({ ...owned(), productId: p.id, variationId: p.squareVariationId!, kind: "count", quantity: Math.max(0, p.qty) })),
   );
   const result = await flushSquareOutbox();
   return { queued: linked.length, ...result };
@@ -1005,7 +1007,7 @@ export async function pushMonthToQuickBooks(window: MonthWindow) {
         description: [e.category, e.vendor, e.note].filter(Boolean).join(" · ") || "Expense",
         memo: `Logged in Bintro${e.staffName ? ` by ${e.staffName}` : ""}`,
       });
-      await db.update(expenses).set({ quickbooksId: purchaseId }).where(eq(expenses.id, e.id));
+      await db.update(expenses).set({ quickbooksId: purchaseId }).where(and(mine(expenses), eq(expenses.id, e.id)));
       sentExpenses++;
     }
     // The receipt photo goes with it (also for expenses sent before the photo was added).
@@ -1014,7 +1016,7 @@ export async function pushMonthToQuickBooks(window: MonthWindow) {
         const receipt = await findExpenseReceipt(e.id);
         if (receipt) {
           const attachId = await qbAttachReceipt(row, purchaseId, receipt, `receipt-${e.spentOn}-${e.vendor || e.category || e.id}`);
-          await db.update(expenses).set({ quickbooksReceiptId: attachId }).where(eq(expenses.id, e.id));
+          await db.update(expenses).set({ quickbooksReceiptId: attachId }).where(and(mine(expenses), eq(expenses.id, e.id)));
           sentReceipts++;
         }
       } catch (error) {

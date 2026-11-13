@@ -5,6 +5,7 @@
  */
 import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { mine, owned } from "./tenant.js";
 import { products, stockCountLines, stockCounts } from "../../db/schema.js";
 import { applyMovement, flushSquareSoon } from "./inventory.server.js";
 import type { CountLineDetail, CountSummary } from "../lib/counts.js";
@@ -23,7 +24,7 @@ export async function approveCount(params: {
     console.error("Square sales sync before count failed", error);
   }
   const ids = params.lines.map((l) => l.productId);
-  const rows = ids.length ? await db.select().from(products).where(inArray(products.id, ids)) : [];
+  const rows = ids.length ? await db.select().from(products).where(and(mine(products), inArray(products.id, ids))) : [];
   const byId = new Map(rows.map((p) => [p.id, p]));
   const lines = params.lines
     .filter((l) => byId.has(l.productId))
@@ -44,10 +45,11 @@ export async function approveCount(params: {
       unitsOver: changed.filter((l) => l.diff > 0).reduce((s, l) => s + l.diff, 0),
       unitsShort: changed.filter((l) => l.diff < 0).reduce((s, l) => s - l.diff, 0),
       valueDiffCents: changed.reduce((s, l) => s + l.diff * l.unitCostCents, 0),
+      ...owned(),
     })
     .returning();
   for (let i = 0; i < lines.length; i += 200) {
-    await db.insert(stockCountLines).values(lines.slice(i, i + 200).map((l) => ({ ...l, countId: count.id, reason: l.diff === 0 ? "" : l.reason })));
+    await db.insert(stockCountLines).values(lines.slice(i, i + 200).map((l) => ({ ...l, ...owned(), countId: count.id, reason: l.diff === 0 ? "" : l.reason })));
   }
   for (const l of changed) {
     await applyMovement({
@@ -89,7 +91,7 @@ function summarize(c: typeof stockCounts.$inferSelect): CountSummary {
 }
 
 export async function countWithLines(countId: number) {
-  const [count] = await db.select().from(stockCounts).where(eq(stockCounts.id, countId));
+  const [count] = await db.select().from(stockCounts).where(and(mine(stockCounts), eq(stockCounts.id, countId)));
   if (!count) return null;
   return { count: summarize(count), lines: await countLines(countId) };
 }
@@ -108,10 +110,10 @@ export async function undoCount(countId: number, staffName: string) {
     .returning();
   if (!count) throw new Error("That count was already undone.");
 
-  const lines = await db.select().from(stockCountLines).where(eq(stockCountLines.countId, countId));
+  const lines = await db.select().from(stockCountLines).where(and(mine(stockCountLines), eq(stockCountLines.countId, countId)));
   const ids = lines.map((l) => l.productId);
   const existing = new Set(
-    ids.length ? (await db.select({ id: products.id }).from(products).where(inArray(products.id, ids))).map((p) => p.id) : [],
+    ids.length ? (await db.select({ id: products.id }).from(products).where(and(mine(products), inArray(products.id, ids)))).map((p) => p.id) : [],
   );
   let reversed = 0;
   for (const l of lines) {
@@ -147,12 +149,12 @@ export async function undoCount(countId: number, staffName: string) {
 }
 
 export async function recentCounts(limit = 20): Promise<CountSummary[]> {
-  const rows = await db.select().from(stockCounts).orderBy(desc(stockCounts.createdAt)).limit(limit);
+  const rows = await db.select().from(stockCounts).where(mine(stockCounts)).orderBy(desc(stockCounts.createdAt)).limit(limit);
   return rows.map(summarize);
 }
 
 export async function countLines(countId: number): Promise<CountLineDetail[]> {
-  const rows = await db.select().from(stockCountLines).where(eq(stockCountLines.countId, countId));
+  const rows = await db.select().from(stockCountLines).where(and(mine(stockCountLines), eq(stockCountLines.countId, countId)));
   return rows
     .map((r) => ({ productId: r.productId, name: r.name, expected: r.expected, counted: r.counted, diff: r.diff, unitCostCents: r.unitCostCents, reason: r.reason }))
     .sort((a, b) => Math.abs(b.diff * b.unitCostCents) - Math.abs(a.diff * a.unitCostCents) || Math.abs(b.diff) - Math.abs(a.diff));

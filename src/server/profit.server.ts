@@ -8,6 +8,7 @@
  */
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { businessId, mine } from "./tenant.js";
 import { movements, products, profitExclusions } from "../../db/schema.js";
 import {
   findBusinessProfile,
@@ -44,7 +45,7 @@ export async function computeProfit(
   const deadSince = new Date(now.getTime() - DEAD_STOCK_DAYS * DAY_MS);
 
   const [all, categories, profile, outs, lastOut, counts, exclusions] = await Promise.all([
-    db.select().from(products),
+    db.select().from(products).where(mine(products)),
     findProductCategories(),
     findBusinessProfile(),
     db
@@ -53,7 +54,7 @@ export async function computeProfit(
         units: sql<number>`coalesce(sum(-${movements.delta}), 0)::int`,
       })
       .from(movements)
-      .where(and(eq(movements.type, "out"), gte(movements.createdAt, since)))
+      .where(and(mine(movements), eq(movements.type, "out"), gte(movements.createdAt, since)))
       .groupBy(movements.productId),
     db
       .select({
@@ -61,7 +62,7 @@ export async function computeProfit(
         at: sql<string>`max(${movements.createdAt})`,
       })
       .from(movements)
-      .where(eq(movements.type, "out"))
+      .where(and(mine(movements), eq(movements.type, "out")))
       .groupBy(movements.productId),
     db
       .select({
@@ -72,12 +73,13 @@ export async function computeProfit(
       .from(movements)
       .where(
         and(
+          mine(movements),
           eq(movements.type, "adjust"),
           gte(movements.createdAt, since),
           lt(movements.delta, 0),
         ),
       ),
-    db.select().from(profitExclusions),
+    db.select().from(profitExclusions).where(mine(profitExclusions)),
   ]);
 
   // Rows removed as incorrect: left off the lists and out of the totals.
@@ -213,7 +215,7 @@ export async function computeProfit(
 export async function excludeProfitRow(productId: number, key: ProfitListKey, staffName: string) {
   await db
     .insert(profitExclusions)
-    .values({ productId, listKey: key, staffName })
+    .values({ businessId: businessId(), productId, listKey: key, staffName })
     .onConflictDoNothing();
 }
 
@@ -221,5 +223,5 @@ export async function excludeProfitRow(productId: number, key: ProfitListKey, st
 export async function restoreProfitRow(productId: number, key: ProfitListKey) {
   await db
     .delete(profitExclusions)
-    .where(and(eq(profitExclusions.productId, productId), eq(profitExclusions.listKey, key)));
+    .where(and(mine(profitExclusions), eq(profitExclusions.productId, productId), eq(profitExclusions.listKey, key)));
 }

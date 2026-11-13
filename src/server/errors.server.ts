@@ -4,6 +4,7 @@
  */
 import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { businessId, mine, owned } from "./tenant.js";
 import { errorReports } from "../../db/schema.js";
 
 /** How long a report is kept before it is cleared out. */
@@ -35,9 +36,10 @@ export async function recordError(input: {
       detail: input.detail.slice(0, 1200),
       device: input.device.slice(0, 80),
       staffName: input.staffName.slice(0, 60),
+      ...owned(),
     })
     .onConflictDoUpdate({
-      target: [errorReports.message, errorReports.where],
+      target: [errorReports.businessId, errorReports.message, errorReports.where],
       set: {
         hits: sql`${errorReports.hits} + 1`,
         lastSeen: new Date(),
@@ -52,6 +54,7 @@ export async function findErrors(limit = 50): Promise<ErrorReport[]> {
   const rows = await db
     .select()
     .from(errorReports)
+    .where(mine(errorReports))
     .orderBy(desc(errorReports.lastSeen))
     .limit(Math.min(limit, 200));
   return rows.map((r) => ({
@@ -73,26 +76,27 @@ export async function countRecentErrors(days = 7) {
   const [row] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(errorReports)
-    .where(sql`${errorReports.lastSeen} >= ${since}`);
+    .where(and(mine(errorReports), sql`${errorReports.lastSeen} >= ${since}`));
   return row?.n ?? 0;
 }
 
 /** Marks one problem as dealt with. */
 export async function clearError(id: number) {
-  await db.delete(errorReports).where(eq(errorReports.id, id));
+  await db.delete(errorReports).where(and(mine(errorReports), eq(errorReports.id, id)));
 }
 
 export async function clearAllErrors() {
-  await db.delete(errorReports);
+  await db.delete(errorReports).where(mine(errorReports));
 }
 
 /** Drops reports older than the keep window, and any beyond the cap. */
 export async function pruneErrors() {
   const cutoff = new Date(Date.now() - ERROR_KEEP_DAYS * 86_400_000);
-  await db.delete(errorReports).where(lt(errorReports.lastSeen, cutoff));
+  await db.delete(errorReports).where(and(mine(errorReports), lt(errorReports.lastSeen, cutoff)));
   await db.delete(errorReports).where(
     and(
-      sql`${errorReports.id} not in (select id from ${errorReports} order by last_seen desc limit ${MAX_ROWS})`,
+      mine(errorReports),
+      sql`${errorReports.id} not in (select id from ${errorReports} where business_id = ${businessId()} order by last_seen desc limit ${MAX_ROWS})`,
     ),
   );
 }
