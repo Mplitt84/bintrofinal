@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check } from 'lucide-react'
 import type { Product } from './types'
-import { Sheet, SheetActions } from '@/components/ui/Sheet'
+import { Field, Sheet, SheetActions } from '@/components/ui/Sheet'
 import { centsToDollars } from '@/components/ui/bits'
 import { useToast } from '@/components/ui/Toast'
 import { mergeProducts } from '@/server/inventory.functions'
@@ -15,8 +15,12 @@ import {
   undoPars,
   getCategoryList,
   deleteCategory,
+  getVendorGroups,
+  getVendorList,
+  mergeVendors,
+  renameVendorFn,
 } from '@/server/tidy.functions'
-import type { CategoryGroup, DuplicateGroup, SmartParResult } from '@/lib/tidy'
+import type { CategoryGroup, DuplicateGroup, SmartParResult, VendorGroup } from '@/lib/tidy'
 import { useBusiness } from '@/components/business/BusinessContext'
 import { updateBusinessProfile } from '@/server/business.functions'
 
@@ -677,5 +681,174 @@ export function CategoryList({ onChanged }: { onChanged?: () => void | Promise<v
         ))}
       </ul>
     </section>
+  )
+}
+
+/* ------------------------------------------------------------------ Suppliers */
+
+/**
+ * Settings → Suppliers: the one place a supplier's name can be corrected.
+ *
+ * Products carry the supplier as plain text, typed by whoever added the product or
+ * read off an invoice, so the same shop arrives as "Hairstory", "www.hairstory.com"
+ * and "https://www.hairstory.com" — and Reports, purchase orders and vendor accuracy
+ * all count them as three. The top card offers the ones that look like one supplier;
+ * the list below renames any single one, which is the fix for a supplier saved as a
+ * web address.
+ */
+export function SupplierTidy({ onChanged }: { onChanged?: () => void | Promise<void> }) {
+  const toast = useToast()
+  const [groups, setGroups] = useState<VendorGroup[] | null>(null)
+  const [list, setList] = useState<{ name: string; products: number }[] | null>(null)
+  const [pick, setPick] = useState<Record<number, string>>({})
+  const [busy, setBusy] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<{ name: string; products: number } | null>(null)
+  const [nextName, setNextName] = useState('')
+
+  const load = () =>
+    Promise.all([getVendorGroups(), getVendorList()])
+      .then(([g, l]) => {
+        setGroups(g as VendorGroup[])
+        setList(l as { name: string; products: number }[])
+        setPick(Object.fromEntries((g as VendorGroup[]).map((grp, i) => [i, grp.names[0].name])))
+      })
+      .catch(() => {
+        setGroups([])
+        setList([])
+      })
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  async function merge(i: number, g: VendorGroup) {
+    const to = pick[i] ?? g.names[0].name
+    setBusy(`merge-${i}`)
+    try {
+      await mergeVendors({ data: { from: g.names.map((n) => n.name), to } })
+      await load()
+      toast(`Now all “${to.trim()}”`)
+      await onChanged?.()
+    } catch {
+      toast("Couldn't merge those suppliers. Try again.")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function rename() {
+    if (!renaming) return
+    const to = nextName.trim()
+    if (!to || to === renaming.name) return setRenaming(null)
+    setBusy('rename')
+    try {
+      const res = (await renameVendorFn({ data: { from: renaming.name, to } })) as { moved: number }
+      await load()
+      setRenaming(null)
+      toast(`${res.moved} ${res.moved === 1 ? 'product now says' : 'products now say'} “${to}”`)
+      await onChanged?.()
+    } catch {
+      toast("Couldn't rename that supplier. Try again.")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <>
+      {groups && groups.length > 0 && (
+        <section className="bg-warn-tint rounded-2xl p-4 mb-5">
+          <h3 className="m-0 mb-1 text-base font-bold">Tidy up suppliers</h3>
+          <p className="m-0 mb-3 text-sm text-ink-2">
+            These look like one supplier typed several ways, which splits your spending, your orders and vendor accuracy
+            across them.
+          </p>
+          <ul className="list-none m-0 p-0 grid gap-2.5">
+            {groups.map((g, i) => (
+              <li key={g.names.map((n) => n.name).join('|')} className="bg-white rounded-xl p-3">
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {g.names.map((n) => (
+                    <button
+                      key={n.name}
+                      type="button"
+                      className="chip"
+                      aria-pressed={pick[i] === n.name}
+                      onClick={() => setPick((p) => ({ ...p, [i]: n.name }))}
+                    >
+                      {pick[i] === n.name && <Check size={14} />}
+                      {n.name} · {n.products}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={busy !== null}
+                  onClick={() => merge(i, g)}
+                >
+                  {busy === `merge-${i}` ? 'Merging…' : `Use “${(pick[i] ?? g.names[0].name).trim()}” for all ${g.total}`}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section className="bg-surface rounded-2xl p-4">
+        <h3 className="m-0 mb-1 text-base font-bold">All suppliers in use</h3>
+        <p className="m-0 mb-3 text-sm text-ink-2">
+          A supplier saved as a web address reads badly on an order and in Reports. Rename it to the name you would say out
+          loud, and every product that carries it follows.
+        </p>
+        {!list ? (
+          <div className="skel h-20 rounded-xl" />
+        ) : list.length === 0 ? (
+          <p className="m-0 text-sm text-ink-2">No suppliers on your products yet.</p>
+        ) : (
+          <ul className="list-none m-0 p-0 bg-white rounded-xl px-3">
+            {list.map((v) => (
+              <li key={v.name} className="flex items-center gap-3 py-2.5 border-b border-line last:border-b-0">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[14px] font-semibold break-words">{v.name}</span>
+                  <span className="block text-[12px] text-ink-2">
+                    {v.products} {v.products === 1 ? 'product' : 'products'}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-text btn-sm shrink-0"
+                  onClick={() => {
+                    setRenaming(v)
+                    setNextName(v.name)
+                  }}
+                >
+                  Rename
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {renaming && (
+        <Sheet open onClose={() => setRenaming(null)} title={`Rename ${renaming.name}`}>
+          <Field label="Supplier name">
+            <input className="field-input" value={nextName} autoFocus onChange={(e) => setNextName(e.target.value)} />
+          </Field>
+          <p className="text-[12px] text-ink-2 mt-1">
+            {renaming.products} {renaming.products === 1 ? 'product' : 'products'} will carry the new name. Past orders keep
+            the name they were sent under.
+          </p>
+          <SheetActions>
+            <button type="button" className="btn btn-text" onClick={() => setRenaming(null)}>
+              Cancel
+            </button>
+            <button type="button" className="btn btn-primary" onClick={rename} disabled={busy === 'rename'}>
+              {busy === 'rename' ? 'Saving…' : 'Save'}
+            </button>
+          </SheetActions>
+        </Sheet>
+      )}
+    </>
   )
 }

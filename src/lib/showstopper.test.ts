@@ -119,7 +119,10 @@ describe('buildShowstopper cards', () => {
 
   it('names a quiet team member instead of ranking them last', () => {
     const r = buildShowstopper(
-      input({ sales: [sale('Minnie')], team: [{ name: 'Minnie', isProvider: true }, { name: 'Marsherrie', isProvider: false }] }),
+      input({ sales: [sale('Minnie')], team: [
+          { name: 'Minnie', isProvider: true, sellsRetail: true },
+          { name: 'Marsherrie', isProvider: false, sellsRetail: true },
+        ] }),
     )
     expect(r.cards.map((c) => c.name)).toEqual(['Minnie'])
     expect(r.quiet.map((c) => c.name)).toEqual(['Marsherrie'])
@@ -294,7 +297,7 @@ describe('names that are not people', () => {
     const r = buildShowstopper(
       input({
         sales: [sale('Minnie'), sale('Square POS', { units: 3 }), sale(''), sale('Formulas')],
-        team: [{ name: 'Minnie', isProvider: true }],
+        team: [{ name: 'Minnie', isProvider: true, sellsRetail: true }],
       }),
     )
     expect(r.cards.map((c) => c.name)).toEqual(['Minnie'])
@@ -317,5 +320,31 @@ describe('names that are not people', () => {
     const r = buildShowstopper(input({ visits: [visit('', { recommended: 2, takenHome: 0 })] }))
     expect(r.cards).toHaveLength(0)
     expect(r.blindSpots.join(' ')).toContain('no team member')
+  })
+})
+
+describe('people who do not sell retail', () => {
+  const team = [
+    { name: 'Minnie', isProvider: true, sellsRetail: true },
+    { name: 'Marsherrie', isProvider: false, sellsRetail: false },
+  ]
+
+  it('leaves a contractor off the board entirely, not at the bottom of it', () => {
+    const r = buildShowstopper(input({ sales: [sale('Minnie')], team }))
+    expect(r.cards.map((c) => c.name)).toEqual(['Minnie'])
+    expect(r.quiet.map((c) => c.name)).toEqual([])
+  })
+
+  it('flags money logged under their name instead of swallowing it', () => {
+    const r = buildShowstopper(input({ sales: [sale('Minnie'), sale('Marsherrie', { units: 2 })], team }))
+    expect(r.cards.map((c) => c.name)).toEqual(['Minnie'])
+    expect(r.uncreditedCents).toBe(5600)
+    expect(r.teamSoldCents).toBe(8400)
+    expect(r.blindSpots.join(' ')).toContain('Marsherrie is marked as not selling retail')
+  })
+
+  it('never hands them a badge', () => {
+    const r = buildShowstopper(input({ sales: [sale('Marsherrie', { units: 9 }), sale('Minnie')], team }))
+    expect(r.cards.find((c) => c.name === 'Minnie')!.badges.map((b) => b.id)).toContain('top-seller')
   })
 })

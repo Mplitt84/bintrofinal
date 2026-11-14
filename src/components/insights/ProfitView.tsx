@@ -25,8 +25,8 @@ import { useToast } from "@/components/ui/Toast";
 import { ProductForm } from "@/components/inventory/ProductForm";
 import type { Product } from "@/components/inventory/types";
 import {
-  centsToDollars,
-  dollarsShort,
+
+
   EmptyState,
   PageHead,
   StatGrid,
@@ -40,6 +40,7 @@ import type {
   ProfitPeriod,
   ProfitReport,
 } from "@/lib/profit";
+import { useMoney } from "@/components/business/BusinessContext";
 
 /** The row the user tapped: which product, on which list, and what it said. */
 type Picked = ProductRef & { key: ProfitListKey; summary: string };
@@ -51,7 +52,6 @@ const LIST_LABEL = (key: ProfitListKey) =>
       ? "What your services use"
       : KIND_LABEL[key];
 
-const usd = (cents: number) => `$${centsToDollars(cents)}`;
 
 const PERIODS: { days: ProfitPeriod; label: string }[] = [
   { days: 30, label: "30 days" },
@@ -107,6 +107,7 @@ export function ProfitView({
   onChanged: () => Promise<void> | void;
   onOpenProducts?: () => void;
 }) {
+  const { money: fmt, short: fmtShort } = useMoney()
   const toast = useToast();
   const [reload, setReload] = useState(0);
   const [picked, setPicked] = useState<Picked | null>(null);
@@ -215,17 +216,17 @@ export function ProfitView({
           <StatGrid>
             <StatTile
               label={`Profit on retail sold (${report.totals.marginPct}% kept)`}
-              value={dollarsShort(report.totals.profitCents)}
+              value={fmtShort(report.totals.profitCents)}
               tone="good"
             />
             <StatTile
               label="Lost to missing, damage & theft"
-              value={dollarsShort(report.totals.shrinkCents)}
+              value={fmtShort(report.totals.shrinkCents)}
               tone={report.totals.shrinkCents ? "bad" : undefined}
             />
             <StatTile
               label="Cash sitting in stock that isn’t moving"
-              value={dollarsShort(
+              value={fmtShort(
                 report.totals.deadStockCents + report.totals.overstockCents,
               )}
               tone={
@@ -236,7 +237,7 @@ export function ProfitView({
             />
             <StatTile
               label="Products used on clients"
-              value={dollarsShort(report.totals.usedCostCents)}
+              value={fmtShort(report.totals.usedCostCents)}
             />
           </StatGrid>
 
@@ -297,7 +298,7 @@ export function ProfitView({
                         setPicked({
                           ...m,
                           key: "maker",
-                          summary: `${m.units} sold · ${usd(m.revenueCents)} in sales · ${usd(m.profitCents)} profit (keep ${m.marginPct}%)`,
+                          summary: `${m.units} sold · ${fmt(m.revenueCents)} in sales · ${fmt(m.profitCents)} profit (keep ${m.marginPct}%)`,
                         })
                       }
                     >
@@ -308,13 +309,13 @@ export function ProfitView({
                       <span className="flex-1 min-w-0">
                         <b className="block truncate text-[15px]">{name(m)}</b>
                         <span className="text-[13px] text-ink-2">
-                          {m.units} sold · {usd(m.revenueCents)} in
+                          {m.units} sold · {fmt(m.revenueCents)} in
                           sales · keep {m.marginPct}%
                         </span>
                       </span>
                       <span className="text-right shrink-0">
                         <b className="num block text-good">
-                          +{usd(m.profitCents)}
+                          +{fmt(m.profitCents)}
                         </b>
                         <span className="text-[11px] text-ink-2">profit</span>
                       </span>
@@ -349,7 +350,7 @@ export function ProfitView({
                           setPicked({
                             ...l,
                             key: l.kind,
-                            summary: `${l.why} ${usd(l.amountCents)} ${AMOUNT_NOTE[l.kind]}.`,
+                            summary: `${l.why} ${fmt(l.amountCents)} ${AMOUNT_NOTE[l.kind]}.`,
                           })
                         }
                       >
@@ -375,7 +376,7 @@ export function ProfitView({
                         </span>
                         <span className="text-right shrink-0">
                           <b className="num block text-bad">
-                            {usd(l.amountCents)}
+                            {fmt(l.amountCents)}
                           </b>
                           <span className="text-[11px] text-ink-2">
                             {AMOUNT_NOTE[l.kind]}
@@ -415,7 +416,7 @@ export function ProfitView({
                           {s.reason} · {s.units} unit{s.units === 1 ? "" : "s"}
                         </span>
                         <b className="num text-bad">
-                          {usd(s.costCents)}
+                          {fmt(s.costCents)}
                         </b>
                       </li>
                     ))}
@@ -446,7 +447,7 @@ export function ProfitView({
                       setPicked({
                         ...s,
                         key: "service",
-                        summary: `${s.units} used · ${usd(s.costCents)} in product cost`,
+                        summary: `${s.units} used · ${fmt(s.costCents)} in product cost`,
                       })
                     }
                   >
@@ -458,7 +459,7 @@ export function ProfitView({
                       </span>
                     </span>
                     <b className="num shrink-0">
-                      {usd(s.costCents)}
+                      {fmt(s.costCents)}
                     </b>
                     <ChevronRight size={16} className="text-ink-2 shrink-0" />
                   </button>

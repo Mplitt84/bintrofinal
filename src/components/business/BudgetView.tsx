@@ -35,7 +35,7 @@ import {
   StatGrid,
   StatTile,
   centsToDollars,
-  dollarsShort,
+
 } from "@/components/ui/bits";
 import { useToast } from "@/components/ui/Toast";
 import { useBusiness } from "./BusinessContext";
@@ -52,6 +52,7 @@ import {
   removeExpense,
   saveMonthBudget,
 } from "@/server/business.functions";
+import { useMoney } from "@/components/business/BusinessContext";
 
 const CHART_MONTHS = 6;
 
@@ -69,6 +70,7 @@ export function BudgetView({
   recent: MovementRow[];
   onOpenSettings: () => void;
 }) {
+  const { money: fmt, short: fmtShort } = useMoney()
   const toast = useToast();
   const { type, name: businessName, categories } = useBusiness();
   const thisMonth = monthKey();
@@ -270,7 +272,7 @@ export function BudgetView({
       : pct > 100
         ? {
             tone: "bad" as const,
-            label: `Over budget by ${dollarsShort(-left)}`,
+            label: `Over budget by ${fmtShort(-left)}`,
             Icon: AlertTriangle,
           }
         : pct >= 85
@@ -335,12 +337,12 @@ export function BudgetView({
           label={
             current?.hasOverride ? "Budget (this month)" : "Monthly budget"
           }
-          value={overview ? (budget ? dollarsShort(budget) : "Not set") : "–"}
+          value={overview ? (budget ? fmtShort(budget) : "Not set") : "–"}
         />
-        <StatTile label="Spent" value={overview ? dollarsShort(spent) : "–"} />
+        <StatTile label="Spent" value={overview ? fmtShort(spent) : "–"} />
         <StatTile
           label={left < 0 ? "Over budget" : "Left to spend"}
-          value={overview ? (budget ? dollarsShort(Math.abs(left)) : "–") : "–"}
+          value={overview ? (budget ? fmtShort(Math.abs(left)) : "–") : "–"}
           tone={
             !budget
               ? undefined
@@ -353,7 +355,7 @@ export function BudgetView({
         />
         <StatTile
           label={`${CHART_MONTHS}-month average`}
-          value={overview ? dollarsShort(avg) : "–"}
+          value={overview ? fmtShort(avg) : "–"}
         />
       </StatGrid>
 
@@ -459,7 +461,7 @@ export function BudgetView({
                   </span>
                 </span>
                 <span className="num whitespace-nowrap font-semibold">
-                  ${centsToDollars(r.cents)}
+                  {fmt(r.cents)}
                 </span>
               </li>
             ))}
@@ -534,7 +536,7 @@ export function BudgetView({
                   </div>
                 </div>
                 <div className="text-right whitespace-nowrap">
-                  <b className="num block">${centsToDollars(e.amountCents)}</b>
+                  <b className="num block">{fmt(e.amountCents)}</b>
                   {e.quickbooksId && (
                     <span className="text-[11px] font-semibold text-good">
                       In QuickBooks
@@ -615,6 +617,7 @@ function SpendChart({
   selected: string;
   onSelect: (m: string) => void;
 }) {
+  const { short: fmtShort } = useMoney()
   const [hover, setHover] = useState<string | null>(null);
   const max = Math.max(
     1,
@@ -661,17 +664,17 @@ function SpendChart({
               onFocus={() => setHover(m.month)}
               onBlur={() => setHover(null)}
               aria-pressed={active}
-              aria-label={`${monthLabel(m.month)}: ${dollarsShort(total)} spent${m.budgetCents ? ` of ${dollarsShort(m.budgetCents)} budget` : ""}`}
+              aria-label={`${monthLabel(m.month)}: ${fmtShort(total)} spent${m.budgetCents ? ` of ${fmtShort(m.budgetCents)} budget` : ""}`}
               className="relative flex-1 h-full flex flex-col justify-end items-center border-0 bg-transparent cursor-pointer p-0"
             >
               {showTip && (
                 <span className="absolute z-10 bottom-full mb-1 left-1/2 -translate-x-1/2 bg-ink text-white text-[12px] rounded-lg px-2.5 py-1.5 whitespace-nowrap text-left shadow-card pointer-events-none">
                   <b className="block">{monthLabel(m.month)}</b>
-                  Stock {dollarsShort(m.inventoryCents)} · Other{" "}
-                  {dollarsShort(m.expenseCents)}
+                  Stock {fmtShort(m.inventoryCents)} · Other{" "}
+                  {fmtShort(m.expenseCents)}
                   {m.budgetCents > 0 && (
                     <span className="block">
-                      Budget {dollarsShort(m.budgetCents)}
+                      Budget {fmtShort(m.budgetCents)}
                     </span>
                   )}
                 </span>
@@ -723,10 +726,10 @@ function SpendChart({
             {data.map((m) => (
               <tr key={m.month}>
                 <td>{monthLabel(m.month)}</td>
-                <td>{dollarsShort(m.inventoryCents)}</td>
-                <td>{dollarsShort(m.expenseCents)}</td>
+                <td>{fmtShort(m.inventoryCents)}</td>
+                <td>{fmtShort(m.expenseCents)}</td>
                 <td>
-                  {m.budgetCents ? dollarsShort(m.budgetCents) : "Not set"}
+                  {m.budgetCents ? fmtShort(m.budgetCents) : "Not set"}
                 </td>
               </tr>
             ))}
@@ -748,11 +751,12 @@ function Breakdown({
   rows: { label: string; sub?: string; cents: number }[];
   empty: string;
 }) {
+  const { money: fmt } = useMoney()
   return (
     <section className="bg-surface rounded-2xl px-4 py-1">
       <div className="flex justify-between items-baseline gap-3 pt-3 pb-1.5">
         <h3 className="m-0 text-[17px] font-bold">{title}</h3>
-        <span className="num font-bold">${centsToDollars(total)}</span>
+        <span className="num font-bold">{fmt(total)}</span>
       </div>
       {rows.length === 0 ? (
         <p className="text-ink-2 text-sm mt-1 mb-3">{empty}</p>
@@ -768,7 +772,7 @@ function Breakdown({
                 {r.sub && <span className="text-ink-2"> · {r.sub}</span>}
               </span>
               <span className="num whitespace-nowrap">
-                ${centsToDollars(r.cents)}
+                {fmt(r.cents)}
               </span>
             </li>
           ))}

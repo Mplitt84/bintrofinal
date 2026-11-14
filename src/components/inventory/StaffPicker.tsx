@@ -157,9 +157,16 @@ export function StaffPicker({
                     {deriveInitials(m.name)}
                   </span>
                   <span className="text-[15px] font-bold text-ink leading-tight break-words max-w-full">{m.name}</span>
-                  {(m.isProvider || m.isAdmin) && (
+                  {(m.isProvider || m.isAdmin || m.managesInventory || m.doesQa) && (
                     <span className="text-[11.5px] font-semibold text-ink-2 leading-tight -mt-1">
-                      {[m.isProvider && providerNoun, m.isAdmin && 'Admin'].filter(Boolean).join(' · ')}
+                      {[
+                        m.isProvider && providerNoun,
+                        m.isAdmin && 'Admin',
+                        m.managesInventory && 'Inventory',
+                        m.doesQa && 'QA',
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </span>
                   )}
                   {on && (

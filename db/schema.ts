@@ -108,6 +108,8 @@ export const businessProfile = pgTable("business_profile", {
    * Showstopper then shows no earnings line rather than guessing at anybody's pay.
    */
   retailCommissionPct: integer("retail_commission_pct").notNull().default(0),
+  /** ISO 4217 code the money on every screen is shown in (see src/lib/money.ts). */
+  currency: text().notNull().default("USD"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
   unique("business_profile_business").on(t.businessId),
@@ -122,6 +124,17 @@ export const teamMembers = pgTable("team_members", {
   isProvider: boolean("is_provider").notNull().default(true),
   /** Works the admin side (inventory, ordering, books). A label; sign-in access is still Settings → Access. */
   isAdmin: boolean("is_admin").notNull().default(false),
+  /**
+   * Sells retail at this location. Off for a contractor or back-of-house person who
+   * never rings anything up: Showstopper leaves them off the board entirely rather
+   * than showing them with nothing sold. The only one of these flags that changes
+   * what a screen shows.
+   */
+  sellsRetail: boolean("sells_retail").notNull().default(true),
+  /** Looks after stock, ordering and deliveries. A label, like isAdmin. */
+  managesInventory: boolean("manages_inventory").notNull().default(false),
+  /** Checks counts and deliveries for accuracy (QA). A label, like isAdmin. */
+  doesQa: boolean("does_qa").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   unique("team_members_business_name").on(t.businessId, t.name),

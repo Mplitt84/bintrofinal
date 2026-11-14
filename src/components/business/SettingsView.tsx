@@ -15,6 +15,7 @@ import {
   Mail,
   Plug,
   RefreshCw,
+  Pencil,
   Trash2,
   UserPlus,
   X,
@@ -49,10 +50,12 @@ import {
 import {
   CategoryCleanup,
   CategoryList,
+  SupplierTidy,
 } from "@/components/inventory/TidyTools";
 import { useBusiness } from "@/components/business/BusinessContext";
 import { deriveInitials } from "@/lib/inventory-defaults";
-import { Field } from "@/components/ui/Sheet";
+import { Field, SheetActions } from "@/components/ui/Sheet";
+import { CURRENCIES, currencySymbol } from "@/lib/money";
 import { PageHead, centsToDollars, timeAgo } from "@/components/ui/bits";
 import { useToast } from "@/components/ui/Toast";
 import {
@@ -61,6 +64,7 @@ import {
   getIntegrations,
   getIntegrationErrorLog,
   removeTeamMember,
+  renameTeamMemberFn,
   updateTeamMemberRoles,
   squareImportCatalog,
   squareSendCounts,
@@ -76,6 +80,7 @@ export type SettingsSection =
   | "appearance"
   | "account"
   | "categories"
+  | "suppliers"
   | "team"
   | "scanner"
   | "import"
@@ -88,6 +93,7 @@ const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: "appearance", label: "Look & feel" },
   { id: "account", label: "Account & billing" },
   { id: "categories", label: "Categories" },
+  { id: "suppliers", label: "Suppliers" },
   { id: "team", label: "Team" },
   { id: "scanner", label: "Scanner & Bluetooth" },
   { id: "import", label: "Import inventory" },
@@ -208,6 +214,8 @@ export function SettingsView({
       {section === "account" && (
         <AccountView panel={accountPanel} onPanel={onAccountPanel} />
       )}
+      {section === "suppliers" && <SupplierTidy onChanged={onChanged} />}
+
       {section === "categories" && (
         <>
           <CategoryCleanup onChanged={onChanged} />
@@ -437,6 +445,7 @@ function ProfileForm({
             0,
             Math.round((Number(budget) || 0) * 100),
           ),
+          currency: draft.currency || "USD",
         },
       });
       const typeChanged =
@@ -521,10 +530,30 @@ function ProfileForm({
           placeholder={draft.email || "Same as the email above"}
         />
       </Field>
+      <Field label="Currency" htmlFor="bp-currency">
+        <select
+          id="bp-currency"
+          className="field-input"
+          value={draft.currency || "USD"}
+          onChange={(e) =>
+            setDraft((d) => ({ ...d, currency: e.target.value }))
+          }
+        >
+          {CURRENCIES.map((c) => (
+            <option key={c.code} value={c.code}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+        <p className="text-[12px] text-ink-2 mt-1 mb-0">
+          Every amount Bintro shows is written in this currency. It does not
+          convert anything — it is how your own prices are displayed.
+        </p>
+      </Field>
       <Field label="Monthly budget for stock and supplies" htmlFor="bp-budget">
         <div className="relative">
           <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-2">
-            $
+            {currencySymbol(draft.currency || "USD")}
           </span>
           <input
             id="bp-budget"
@@ -579,10 +608,20 @@ function TeamManager({
   const [busy, setBusy] = useState(false);
   const [newProvider, setNewProvider] = useState(true);
   const [newAdmin, setNewAdmin] = useState(false);
+  // On by default: most people who join the team do sell, and a contractor is the
+  // exception that gets turned off here or on their row.
+  const [newSells, setNewSells] = useState(true);
+
+  const [renaming, setRenaming] = useState<TeamMember | null>(null);
 
   async function setRoles(
     m: TeamMember,
-    roles: { isProvider: boolean; isAdmin: boolean },
+    roles: Partial<
+      Pick<
+        TeamMember,
+        "isProvider" | "isAdmin" | "sellsRetail" | "managesInventory" | "doesQa"
+      >
+    >,
   ) {
     // Show the change at once; put it back if the save fails.
     onTeam(team.map((t) => (t.id === m.id ? { ...t, ...roles } : t)));
@@ -606,12 +645,18 @@ function TeamManager({
     try {
       onTeam(
         (await addTeamMember({
-          data: { name: next, isProvider: newProvider, isAdmin: newAdmin },
+          data: {
+            name: next,
+            isProvider: newProvider,
+            isAdmin: newAdmin,
+            sellsRetail: newSells,
+          },
         })) as TeamMember[],
       );
       setName("");
       setNewProvider(true);
       setNewAdmin(false);
+      setNewSells(true);
       toast(`${next} added to the team`);
     } catch (err) {
       toast(
@@ -637,6 +682,9 @@ function TeamManager({
               name: member.name,
               isProvider: member.isProvider,
               isAdmin: member.isAdmin,
+              sellsRetail: member.sellsRetail,
+              managesInventory: member.managesInventory,
+              doesQa: member.doesQa,
             },
           })) as TeamMember[],
         );
@@ -648,10 +696,14 @@ function TeamManager({
 
   return (
     <div>
-      <p className="text-ink-2 text-sm m-0 mb-3">
-        Mark each person as a <b>{providerNoun.toLowerCase()}</b> (sees
-        clients, so their name is offered on client records), <b>admin</b>{" "}
-        (inventory, orders, books), or both.
+      <p className="text-ink-2 text-sm m-0 mb-2">
+        Tap a label to turn it on or off. <b>{providerNoun}</b> puts their name on
+        client records. <b>Sells retail</b> is the only one that changes a screen:
+        turn it off for a contractor or back-of-house person who never rings anything
+        up, and Showstopper leaves them off the board instead of showing them with
+        nothing sold. <b>Admin</b>, <b>Inventory manager</b> and <b>QA</b> record who
+        to ask for what — who can open the app is still Settings → Sign-in &amp;
+        access.
       </p>
       <form onSubmit={add} className="mb-4">
         <div className="flex gap-2">
@@ -697,6 +749,14 @@ function TeamManager({
             >
               Admin
             </button>
+            <button
+              type="button"
+              className="chip"
+              aria-pressed={newSells}
+              onClick={() => setNewSells((v) => !v)}
+            >
+              Sells retail
+            </button>
           </div>
         )}
       </form>
@@ -717,7 +777,7 @@ function TeamManager({
               <span className="w-9 h-9 rounded-full bg-action text-white text-[13px] font-bold grid place-items-center shrink-0">
                 {deriveInitials(m.name)}
               </span>
-              <span className="flex-1 min-w-0 font-semibold truncate">
+              <span className="flex-1 min-w-0 font-semibold break-words">
                 {m.name}
                 {m.name === staffName && (
                   <span className="ml-2 text-[12px] font-semibold text-good">
@@ -726,45 +786,48 @@ function TeamManager({
                 )}
               </span>
               <span
-                className="flex gap-1.5 order-last w-full pl-12 min-[560px]:order-none min-[560px]:w-auto min-[560px]:pl-0"
+                className="flex flex-wrap gap-1.5 w-full pl-12 min-[560px]:w-auto min-[560px]:pl-0"
                 role="group"
                 aria-label={`Roles for ${m.name}`}
               >
+                {(
+                  [
+                    [providerNoun, "isProvider"],
+                    ["Admin", "isAdmin"],
+                    ["Sells retail", "sellsRetail"],
+                    ["Inventory manager", "managesInventory"],
+                    ["QA", "doesQa"],
+                  ] as const
+                ).map(([label, key]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className="chip !py-1.5 !px-3 !text-[13px]"
+                    aria-pressed={m[key]}
+                    onClick={() => setRoles(m, { [key]: !m[key] })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </span>
+              <span className="flex gap-1 order-last w-full justify-end min-[560px]:order-none min-[560px]:w-auto">
                 <button
-                  type="button"
-                  className="chip !py-1.5 !px-3 !text-[13px]"
-                  aria-pressed={m.isProvider}
-                  onClick={() =>
-                    setRoles(m, {
-                      isProvider: !m.isProvider,
-                      isAdmin: m.isAdmin,
-                    })
-                  }
+                  className="btn btn-text btn-sm"
+                  onClick={() => setRenaming(m)}
+                  aria-label={`Rename ${m.name}`}
                 >
-                  {providerNoun}
+                  <Pencil size={16} />
+                  Rename
                 </button>
                 <button
-                  type="button"
-                  className="chip !py-1.5 !px-3 !text-[13px]"
-                  aria-pressed={m.isAdmin}
-                  onClick={() =>
-                    setRoles(m, {
-                      isProvider: m.isProvider,
-                      isAdmin: !m.isAdmin,
-                    })
-                  }
+                  className="btn btn-text btn-sm !text-bad"
+                  onClick={() => remove(m)}
+                  aria-label={`Remove ${m.name}`}
                 >
-                  Admin
+                  <Trash2 size={16} />
+                  Remove
                 </button>
               </span>
-              <button
-                className="btn btn-text btn-sm !text-bad"
-                onClick={() => remove(m)}
-                aria-label={`Remove ${m.name}`}
-              >
-                <Trash2 size={16} />
-                Remove
-              </button>
             </li>
           ))}
         </ul>
@@ -772,7 +835,93 @@ function TeamManager({
       <p className="text-ink-2 text-[13px] mt-3 mb-0">
         Removing someone keeps their past scans and expenses in the history.
       </p>
+      {renaming && (
+        <RenameMemberSheet
+          member={renaming}
+          onClose={() => setRenaming(null)}
+          onRenamed={(next, moved) => {
+            onTeam(next);
+            if (renaming.name === staffName) onStaffName("");
+            setRenaming(null);
+            toast(
+              moved > 0
+                ? `Renamed, and ${moved} ${moved === 1 ? "record" : "records"} moved with them`
+                : "Renamed",
+            );
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Rename a team member. Staff are recorded by name, so a typo or a changed surname
+ * splits one person across every report — this moves their scans, client records and
+ * goals to the new spelling in one go.
+ */
+function RenameMemberSheet({
+  member,
+  onClose,
+  onRenamed,
+}: {
+  member: TeamMember;
+  onClose: () => void;
+  onRenamed: (team: TeamMember[], moved: number) => void;
+}) {
+  const [name, setName] = useState(member.name);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save() {
+    const next = name.trim();
+    if (!next || next === member.name) return onClose();
+    setBusy(true);
+    setError("");
+    try {
+      const res = (await renameTeamMemberFn({
+        data: { id: member.id, name: next },
+      })) as { team: TeamMember[]; moved: number };
+      onRenamed(res.team, res.moved);
+    } catch (err) {
+      setError(
+        err instanceof Error && err.message
+          ? err.message
+          : "Could not rename. Try again.",
+      );
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet open onClose={onClose} title={`Rename ${member.name}`}>
+      <Field label="Name">
+        <input
+          className="field-input"
+          value={name}
+          autoFocus
+          onChange={(e) => setName(e.target.value)}
+        />
+      </Field>
+      <p className="text-[12px] text-ink-2 mt-1">
+        Their scans, client records and goals move to the new spelling, so the
+        reports keep counting them as one person.
+      </p>
+      {error && <p className="text-[13px] text-bad mt-3">{error}</p>}
+      <SheetActions>
+        <button type="button" className="btn btn-text" onClick={onClose}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={save}
+          disabled={busy}
+        >
+          {busy ? "Saving…" : "Save"}
+        </button>
+      </SheetActions>
+    </Sheet>
   );
 }
 

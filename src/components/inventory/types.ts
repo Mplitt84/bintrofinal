@@ -29,7 +29,21 @@ export type Product = {
   updatedAt: string | Date;
 };
 
-export type TeamMember = { id: number; name: string; isProvider: boolean; isAdmin: boolean; createdAt: string | Date };
+export type TeamMember = {
+  id: number;
+  name: string;
+  /** Sees clients, so their name is offered on client records. */
+  isProvider: boolean;
+  /** Works the admin side (inventory, orders, books). A label. */
+  isAdmin: boolean;
+  /** Sells retail here. Off keeps them off Showstopper entirely. */
+  sellsRetail: boolean;
+  /** Looks after stock, ordering and deliveries. A label. */
+  managesInventory: boolean;
+  /** Checks counts and deliveries for accuracy. A label. */
+  doesQa: boolean;
+  createdAt: string | Date;
+};
 
 export type Expense = {
   id: number;

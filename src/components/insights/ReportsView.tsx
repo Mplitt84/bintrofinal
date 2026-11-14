@@ -14,10 +14,10 @@ import { OVERVIEW_PERIODS, changeLabel, type OverviewPeriod } from '@/lib/overvi
 import { marginOf, profitOf, reportCsvRows, type Report, type ReportSlice, type ReportTotals } from '@/lib/reports'
 import { overviewWindows } from '@/lib/overview'
 import { getReport } from '@/server/reports.functions'
-import { useBusiness } from '@/components/business/BusinessContext'
+import { useBusiness, useMoney } from '@/components/business/BusinessContext'
 import { GENERIC_PROVIDER_NOUN, providerNounFor, recordSpecFor } from '@/lib/industry'
 import { toCsv, exportStamp } from '@/lib/csv'
-import { EmptyState, PageHead, Thumb, centsToDollars, dollarsShort } from '@/components/ui/bits'
+import { EmptyState, PageHead, Thumb } from '@/components/ui/bits'
 
 const PERIOD_KEY = 'bintro.reportPeriod'
 
@@ -206,32 +206,33 @@ function Skeleton() {
 
 /** The four numbers the owner looks at first, each against the period before. */
 function Headline({ report, compare }: { report: Report; compare: string }) {
+  const { money: fmt } = useMoney()
   const { current, previous } = report
   const margin = marginOf(current)
   const tiles: { label: string; value: string; sub: string; change: string; tone?: 'good' | 'bad' }[] = [
     {
       label: 'Retail sold',
-      value: centsToDollars(current.soldCents),
+      value: fmt(current.soldCents),
       sub: `${current.soldUnits} ${current.soldUnits === 1 ? 'item' : 'items'}`,
       change: changeLabel(current.soldCents, previous.soldCents),
       tone: current.soldCents >= previous.soldCents ? 'good' : 'bad',
     },
     {
       label: 'Kept as profit',
-      value: centsToDollars(profitOf(current)),
+      value: fmt(profitOf(current)),
       sub: margin === null ? 'on retail sold' : `${margin}% of sales`,
       change: changeLabel(profitOf(current), profitOf(previous)),
       tone: profitOf(current) >= profitOf(previous) ? 'good' : 'bad',
     },
     {
       label: 'Product used on clients',
-      value: centsToDollars(current.usedCents),
+      value: fmt(current.usedCents),
       sub: `${current.usedUnits} ${current.usedUnits === 1 ? 'item' : 'items'}`,
       change: changeLabel(current.usedCents, previous.usedCents),
     },
     {
       label: 'Stock received',
-      value: centsToDollars(current.receivedCents),
+      value: fmt(current.receivedCents),
       sub: `${current.receivedUnits} ${current.receivedUnits === 1 ? 'item' : 'items'} in`,
       change: changeLabel(current.receivedCents, previous.receivedCents),
     },
@@ -262,6 +263,7 @@ function Headline({ report, compare }: { report: Report; compare: string }) {
 }
 
 function SecondRow({ current, previous }: { current: ReportTotals; previous: ReportTotals }) {
+  const { money: fmt } = useMoney()
   const items: { label: string; value: string; hint?: string }[] = []
   if (current.visits || previous.visits) {
     items.push({ label: 'Client visits logged', value: String(current.visits), hint: changeLabel(current.visits, previous.visits) })
@@ -269,12 +271,12 @@ function SecondRow({ current, previous }: { current: ReportTotals; previous: Rep
   if (current.shrinkCents || previous.shrinkCents) {
     items.push({
       label: 'Lost to corrections',
-      value: centsToDollars(current.shrinkCents),
+      value: fmt(current.shrinkCents),
       hint: `${current.corrections} ${current.corrections === 1 ? 'correction' : 'corrections'}`,
     })
   }
   if (current.expensesCents || previous.expensesCents) {
-    items.push({ label: 'Other spending', value: centsToDollars(current.expensesCents), hint: 'bills and expenses' })
+    items.push({ label: 'Other spending', value: fmt(current.expensesCents), hint: 'bills and expenses' })
   }
   if (!items.length) return null
   return (
@@ -297,6 +299,7 @@ function SecondRow({ current, previous }: { current: ReportTotals; previous: Rep
  * the chart fits a phone and a wide screen without a second layout.
  */
 function SalesChart({ report }: { report: Report }) {
+  const { money: fmt, short: fmtShort } = useMoney()
   const [hover, setHover] = useState<number | null>(null)
   const strip = useRef<HTMLDivElement>(null)
   const H = 150
@@ -312,8 +315,8 @@ function SalesChart({ report }: { report: Report }) {
           <p className="m-0 text-[12px] text-ink-2">
             {shown ? (
               <>
-                <span className="font-semibold text-ink">{shown.label}</span> · {centsToDollars(shown.soldCents)} sold ·{' '}
-                {centsToDollars(shown.usedCents)} used
+                <span className="font-semibold text-ink">{shown.label}</span> · {fmt(shown.soldCents)} sold ·{' '}
+                {fmt(shown.usedCents)} used
               </>
             ) : (
               `Tap a bar for that ${BAR_IS[report.period]}`
@@ -342,7 +345,7 @@ function SalesChart({ report }: { report: Report }) {
               <button
                 key={i}
                 type="button"
-                aria-label={`${b.label}: ${centsToDollars(b.soldCents)} sold, ${centsToDollars(b.usedCents)} used`}
+                aria-label={`${b.label}: ${fmt(b.soldCents)} sold, ${fmt(b.usedCents)} used`}
                 className="relative flex-1 h-full min-w-0 flex flex-col justify-end items-center bg-transparent border-0 p-0 cursor-pointer"
                 onMouseEnter={() => setHover(i)}
                 onMouseLeave={() => setHover(null)}
@@ -375,7 +378,7 @@ function SalesChart({ report }: { report: Report }) {
             ))}
           </div>
           <p className="m-0 mt-1 text-[11px] text-ink-2 text-center">
-            Tallest bar {dollarsShort(max)} · sales at your shelf price, use at what it cost you
+            Tallest bar {fmtShort(max)} · sales at your shelf price, use at what it cost you
           </p>
         </>
       )}
@@ -397,6 +400,7 @@ function Breakdown({
   icon?: React.ReactNode
   note?: string
 }) {
+  const { money: fmt } = useMoney()
   if (!rows.length) {
     if (!empty) return null
     return (
@@ -419,7 +423,7 @@ function Breakdown({
             <div className="flex items-baseline justify-between gap-3 mb-1">
               <span className="text-[13px] font-semibold truncate">{r.label}</span>
               <span className="text-[13px] tabular-nums shrink-0">
-                {centsToDollars(r.cents)}
+                {fmt(r.cents)}
                 <span className="text-ink-2 font-normal"> · {Math.round(r.share * 100)}%</span>
               </span>
             </div>
@@ -435,6 +439,7 @@ function Breakdown({
 }
 
 function TopItems({ title, rows, kind }: { title: string; rows: Report['topSold']; kind: 'sold' | 'used' }) {
+  const { money: fmt } = useMoney()
   if (!rows.length) return null
   return (
     <section className="bg-white border border-line rounded-2xl p-4">
@@ -454,9 +459,9 @@ function TopItems({ title, rows, kind }: { title: string; rows: Report['topSold'
               </span>
             </span>
             <span className="text-right shrink-0">
-              <span className="block text-[14px] font-bold tabular-nums">{centsToDollars(i.cents)}</span>
+              <span className="block text-[14px] font-bold tabular-nums">{fmt(i.cents)}</span>
               {kind === 'sold' && i.profitCents !== 0 && (
-                <span className="block text-[12px] text-ink-2 tabular-nums">{centsToDollars(i.profitCents)} profit</span>
+                <span className="block text-[12px] text-ink-2 tabular-nums">{fmt(i.profitCents)} profit</span>
               )}
             </span>
           </li>

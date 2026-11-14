@@ -107,6 +107,41 @@ describe.skipIf(!live)("every screen's queries run", () => {
     });
   });
 
+  it("renaming a team member moves their scans with them", async () => {
+    const business = await import("./business.server.js");
+    const inventory = await import("./inventory.server.js");
+    await runForBusiness(1, async () => {
+      // Unique per run: the rename is real and the row stays behind afterwards.
+      const stamp = Date.now().toString(36);
+      const before = `Rename Probe ${stamp}`;
+      const after_ = `Renamed Probe ${stamp}`;
+      const team = await business.insertTeamMember(before);
+      const member = team.find((t) => t.name === before)!;
+      const [product] = await inventory.findAllProducts();
+      if (!product) return;
+      await inventory.applyMovement({
+        productId: product.id,
+        type: "out",
+        delta: -1,
+        staffName: before,
+        note: "rename probe",
+      });
+      const { moved } = await business.renameTeamMember(member.id, after_);
+      expect(moved).toBeGreaterThan(0);
+      const after = await inventory.findMovementsSince(null, 200);
+      expect(after.some((m) => m.staffName === before)).toBe(false);
+      expect(after.some((m) => m.staffName === after_)).toBe(true);
+      const renamed = await business.findTeamMembers();
+      expect(renamed.some((t) => t.name === after_)).toBe(true);
+
+      // A name already on the team is refused rather than silently merging two people.
+      const other = (await business.insertTeamMember(`Other Probe ${stamp}`)).find(
+        (t) => t.name === `Other Probe ${stamp}`,
+      )!;
+      await expect(business.renameTeamMember(other.id, after_)).rejects.toThrow(/already on the team/);
+    });
+  });
+
   it("ask bintro builds its snapshot", async () => {
     const assistant = await import("./assistant.server.js");
     await runForBusiness(1, async () => {

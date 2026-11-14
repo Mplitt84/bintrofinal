@@ -19,11 +19,11 @@ import type { Showstopper, StaffCard } from '@/lib/showstopper'
 import type { RetailTip } from '@/lib/retail-tips'
 import { tipById } from '@/lib/retail-tips'
 import { getShowstopper, setRetailCommission, setRetailGoal } from '@/server/showstopper.functions'
-import { useBusiness } from '@/components/business/BusinessContext'
+import { useBusiness, useMoney } from '@/components/business/BusinessContext'
 import { GENERIC_PROVIDER_NOUN, providerNounFor } from '@/lib/industry'
 import { Sheet, Field, SheetActions } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
-import { EmptyState, PageHead, centsToDollars } from '@/components/ui/bits'
+import { EmptyState, PageHead } from '@/components/ui/bits'
 
 const PERIOD_KEY = 'bintro.showstopperPeriod'
 const PERIODS: { id: OverviewPeriod; label: string; compare: string }[] = [
@@ -33,6 +33,7 @@ const PERIODS: { id: OverviewPeriod; label: string; compare: string }[] = [
 ]
 
 export function ShowstopperView({ staffName, isOwner }: { staffName: string; isOwner: boolean }) {
+  const { money: fmt } = useMoney()
   const { type, name: businessName } = useBusiness()
   const toast = useToast()
   const [period, setPeriod] = useState<OverviewPeriod>('month')
@@ -100,9 +101,9 @@ export function ShowstopperView({ staffName, isOwner }: { staffName: string; isO
     const lines = [`${businessName || 'We'} — retail, ${board.periodLabel.toLowerCase()}`]
     for (const c of board.cards.slice(0, 5)) {
       const badges = c.badges.map((b) => b.label).join(', ')
-      lines.push(`${c.name}: ${centsToDollars(c.soldCents)}${badges ? ` — ${badges}` : ''}`)
+      lines.push(`${c.name}: ${fmt(c.soldCents)}${badges ? ` — ${badges}` : ''}`)
     }
-    lines.push(`Together: ${centsToDollars(board.teamSoldCents)}`)
+    lines.push(`Together: ${fmt(board.teamSoldCents)}`)
     try {
       await navigator.clipboard.writeText(lines.join('\n'))
       toast('Copied — paste it in the team chat')
@@ -254,13 +255,14 @@ export function ShowstopperView({ staffName, isOwner }: { staffName: string; isO
 
 /** Where the whole team stands, so the board reads as "us" before it reads as "me". */
 function TeamStrip({ board, compare }: { board: Showstopper; compare: string }) {
+  const { money: fmt } = useMoney()
   const change = changeLabel(board.teamSoldCents, board.teamPrevSoldCents)
   return (
     <section className="bg-white border border-line rounded-2xl p-4">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <div>
           <p className="m-0 text-[12px] text-ink-2 font-semibold">Together, {board.periodLabel.toLowerCase()}</p>
-          <p className="m-0 text-[26px] font-extrabold leading-none tabular-nums">{centsToDollars(board.teamSoldCents)}</p>
+          <p className="m-0 text-[26px] font-extrabold leading-none tabular-nums">{fmt(board.teamSoldCents)}</p>
         </div>
         {change && (
           <p className={`m-0 text-[13px] font-semibold ${board.teamSoldCents >= board.teamPrevSoldCents ? 'text-good' : 'text-ink-2'}`}>
@@ -269,7 +271,7 @@ function TeamStrip({ board, compare }: { board: Showstopper; compare: string }) 
         )}
         {board.uncreditedCents > 0 && (
           <p className="m-0 text-[13px] text-ink-2">
-            includes <span className="font-semibold text-ink">{centsToDollars(board.uncreditedCents)}</span> on no card
+            includes <span className="font-semibold text-ink">{fmt(board.uncreditedCents)}</span> on no card
           </p>
         )}
         {board.teamAttachRate !== null && (
@@ -298,6 +300,7 @@ function PersonCard({
   onGoal: () => void
   onTip: (tip: RetailTip) => void
 }) {
+  const { money: fmt } = useMoney()
   const [showTips, setShowTips] = useState(false)
   const change = changeLabel(card.soldCents, card.prevSoldCents)
   const focus = (card.goal?.focusTips ?? []).map(tipById).filter((t): t is RetailTip => !!t)
@@ -319,7 +322,7 @@ function PersonCard({
           </p>
         </div>
         <div className="text-right shrink-0">
-          <p className="m-0 text-[20px] font-extrabold leading-none tabular-nums">{centsToDollars(card.soldCents)}</p>
+          <p className="m-0 text-[20px] font-extrabold leading-none tabular-nums">{fmt(card.soldCents)}</p>
           {change && <p className="m-0 mt-1 text-[12px] text-ink-2">{change} {compare}</p>}
         </div>
       </div>
@@ -338,11 +341,11 @@ function PersonCard({
 
       <dl className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-3 m-0">
         <Stat label="Items sold" value={String(card.soldUnits)} />
-        {card.perVisitCents !== null && <Stat label="Per client seen" value={centsToDollars(card.perVisitCents)} />}
+        {card.perVisitCents !== null && <Stat label="Per client seen" value={fmt(card.perVisitCents)} />}
         {card.attachRate !== null && (
           <Stat label="Went home" value={`${Math.round(card.attachRate * 100)}%`} hint={`${card.takenHome} of ${card.recommended}`} />
         )}
-        {card.earnedCents !== null && <Stat label="Earned on retail" value={centsToDollars(card.earnedCents)} />}
+        {card.earnedCents !== null && <Stat label="Earned on retail" value={fmt(card.earnedCents)} />}
       </dl>
 
       {card.top.length > 0 && (
@@ -414,6 +417,7 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 }
 
 function GoalBar({ card, onGoal }: { card: StaffCard; onGoal: () => void }) {
+  const { money: fmt } = useMoney()
   if (!card.goal || card.goal.targetCents <= 0) {
     return (
       <button type="button" className="btn btn-tonal btn-sm mt-3" onClick={onGoal}>
@@ -428,8 +432,8 @@ function GoalBar({ card, onGoal }: { card: StaffCard; onGoal: () => void }) {
     <div className="mt-3">
       <div className="flex items-baseline justify-between gap-3 mb-1">
         <span className="text-[12px] font-semibold">
-          {met ? 'Goal met' : `${centsToDollars(left)} to go`}
-          <span className="text-ink-2 font-normal"> · aiming at {centsToDollars(card.goal.targetCents)}</span>
+          {met ? 'Goal met' : `${fmt(left)} to go`}
+          <span className="text-ink-2 font-normal"> · aiming at {fmt(card.goal.targetCents)}</span>
         </span>
         <button type="button" className="btn btn-text btn-sm" onClick={onGoal}>
           Change

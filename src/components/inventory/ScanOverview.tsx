@@ -8,7 +8,7 @@ import {
   Undo2,
 } from "lucide-react";
 import type { MovementRow, Product } from "@/components/inventory/types";
-import { EmptyState, Thumb, dollarsShort, timeAgo } from "@/components/ui/bits";
+import { EmptyState, Thumb, timeAgo } from "@/components/ui/bits";
 import { getOverview } from "@/server/overview.functions";
 import { countIdFromNote } from "@/lib/counts";
 import { CountDetailSheet } from "@/components/inventory/CountDetailSheet";
@@ -21,6 +21,7 @@ import {
   type Overview,
   type OverviewPeriod,
 } from "@/lib/overview";
+import { useMoney } from "@/components/business/BusinessContext";
 
 const PERIOD_KEY = "bintro.overviewPeriod";
 
@@ -64,6 +65,7 @@ export function ScanOverview({
   onOpenRestock?: () => void;
   onUndo: (m: MovementRow) => void;
 }) {
+  const { short: fmtShort } = useMoney()
   const [period, setPeriod] = useState<OverviewPeriod>("today");
   const [data, setData] = useState<Overview | null>(null);
   const [failed, setFailed] = useState(false);
@@ -168,7 +170,7 @@ export function ScanOverview({
       <div className="grid grid-cols-2 min-[560px]:grid-cols-4 min-[1060px]:grid-cols-2 min-[1500px]:grid-cols-4 gap-2.5 mb-3">
         <Metric
           label="Retail sold"
-          value={c ? dollarsShort(c.soldCents) : "—"}
+          value={c ? fmtShort(c.soldCents) : "—"}
           sub={c ? `${c.soldUnits} item${c.soldUnits === 1 ? "" : "s"}` : ""}
           change={c && prev ? changeLabel(c.soldCents, prev.soldCents) : ""}
           compare={compare}
@@ -176,14 +178,14 @@ export function ScanOverview({
         />
         <Metric
           label="Product used"
-          value={c ? dollarsShort(c.usedCents) : "—"}
+          value={c ? fmtShort(c.usedCents) : "—"}
           sub={c ? `${c.usedUnits} in services` : ""}
           change={c && prev ? changeLabel(c.usedCents, prev.usedCents) : ""}
           compare={compare}
         />
         <Metric
           label="Received"
-          value={c ? dollarsShort(c.receivedCents) : "—"}
+          value={c ? fmtShort(c.receivedCents) : "—"}
           sub={
             c
               ? `${c.receivedUnits} unit${c.receivedUnits === 1 ? "" : "s"}`
@@ -206,7 +208,7 @@ export function ScanOverview({
             {belowParCount}
           </b>
           <span className="text-[12px] text-ink-2">
-            Stock on hand {dollarsShort(stockValue)}
+            Stock on hand {fmtShort(stockValue)}
           </span>
         </button>
       </div>
@@ -228,7 +230,7 @@ export function ScanOverview({
               {c.countNetUnits > 0 ? "+" : ""}
               {c.countNetUnits} unit{Math.abs(c.countNetUnits) === 1 ? "" : "s"}{" "}
               ({c.countNetCents < 0 ? "−" : ""}
-              {dollarsShort(Math.abs(c.countNetCents))}). Not counted as sales
+              {fmtShort(Math.abs(c.countNetCents))}). Not counted as sales
               or use.
             </>
           )}
@@ -269,7 +271,7 @@ export function ScanOverview({
                 <div className="text-right">
                   <b className="num block text-[15px]">{t.units}</b>
                   <span className="text-[12px] text-ink-2">
-                    {t.cents ? dollarsShort(t.cents) : ""}
+                    {t.cents ? fmtShort(t.cents) : ""}
                   </span>
                 </div>
               </li>
@@ -417,6 +419,7 @@ function Metric({
 
 /** Units out per bar (sold on top of used), with received as a thin marker. */
 function ActivityChart({ data }: { data: Overview }) {
+  const { short: fmtShort } = useMoney()
   const [hover, setHover] = useState<number | null>(null);
   const H = 96;
   const max = Math.max(
@@ -466,7 +469,7 @@ function ActivityChart({ data }: { data: Overview }) {
                 {hover === i && (
                   <span className="absolute z-10 bottom-full mb-1 left-1/2 -translate-x-1/2 bg-ink text-white text-[12px] rounded-lg px-2.5 py-1.5 whitespace-nowrap pointer-events-none">
                     Sold {b.soldUnits}
-                    {b.soldCents ? ` (${dollarsShort(b.soldCents)})` : ""} ·
+                    {b.soldCents ? ` (${fmtShort(b.soldCents)})` : ""} ·
                     Used {b.usedUnits} · In {b.receivedUnits}
                   </span>
                 )}
