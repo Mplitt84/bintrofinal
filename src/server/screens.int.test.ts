@@ -73,6 +73,40 @@ describe.skipIf(!live)("every screen's queries run", () => {
     });
   });
 
+  it("showstopper board and saving a goal", async () => {
+    const show = await import("./showstopper.server.js");
+    await runForBusiness(1, async () => {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const board = await show.computeShowstopper({
+        periodLabel: "This month",
+        start,
+        end: now,
+        prevStart,
+        prevEnd: start,
+        goalKey: show.thisGoalPeriod(),
+      });
+      expect(Array.isArray(board.cards)).toBe(true);
+      await show.saveGoal({
+        staffName: "Probe",
+        periodKey: show.thisGoalPeriod(),
+        targetCents: 12_345,
+        focusTips: ["show-the-amount"],
+        setBy: "Probe",
+      });
+      const again = await show.computeShowstopper({
+        periodLabel: "This month",
+        start,
+        end: now,
+        prevStart,
+        prevEnd: start,
+        goalKey: show.thisGoalPeriod(),
+      });
+      expect(Array.isArray(again.quiet)).toBe(true);
+    });
+  });
+
   it("ask bintro builds its snapshot", async () => {
     const assistant = await import("./assistant.server.js");
     await runForBusiness(1, async () => {

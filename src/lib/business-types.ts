@@ -174,6 +174,8 @@ export type BusinessProfile = {
   orderEveryDays: number
   /** Two-letter US state for tax dates; '' = not chosen. */
   taxState: string
+  /** What share of retail a team member earns, as a whole percent. 0 = not set. */
+  retailCommissionPct: number
 }
 
 export const EMPTY_PROFILE: BusinessProfile = {
@@ -191,6 +193,7 @@ export const EMPTY_PROFILE: BusinessProfile = {
   palette: 'bintro',
   orderEveryDays: 7,
   taxState: '',
+  retailCommissionPct: 0,
 }
 
 export function displayBusinessName(profile: { name: string } | null | undefined) {

@@ -37,6 +37,7 @@ export const TENANT_TABLES = [
   "formula_photos",
   "profit_exclusions",
   "error_reports",
+  "retail_goals",
 ] as const;
 
 /**

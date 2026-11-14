@@ -88,7 +88,7 @@ async function logSoldRetail(f: FormulaInput) {
   const out = [];
   for (const x of f.retail) {
     if (x.sold && !x.logged && x.productId && x.qty > 0) {
-      await applyMovement({ productId: x.productId, type: "out", delta: -Math.round(x.qty), staffName: f.staffName || "Formulas", note: `Prescription: ${f.clientName.trim()}` });
+      await applyMovement({ productId: x.productId, type: "out", delta: -Math.round(x.qty), staffName: f.staffName || "Not recorded", note: `Prescription: ${f.clientName.trim()}` });
       out.push({ ...x, logged: true });
     } else out.push(x);
   }

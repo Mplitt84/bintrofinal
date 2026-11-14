@@ -138,6 +138,11 @@ function tabFromHash(hash: string): { tab: Tab; restock?: RestockMode } | null {
 const ActivityView = lazy(() =>
   import("@/components/inventory/ActivityView").then((m) => ({ default: m.ActivityView })),
 );
+const ShowstopperView = lazy(() =>
+  import("@/components/insights/ShowstopperView").then((m) => ({
+    default: m.ShowstopperView,
+  })),
+);
 const ReportsView = lazy(() =>
   import("@/components/insights/ReportsView").then((m) => ({
     default: m.ReportsView,
@@ -264,7 +269,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
   } | null>(null);
   const [tipsOpen, setTipsOpen] = useState(false);
   const [activityView, setActivityView] = useState<
-    "reports" | "profit" | "usage"
+    "reports" | "showstopper" | "profit" | "usage"
   >("reports");
   const [insights, setInsights] = useState<Insights | null>(null);
   const [insightsOpen, setInsightsOpen] = useState(false);
@@ -843,13 +848,14 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
             {tab === "activity" && (
               <>
                 <div
-                  className="inline-flex bg-surface rounded-full p-1 mb-4"
+                  className="flex max-w-full overflow-x-auto bg-surface rounded-full p-1 mb-4 w-fit"
                   role="tablist"
                   aria-label="Report views"
                 >
                   {(
                     [
                       ["reports", "Reports"],
+                      ["showstopper", "Showstopper"],
                       ["profit", "Profit"],
                       ["usage", "Usage"],
                     ] as const
@@ -860,7 +866,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                       role="tab"
                       aria-selected={activityView === id}
                       onClick={() => setActivityView(id)}
-                      className={`px-4 py-2 rounded-full border-0 cursor-pointer text-sm font-semibold ${
+                      className={`px-4 py-2 rounded-full border-0 cursor-pointer text-sm font-semibold shrink-0 whitespace-nowrap ${
                         activityView === id
                           ? "bg-white text-ink shadow-sm"
                           : "bg-transparent text-ink-2"
@@ -872,6 +878,11 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                 </div>
                 {activityView === "reports" ? (
                   <ReportsView />
+                ) : activityView === "showstopper" ? (
+                  <ShowstopperView
+                    staffName={staffName}
+                    isOwner={auth.user?.role !== "staff"}
+                  />
                 ) : activityView === "profit" ? (
                   <ProfitView
                     products={products}
