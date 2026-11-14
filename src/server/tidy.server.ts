@@ -1,3 +1,4 @@
+import { groupVendors } from "../lib/tidy.js";
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { mine, owned } from "./tenant.js";
@@ -360,4 +361,61 @@ export async function applyCounts(params: { staffName: string; counts: { product
     });
   if (lines.length === 0) return { created: 0, updated: 0, priced: 0, units: 0 };
   return applyImportLines({ mode: "inventory", staffName: params.staffName, source: "Stock count", lines });
+}
+
+/**
+ * Suppliers that look like one supplier typed several ways. Products carry the
+ * supplier as plain text, so "Hairstory", "www.hairstory.com" and
+ * "https://www.hairstory.com" are three suppliers on every report until somebody
+ * says they are one. This only suggests; `mergeVendorNames` is what changes anything.
+ */
+export async function vendorGroups() {
+  const rows = await db
+    .select({ vendor: products.vendor, products: sql<number>`count(*)::int` })
+    .from(products)
+    .where(mine(products))
+    .groupBy(products.vendor);
+  return groupVendors(rows.map((r) => ({ vendor: r.vendor ?? "", products: Number(r.products) })));
+}
+
+/** Give every product on the listed spellings the one supplier name that was kept. */
+export async function mergeVendorNames(from: string[], to: string) {
+  const target = to.trim();
+  const others = from.filter((f) => f !== target);
+  if (!target || others.length === 0) return 0;
+  const moved = await db
+    .update(products)
+    .set({ vendor: target, updatedAt: new Date() })
+    .where(and(mine(products), inArray(products.vendor, others)))
+    .returning({ id: products.id });
+  return moved.length;
+}
+
+/**
+ * Rename one supplier everywhere, including on products that have no other spelling.
+ * This is the fix for a supplier saved as a web address, which reads badly on an
+ * order and in Reports.
+ */
+export async function renameVendor(from: string, to: string) {
+  const target = to.trim();
+  if (!target || !from.trim() || target === from) return 0;
+  const moved = await db
+    .update(products)
+    .set({ vendor: target, updatedAt: new Date() })
+    .where(and(mine(products), eq(products.vendor, from)))
+    .returning({ id: products.id });
+  return moved.length;
+}
+
+/** Every supplier in use with how many products carry it, for the tidy list. */
+export async function vendorList() {
+  const rows = await db
+    .select({ vendor: products.vendor, products: sql<number>`count(*)::int` })
+    .from(products)
+    .where(mine(products))
+    .groupBy(products.vendor);
+  return rows
+    .map((r) => ({ name: r.vendor ?? "", products: Number(r.products) }))
+    .filter((r) => r.name.trim())
+    .sort((a, b) => b.products - a.products || a.name.localeCompare(b.name));
 }

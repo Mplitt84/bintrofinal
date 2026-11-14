@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ActivityRow, MovementRow } from './types'
 import { getMovementsSince } from '@/server/inventory.functions'
-import { EmptyState, PageHead, StatGrid, StatTile, Thumb, centsToDollars, dollarsShort } from '@/components/ui/bits'
+import { EmptyState, PageHead, StatGrid, StatTile, Thumb } from '@/components/ui/bits'
+import { useMoney } from '@/components/business/BusinessContext'
 
 type Period = 'today' | 'week' | '7' | 'all'
 type Kind = 'out' | 'in'
@@ -26,6 +27,7 @@ function periodStart(period: Period): Date | null {
 type Line = { key: number; name: string; size: string; imageUrl: string; brand: string; units: number; cents: number }
 
 export function ActivityView({ recent }: { recent: MovementRow[] }) {
+  const { money: fmt, short: fmtShort } = useMoney()
   const [period, setPeriod] = useState<Period>('week')
   const [kind, setKind] = useState<Kind>('out')
   const [rows, setRows] = useState<ActivityRow[] | null>(null)
@@ -109,7 +111,7 @@ export function ActivityView({ recent }: { recent: MovementRow[] }) {
 
       <StatGrid>
         <StatTile label="Units used" value={rows ? summary.unitsUsed : '–'} />
-        <StatTile label="Product used" value={rows ? dollarsShort(summary.usedCents) : '–'} />
+        <StatTile label="Product used" value={rows ? fmtShort(summary.usedCents) : '–'} />
         <StatTile label="Units received" value={rows ? summary.unitsReceived : '–'} tone="good" />
         <StatTile label="Brands used" value={rows ? summary.brandCount : '–'} />
       </StatGrid>
@@ -139,7 +141,7 @@ export function ActivityView({ recent }: { recent: MovementRow[] }) {
               <div className="flex justify-between items-baseline gap-3 pt-3 pb-1.5">
                 <h3 className="m-0 text-[17px] font-bold">{g.brand}</h3>
                 <span className="num font-bold text-sm">
-                  {g.units} {kind === 'out' ? 'used' : 'in'} · ${centsToDollars(g.cents)}
+                  {g.units} {kind === 'out' ? 'used' : 'in'} · {fmt(g.cents)}
                 </span>
               </div>
               <ul className="list-none m-0 p-0">
@@ -149,12 +151,12 @@ export function ActivityView({ recent }: { recent: MovementRow[] }) {
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold truncate">{l.name}</div>
                       <div className="text-[13px] text-ink-2 truncate">
-                        {[l.size, l.units ? `$${centsToDollars(l.cents / l.units)} each` : ''].filter(Boolean).join(', ')}
+                        {[l.size, l.units ? `${fmt(l.cents / l.units)} each` : ''].filter(Boolean).join(', ')}
                       </div>
                     </div>
                     <div className="text-right whitespace-nowrap">
                       <b className="num block">{l.units}</b>
-                      <span className="num text-[13px] text-ink-2">${centsToDollars(l.cents)}</span>
+                      <span className="num text-[13px] text-ink-2">{fmt(l.cents)}</span>
                     </div>
                   </li>
                 ))}

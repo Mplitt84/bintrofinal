@@ -176,6 +176,8 @@ export type BusinessProfile = {
   taxState: string
   /** What share of retail a team member earns, as a whole percent. 0 = not set. */
   retailCommissionPct: number
+  /** ISO 4217 code every amount on screen is shown in (see src/lib/money.ts). */
+  currency: string
 }
 
 export const EMPTY_PROFILE: BusinessProfile = {
@@ -194,6 +196,7 @@ export const EMPTY_PROFILE: BusinessProfile = {
   orderEveryDays: 7,
   taxState: '',
   retailCommissionPct: 0,
+  currency: 'USD',
 }
 
 export function displayBusinessName(profile: { name: string } | null | undefined) {

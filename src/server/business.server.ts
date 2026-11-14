@@ -1,9 +1,10 @@
 import { and, asc, desc, eq, gt, gte, inArray, like, lt, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { businessId, mine, owned } from "./tenant.js";
-import { budgets, businessProfile, expenseReceipts, expenses, movements, productCategories, products, teamMembers } from "../../db/schema.js";
+import { budgets, businessProfile, clientFormulas, expenseReceipts, expenses, movements, productCategories, products, retailGoals, teamMembers } from "../../db/schema.js";
 import { EMPTY_PROFILE, businessTypeById, type BusinessProfile, type BusinessType } from "../lib/business-types.js";
 import { DEFAULT_TAX_GROUP, isTaxGroupId, type ProductCategory, type TaxGroupId } from "../lib/tax-categories.js";
+import { deriveInitials } from "../lib/inventory-defaults.js";
 
 
 export async function findBusinessProfile(): Promise<BusinessProfile> {
@@ -26,6 +27,7 @@ export async function findBusinessProfile(): Promise<BusinessProfile> {
     orderEveryDays: row.orderEveryDays,
     taxState: row.taxState,
     retailCommissionPct: row.retailCommissionPct,
+    currency: row.currency,
   };
 }
 
@@ -88,18 +90,83 @@ export async function findTeamMembers() {
   return db.select().from(teamMembers).where(mine(teamMembers)).orderBy(asc(teamMembers.name));
 }
 
-export async function insertTeamMember(name: string, roles: { isProvider?: boolean; isAdmin?: boolean } = {}) {
+/** Every flag a team member carries. Only `sellsRetail` changes what a screen shows. */
+export type TeamRoles = {
+  isProvider?: boolean;
+  isAdmin?: boolean;
+  sellsRetail?: boolean;
+  managesInventory?: boolean;
+  doesQa?: boolean;
+};
+
+export async function insertTeamMember(name: string, roles: TeamRoles = {}) {
   await db
     .insert(teamMembers)
-    .values({ ...owned(), name, isProvider: roles.isProvider ?? true, isAdmin: roles.isAdmin ?? false })
+    .values({
+      ...owned(),
+      name,
+      isProvider: roles.isProvider ?? true,
+      isAdmin: roles.isAdmin ?? false,
+      sellsRetail: roles.sellsRetail ?? true,
+      managesInventory: roles.managesInventory ?? false,
+      doesQa: roles.doesQa ?? false,
+    })
     .onConflictDoNothing();
   return findTeamMembers();
 }
 
-/** Set whether a team member sees clients and/or works the admin side. */
-export async function setTeamMemberRoles(id: number, roles: { isProvider: boolean; isAdmin: boolean }) {
-  await db.update(teamMembers).set(roles).where(and(mine(teamMembers), eq(teamMembers.id, id)));
+/** Set a team member's roles. Anything left out keeps the value it had. */
+export async function setTeamMemberRoles(id: number, roles: TeamRoles) {
+  const set = Object.fromEntries(Object.entries(roles).filter(([, v]) => v !== undefined));
+  if (Object.keys(set).length) {
+    await db.update(teamMembers).set(set).where(and(mine(teamMembers), eq(teamMembers.id, id)));
+  }
   return findTeamMembers();
+}
+
+/**
+ * Rename a team member everywhere their name was written down.
+ *
+ * Staff are recorded by name, not by id — a scan, a client record and a goal all
+ * carry the text. A typo or a changed surname therefore splits one person into two
+ * on every report until the old spelling is corrected, which is what this does.
+ * Returns how many rows moved, so the screen can say what happened.
+ */
+export async function renameTeamMember(id: number, nextName: string) {
+  const next = nextName.trim();
+  if (!next) throw new Error("A name is needed.");
+  const [member] = await db
+    .select()
+    .from(teamMembers)
+    .where(and(mine(teamMembers), eq(teamMembers.id, id)));
+  if (!member) throw new Error("That team member was already removed.");
+  const from = member.name;
+  if (from === next) return { team: await findTeamMembers(), moved: 0 };
+
+  const clash = await db
+    .select({ id: teamMembers.id })
+    .from(teamMembers)
+    .where(and(mine(teamMembers), eq(teamMembers.name, next)));
+  if (clash.length) throw new Error(`${next} is already on the team. Remove one of them instead.`);
+
+  const scans = await db
+    .update(movements)
+    .set({ staffName: next, staffInitials: deriveInitials(next) })
+    .where(and(mine(movements), eq(movements.staffName, from)))
+    .returning({ id: movements.id });
+  const visits = await db
+    .update(clientFormulas)
+    .set({ staffName: next })
+    .where(and(mine(clientFormulas), eq(clientFormulas.staffName, from)))
+    .returning({ id: clientFormulas.id });
+  const goals = await db
+    .update(retailGoals)
+    .set({ staffName: next })
+    .where(and(mine(retailGoals), eq(retailGoals.staffName, from)))
+    .returning({ id: retailGoals.id });
+  await db.update(teamMembers).set({ name: next }).where(and(mine(teamMembers), eq(teamMembers.id, id)));
+
+  return { team: await findTeamMembers(), moved: scans.length + visits.length + goals.length };
 }
 
 export async function deleteTeamMember(id: number) {

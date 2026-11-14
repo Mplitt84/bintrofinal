@@ -129,8 +129,12 @@ export type ShowstopperInput = {
   prevEnd: Date
   sales: SaleRow[]
   visits: VisitRow[]
-  /** Everyone on the team, so somebody with a quiet month is still named. */
-  team: { name: string; isProvider: boolean }[]
+  /**
+   * Everyone on the team, so somebody with a quiet month is still named. A member
+   * with `sellsRetail: false` — a contractor or back-of-house person who never rings
+   * anything up — is left off the board entirely rather than shown with nothing sold.
+   */
+  team: { name: string; isProvider: boolean; sellsRetail: boolean }[]
   goals: Goal[]
   commissionPct: number
   businessType: string
@@ -234,8 +238,11 @@ export function buildShowstopper(input: ShowstopperInput): Showstopper {
     p.takenHome += v.takenHome
   }
 
-  // Everyone on the team gets a place, even a quiet month.
-  for (const member of input.team) get(member.name)
+  // Everyone who sells gets a place, even on a quiet month.
+  const offBoard = new Set(
+    input.team.filter((m) => !m.sellsRetail).map((m) => m.name.trim().toLowerCase()),
+  )
+  for (const member of input.team) if (member.sellsRetail) get(member.name)
 
   const goalFor = (name: string) =>
     input.goals.find((g) => g.staffName.trim().toLowerCase() === name.trim().toLowerCase()) ?? null
@@ -278,9 +285,9 @@ export function buildShowstopper(input: ShowstopperInput): Showstopper {
     }
   })
 
-  awardBadges(cards)
+  awardBadges(cards.filter((c) => !offBoard.has(c.name.trim().toLowerCase())))
 
-  const real = cards.filter((c) => !isPlaceholder(c.name))
+  const real = cards.filter((c) => !isPlaceholder(c.name) && !offBoard.has(c.name.trim().toLowerCase()))
   const active = real.filter((c) => c.soldUnits > 0 || c.visits > 0).sort((a, b) => b.soldCents - a.soldCents)
   const quiet = real.filter((c) => c.soldUnits === 0 && c.visits === 0).sort((a, b) => a.name.localeCompare(b.name))
   const teamRecommended = real.reduce((n, c) => n + c.recommended, 0)
@@ -292,10 +299,12 @@ export function buildShowstopper(input: ShowstopperInput): Showstopper {
     quiet,
     teamSoldCents: cards.reduce((n, c) => n + c.soldCents, 0),
     teamPrevSoldCents: cards.reduce((n, c) => n + c.prevSoldCents, 0),
-    uncreditedCents: cards.filter((c) => isPlaceholder(c.name)).reduce((n, c) => n + c.soldCents, 0),
+    uncreditedCents: cards
+      .filter((c) => isPlaceholder(c.name) || offBoard.has(c.name.trim().toLowerCase()))
+      .reduce((n, c) => n + c.soldCents, 0),
     teamAttachRate: teamRecommended > 0 ? teamTakenHome / teamRecommended : null,
     commissionPct: input.commissionPct,
-    blindSpots: blindSpotsFor(cards),
+    blindSpots: blindSpotsFor(cards, offBoard),
   }
 }
 
@@ -363,8 +372,16 @@ function awardBadges(all: StaffCard[]) {
 }
 
 /** What the numbers cannot see — so nobody reads a quiet card as a quiet person. */
-function blindSpotsFor(cards: StaffCard[]): string[] {
+function blindSpotsFor(cards: StaffCard[], offBoard: Set<string>): string[] {
   const notes: string[] = []
+  // Somebody marked as not selling should not quietly swallow a sale: if money is
+  // logged under their name it was probably scanned by the wrong person.
+  for (const c of cards) {
+    if (!offBoard.has(c.name.trim().toLowerCase()) || c.soldCents <= 0) continue
+    notes.push(
+      `${c.name} is marked as not selling retail, so they are off the board — but ${(c.soldCents / 100).toFixed(2)} is logged under their name. Worth checking who scanned it.`,
+    )
+  }
   const unnamed = cards.filter((c) => isPlaceholder(c.name) && !c.name.toLowerCase().includes('square'))
   const unnamedUnits = unnamed.reduce((n, c) => n + c.soldUnits, 0)
   if (unnamedUnits > 0) {

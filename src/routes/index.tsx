@@ -9,6 +9,7 @@ import {
   Settings,
   Store,
   Truck,
+  Users,
   TriangleAlert,
   Wallet,
   Palette,
@@ -342,6 +343,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
         section === "integrations" ||
           section === "color" ||
           section === "categories" ||
+          section === "suppliers" ||
           section === "team" ||
           section === "import" ||
           section === "account" ||
@@ -704,6 +706,14 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
               {tabButtons("side")}
             </nav>
             <div className="mt-auto pt-4 border-t border-line flex flex-col gap-1">
+              {/* Team sits beside Settings rather than in the tab bar: it is looked
+                  at weekly, not daily, and the bottom bar is full on a phone. */}
+              <button
+                onClick={() => openSettings("team")}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-0 cursor-pointer text-[15px] font-semibold text-left bg-transparent text-ink-2 hover:bg-surface hover:text-ink"
+              >
+                <Users size={18} /> Team
+              </button>
               <button
                 onClick={() => openSettings("profile")}
                 aria-current={tab === "settings" ? "page" : undefined}

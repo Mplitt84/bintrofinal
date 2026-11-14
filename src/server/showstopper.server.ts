@@ -77,7 +77,10 @@ export async function computeShowstopper(w: ShowstopperWindow): Promise<Showstop
       })
       .from(clientFormulas)
       .where(and(mine(clientFormulas), gte(clientFormulas.serviceDate, dateText(from)))),
-    db.select({ name: teamMembers.name, isProvider: teamMembers.isProvider }).from(teamMembers).where(mine(teamMembers)),
+    db
+      .select({ name: teamMembers.name, isProvider: teamMembers.isProvider, sellsRetail: teamMembers.sellsRetail })
+      .from(teamMembers)
+      .where(mine(teamMembers)),
     db
       .select({ staffName: retailGoals.staffName, targetCents: retailGoals.targetCents, focusTips: retailGoals.focusTips })
       .from(retailGoals)

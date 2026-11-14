@@ -17,6 +17,7 @@ import {
   deleteExpenseReceipt,
   insertTeamMember,
   setTeamMemberRoles,
+  renameTeamMember,
   saveBusinessProfile,
   setMonthBudget,
   updateExpense,
@@ -60,6 +61,7 @@ const ProfileSchema = z.object({
   palette: z.string().max(40).optional(),
   orderEveryDays: z.number().int().min(1).max(90).optional(),
   taxState: z.string().max(2).optional(),
+  currency: z.string().length(3).optional(),
 });
 
 export const updateBusinessProfile = createServerFn({ method: "POST" }).middleware([requireUser])
@@ -75,25 +77,37 @@ export const listTeamMembers = createServerFn({ method: "GET" }).middleware([req
   return findTeamMembers();
 });
 
+const Roles = {
+  isProvider: z.boolean().optional(),
+  isAdmin: z.boolean().optional(),
+  sellsRetail: z.boolean().optional(),
+  managesInventory: z.boolean().optional(),
+  doesQa: z.boolean().optional(),
+};
+
 export const addTeamMember = createServerFn({ method: "POST" }).middleware([requireUser])
-  .inputValidator(
-    z.object({
-      name: z.string().trim().min(1).max(60),
-      isProvider: z.boolean().optional(),
-      isAdmin: z.boolean().optional(),
-    }),
-  )
+  .inputValidator(z.object({ name: z.string().trim().min(1).max(60), ...Roles }))
   .handler(async ({ data }) => {
     await assertTeamRoom();
-    return insertTeamMember(data.name, { isProvider: data.isProvider, isAdmin: data.isAdmin });
+    const { name, ...roles } = data;
+    return insertTeamMember(name, roles);
   });
 
-/** Team roles: sees clients (stylist / artist / provider) and/or admin side. */
+/**
+ * Team roles. Every flag is optional, so a screen can change one without having to
+ * send the others and risk flipping a role it never showed.
+ */
 export const updateTeamMemberRoles = createServerFn({ method: "POST" }).middleware([requireUser])
-  .inputValidator(z.object({ id: z.number().int(), isProvider: z.boolean(), isAdmin: z.boolean() }))
+  .inputValidator(z.object({ id: z.number().int(), ...Roles }))
   .handler(async ({ data }) => {
-    return setTeamMemberRoles(data.id, { isProvider: data.isProvider, isAdmin: data.isAdmin });
+    const { id, ...roles } = data;
+    return setTeamMemberRoles(id, roles);
   });
+
+/** Rename a team member everywhere their name was written: scans, visits and goals. */
+export const renameTeamMemberFn = createServerFn({ method: "POST" }).middleware([requireUser])
+  .inputValidator(z.object({ id: z.number().int(), name: z.string().trim().min(1).max(60) }))
+  .handler(async ({ data }) => renameTeamMember(data.id, data.name));
 
 export const removeTeamMember = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ id: z.number().int() }))

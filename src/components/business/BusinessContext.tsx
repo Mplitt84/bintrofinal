@@ -1,4 +1,5 @@
-import { createContext, useContext } from 'react'
+import { createContext, useContext, useMemo } from 'react'
+import { DEFAULT_CURRENCY, currencySymbol, money, moneyShort } from '@/lib/money'
 import { EMPTY_PROFILE, businessTypeById, displayBusinessName, type BusinessProfile, type BusinessType } from '@/lib/business-types'
 import type { ProductCategory } from '@/lib/tax-categories'
 import { planById, planHas, type AccountSummary, type Feature, type Plan } from '@/lib/plans'
@@ -74,4 +75,24 @@ export function BusinessProvider({
 
 export function useBusiness() {
   return useContext(BusinessContext)
+}
+
+/**
+ * The business's own money formatter: `money(5600)` → `$56.00`, in whatever currency
+ * Settings → Business profile saved. Every screen that *shows* an amount uses this
+ * rather than writing a `$` of its own, so one business in Canada and another in the
+ * UK each read their own symbol.
+ */
+export function useMoney() {
+  const { profile } = useBusiness()
+  const code = profile.currency || DEFAULT_CURRENCY
+  return useMemo(
+    () => ({
+      money: (cents: number) => money(cents, code),
+      short: (cents: number) => moneyShort(cents, code),
+      symbol: currencySymbol(code),
+      code,
+    }),
+    [code],
+  )
 }
