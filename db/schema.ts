@@ -103,6 +103,11 @@ export const businessProfile = pgTable("business_profile", {
   orderEveryDays: integer("order_every_days").notNull().default(7),
   /** Two-letter US state the business files taxes in (Calendar → state tax dates); "" = not chosen. */
   taxState: text("tax_state").notNull().default(""),
+  /**
+   * What share of retail a team member earns, as a whole percent. 0 = not set, and
+   * Showstopper then shows no earnings line rather than guessing at anybody's pay.
+   */
+  retailCommissionPct: integer("retail_commission_pct").notNull().default(0),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
   unique("business_profile_business").on(t.businessId),
@@ -587,4 +592,30 @@ export const errorReports = pgTable(
     lastSeen: timestamp("last_seen", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [unique().on(t.businessId, t.message, t.where)],
+);
+
+/**
+ * Showstopper: what a team member is aiming at this month, and the selling habits
+ * they picked to work on. One row per person per month, so last month's goal stays
+ * as a record instead of being overwritten.
+ */
+export const retailGoals = pgTable(
+  "retail_goals",
+  {
+    /** Which business this belongs to. Every query filters on it. */
+    businessId: integer("business_id").notNull().default(1),
+    id: serial().primaryKey(),
+    /** The team member's name, as the staff picker and movements spell it. */
+    staffName: text("staff_name").notNull(),
+    /** The month this goal is for, YYYY-MM in the shop's own local time. */
+    periodKey: text("period_key").notNull(),
+    /** What they are aiming to sell this month; 0 = no goal set. */
+    targetCents: integer("target_cents").notNull().default(0),
+    /** Ids from RETAIL_TIPS (src/lib/retail-tips.ts) they chose to work on. */
+    focusTips: jsonb("focus_tips").$type<string[]>().notNull().default([]),
+    /** Who last saved it, so a manager setting a goal for someone is visible. */
+    setBy: text("set_by").notNull().default(""),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [unique("retail_goals_business_staff_period").on(t.businessId, t.staffName, t.periodKey)],
 );
