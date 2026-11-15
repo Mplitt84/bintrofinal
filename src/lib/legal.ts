@@ -2,6 +2,24 @@
  * Details the Terms, Privacy Policy and EULA pages fill in. Anything still in
  * [brackets] shows a "Draft" banner on the pages until it's replaced.
  * Have a lawyer review the pages before charging customers.
+ *
+ * Two clauses especially need a lawyer's eye before they are relied on:
+ *
+ * 1. **The agreed sum in EULA section 4** (an unpaid subscription is paid for at the
+ *    Premium annual price). In Texas it is enforceable only if, when the agreement was
+ *    made, the harm was hard to estimate and the sum was a reasonable forecast of what
+ *    is actually lost — Phillips v. Phillips, with a "second look" at the time of breach
+ *    under Atrium Medical Center v. Houston Red C. A sum a court reads as a punishment is
+ *    struck out altogether rather than reduced, leaving only actual damages, so the figure
+ *    is deliberately tied to the subscription revenue that was missed and nothing more.
+ *    Never describe it as a penalty, here or in writing to a customer.
+ * 2. **The arbitration clause in Terms section 14.** Intellectual property claims and
+ *    requests for an injunction are deliberately carved out, so a clone can still be
+ *    stopped in court rather than argued about in arbitration.
+ *
+ * Neither clause reaches somebody who never agreed to these pages. Against a stranger who
+ * copies Bintro, the remedies are copyright, trade secret and trademark — which is why the
+ * registrations matter more than the wording here.
  */
 export const LEGAL = {
   /** The legal entity that owns and runs Bintro. */
@@ -109,13 +127,28 @@ export const TERMS: LegalSection[] = [
     ],
   },
   {
-    heading: '13. Governing law',
+    heading: '13. Protecting Bintro',
     paragraphs: [
-      `These Terms are governed by the laws of the State of ${governingState}, without regard to conflict-of-law rules. Disputes will be heard in the state or federal courts located in ${venue}, and both parties consent to that venue.`,
+      `${product} — its software, design, wording and the way it works — belongs to ${company}. Using it does not give you any ownership of it. What you may and may not do with it is set out in our End-User License Agreement, including the agreed sum payable where a business uses ${product} without a subscription or passes a copy to somebody else.`,
     ],
   },
   {
-    heading: '14. Contact',
+    heading: '14. Settling a disagreement',
+    paragraphs: [
+      `Talk to us first. Email ${email} with what is wrong and what you would like done, and we will try to sort it out within 30 days. Most things end here.`,
+      `If that does not work, you and ${company} agree to settle the dispute by binding arbitration before a single arbitrator administered by the American Arbitration Association under its rules for commercial disputes, in ${venue} or by video if we both prefer. The arbitrator's decision can be entered as a judgment in any court. Each of us brings a claim only on our own behalf, not as part of a class action.`,
+      `Three things are not covered by that and may be taken straight to court: a claim about intellectual property (including any Prohibited Use of ${product}), a request for an injunction or other emergency relief, and any claim that fits in small claims court.`,
+      `Whoever substantially prevails in a dispute under these Terms may recover reasonable attorneys' fees and costs from the other.`,
+    ],
+  },
+  {
+    heading: '15. Governing law',
+    paragraphs: [
+      `These Terms are governed by the laws of the State of ${governingState}, without regard to conflict-of-law rules. Where a dispute goes to court rather than arbitration, it will be heard in the state or federal courts located in ${venue}, and both parties consent to that venue.`,
+    ],
+  },
+  {
+    heading: '16. Contact',
     paragraphs: [`${company} · ${address} · ${email}`],
   },
 ]
@@ -217,39 +250,50 @@ export const EULA: LegalSection[] = [
     ],
   },
   {
-    heading: '3. Restrictions',
+    heading: '3. What you may not do (Prohibited Use)',
     paragraphs: [
-      'You may not copy, modify, distribute, sell, sublicense or rent the software; reverse engineer or decompile it except where the law expressly allows; remove proprietary notices; or use it to build a competing product.',
+      `Each of the following is a "Prohibited Use" of ${product}:`,
+      `(a) letting any business, location or legal entity other than the one subscribed use the software, including by sharing a sign-in; (b) copying, distributing, selling, sublicensing, renting or publishing the software or any part of it; (c) reverse engineering or decompiling it, except where the law expressly allows; (d) removing or altering any proprietary notice; (e) using the software, or anything you learn from it, to build or help somebody else build a competing product; and (f) scraping or extracting the software's screens, wording or structure for any of the above.`,
+      'None of this limits what you may do with your own business data, which stays yours and can be exported at any time.',
     ],
   },
   {
-    heading: '4. Third-party integrations',
+    heading: '4. If the license is broken',
+    paragraphs: [
+      `Where a Prohibited Use means a business used ${product} without paying for it, the money we lose is the subscription that was never bought. Because the number of users and the length of that use are difficult to establish after the fact, you agree that for each business, location or legal entity that used the software without its own subscription, and for each person or business you gave a copy of the software to, you will pay us the then-current annual price of the Premium plan for each year or part-year of that use. This is an agreed, reasonable estimate of what we lose, arrived at when this agreement is made, and it is compensation for breach of this agreement rather than a charge for the right to carry on.`,
+      `That sum does not cover, limit or replace our rights under copyright, trade secret or trademark law, which stand separately, and paying it does not grant any license or permission to continue. We may choose to pursue our actual losses instead of the sum above.`,
+      `You agree that a Prohibited Use under 3(b), 3(c), 3(e) or 3(f) would cause harm that money alone cannot put right, and that we may ask a court for an injunction or other equitable relief to stop it, without having to post a bond and without first seeking any payment under this section.`,
+      `In any dispute about this agreement, the party that substantially prevails may recover its reasonable attorneys' fees and costs from the other.`,
+    ],
+  },
+  {
+    heading: '5. Third-party integrations',
     paragraphs: [
       `${product} can connect to third-party services such as Square and QuickBooks Online. Your use of those services is governed by their own agreements. ${company} is not affiliated with, and is not endorsed by, Intuit Inc. or Block, Inc. QuickBooks is a trademark of Intuit Inc.; Square is a trademark of Block, Inc.`,
     ],
   },
   {
-    heading: '5. Updates',
+    heading: '6. Updates',
     paragraphs: ['We may update the software from time to time. Updates are covered by this EULA.'],
   },
   {
-    heading: '6. Termination',
+    heading: '7. Termination',
     paragraphs: [
-      'This license ends when your subscription ends or if you breach this EULA. When it ends, you must stop using the software. Sections on ownership, disclaimers and limitation of liability survive.',
+      'This license ends when your subscription ends or if you breach this EULA. When it ends, you must stop using the software and delete any copies of it. The sections on ownership, on what you may not do, on what happens if the license is broken, on disclaimers and on limitation of liability survive.',
     ],
   },
   {
-    heading: '7. Disclaimer and liability',
+    heading: '8. Disclaimer and liability',
     paragraphs: [
       'The software is provided "as is". The disclaimers and limitation of liability in our Terms of Service apply to this EULA.',
     ],
   },
   {
-    heading: '8. Governing law',
+    heading: '9. Governing law',
     paragraphs: [`This EULA is governed by the laws of the State of ${governingState}.`],
   },
   {
-    heading: '9. Contact',
+    heading: '10. Contact',
     paragraphs: [`${company} · ${address} · ${email}`],
   },
 ]
