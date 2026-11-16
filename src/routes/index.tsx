@@ -421,6 +421,11 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
           tone: "bad",
           text: `${label(error)} couldn't start connecting. Wait a minute and tap Connect again; if it keeps happening, download the error log below and send it to support.`,
         });
+      else if (error?.endsWith("wrong-company"))
+        setNotice({
+          tone: "bad",
+          text: `QuickBooks picked a test (sandbox) company, not your books. Sign out at accounts.intuit.com, tap Connect again, and sign in with the email you use for QuickBooks Online.`,
+        });
       else if (error?.endsWith("declined"))
         setNotice({
           tone: "bad",

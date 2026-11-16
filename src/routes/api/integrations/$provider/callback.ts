@@ -2,7 +2,7 @@ import { redirectTo } from '@/lib/security-headers'
 import { createFileRoute } from '@tanstack/react-router'
 import { businessForRoute, routeUser } from '@/server/auth.server'
 import { runForBusiness } from '@/server/tenant'
-import { PROVIDERS, StateMismatchError, completeAuthorization, logIntegrationError, type Provider } from '@/server/integrations.server'
+import { PROVIDERS, StateMismatchError, WrongCompanyError, completeAuthorization, logIntegrationError, type Provider } from '@/server/integrations.server'
 
 /** Where Square / QuickBooks send the owner back after approving (or declining) the connection. */
 export const Route = createFileRoute('/api/integrations/$provider/callback')({
@@ -47,7 +47,7 @@ export const Route = createFileRoute('/api/integrations/$provider/callback')({
             code: error instanceof StateMismatchError ? 'state_mismatch' : '',
             message: error instanceof Error ? error.message : String(error),
           })
-          return back({ error: `${provider}-${error instanceof StateMismatchError ? 'expired' : 'failed'}` })
+          return back({ error: `${provider}-${error instanceof StateMismatchError ? 'expired' : error instanceof WrongCompanyError ? 'wrong-company' : 'failed'}` })
         }
         })
       },

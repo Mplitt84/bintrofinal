@@ -277,6 +277,13 @@ async function requestQuickBooksToken(body: Record<string, string>): Promise<Tok
   };
 }
 
+/** Intuit connected a company these keys can't use (a test company with live keys, or the reverse). */
+export class WrongCompanyError extends Error {
+  constructor() {
+    super("QuickBooks connected a company these keys can't use");
+  }
+}
+
 export class StateMismatchError extends Error {
   constructor() {
     super("That connection link expired. Start again from Settings.");
@@ -341,6 +348,8 @@ export async function completeAuthorization(
       intuitTid: res.headers.get("intuit_tid") ?? "",
       message: `Couldn't read company ${params.realmId} (${isSandbox("quickbooks") ? "sandbox" : "production"} keys): ${JSON.stringify(info.Fault ?? info).slice(0, 300)}`,
     });
+    // Don't call it connected: nothing could be sent there anyway.
+    if (res.status === 401 || res.status === 403) throw new WrongCompanyError();
   }
   await saveIntegration(provider, {
     accessToken: tokens.accessToken,
