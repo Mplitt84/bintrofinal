@@ -25,7 +25,7 @@ export function signupOpen() {
  * profile is left unnamed on purpose — the welcome screen asks for the name, and
  * an unnamed profile is how the app knows to show it.
  */
-export async function createBusinessForOwner(profile: { email: string; name: string; sub: string }) {
+export async function createBusinessForOwner(profile: { email: string; name: string; sub: string }, addedBy = "signed up") {
   const [created] = await db
     .insert(businesses)
     .values({ name: "", createdByEmail: profile.email })
@@ -45,7 +45,7 @@ export async function createBusinessForOwner(profile: { email: string; name: str
         name: profile.name,
         role: "owner",
         googleSub: profile.sub,
-        addedBy: "signed up",
+        addedBy,
         lastSignInAt: new Date(),
       })
       .returning();

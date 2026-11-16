@@ -5,6 +5,8 @@ export type AuthState = {
   /** False until the Google keys are set; the app is then open as before. */
   enabled: boolean
   user: AuthUser | null
+  /** Signed in as the site owner (BINTRO_OWNER_EMAIL), who alone manages pilot invites. */
+  siteOwner?: boolean
   /** BINTRO_OWNER_EMAIL is set, so the owner can make the first sign-in. */
   ownerConfigured: boolean
   /** BINTRO_SIGNUP_OPEN is on, so a new business can start itself here. */

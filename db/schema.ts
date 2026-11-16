@@ -487,6 +487,25 @@ export const appUsers = pgTable("app_users", {
   lastSignInAt: timestamp("last_sign_in_at"),
 });
 
+/**
+ * Pilot testers the site owner (BINTRO_OWNER_EMAIL) has invited. Each invited email,
+ * on its first Google sign-in, gets a brand-new business of its own with that person
+ * as its owner, so testers never share an inventory or see one another's emails.
+ * Belongs to the site, not to a business: only the site owner reads or changes it.
+ */
+export const pilotInvites = pgTable("pilot_invites", {
+  id: serial().primaryKey(),
+  /** Lower-cased Google account email. */
+  email: text().notNull().unique(),
+  /** Who the tester is, for the site owner's own reference ("Lena · nail studio"). */
+  note: text().notNull().default(""),
+  invitedBy: text("invited_by").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  /** Set on the tester's first sign-in, with the business made for them. */
+  claimedAt: timestamp("claimed_at"),
+  claimedBusinessId: integer("claimed_business_id"),
+});
+
 /** Signed-in browsers. Only a SHA-256 of the cookie token is stored. */
 export const appSessions = pgTable("app_sessions", {
   tokenHash: text("token_hash").primaryKey(),
