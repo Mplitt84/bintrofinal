@@ -97,6 +97,12 @@ export function AccessPanel({ auth }: { auth: AuthState }) {
               </li>
             ))}
           </ul>
+          {auth.canAddPeople === false ? (
+            <p className="text-ink-2 text-sm m-0">
+              During the pilot, only Bintro can add people. If someone on your team needs access, email{' '}
+              <a href="mailto:hello@bintroapp.com">hello@bintroapp.com</a>.
+            </p>
+          ) : (
           <div className="flex gap-2 flex-wrap">
             <input
               className="field-input flex-1 min-w-[200px]"
@@ -113,6 +119,7 @@ export function AccessPanel({ auth }: { auth: AuthState }) {
               <UserPlus size={15} /> Add
             </button>
           </div>
+          )}
           <p className="text-ink-2 text-[12px] mt-2 mb-0">Owners can manage this list, connections and billing.</p>
         </>
       )}
