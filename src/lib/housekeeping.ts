@@ -1,18 +1,27 @@
 /**
- * Housekeeping: the shop's cleaning and closing jobs as bold round buttons, who did
- * each one today, and the thank-you that follows a tap. Client-safe and pure, so the
- * board's rules have one home and are tested (housekeeping.test.ts).
+ * Housekeeping: the shop's cleaning, closing and inventory jobs, who does each one
+ * today, and the thank-you that follows. Client-safe and pure, so the rules have one
+ * home and are tested (housekeeping.test.ts).
  *
- * Two kinds of job:
- * - `each`: every team member does their own (their station, their brushes).
- * - `shop`: one person covers it for everyone today (lock the doors, water the plants).
- * And four times of day: after each client (counts up all day), opening, during the
- * day, and before you leave.
+ * Every job happens at one of three moments in a stylist's day:
+ * - Arrive (`open`), Client done (`client`, every client, counts up), Close out
+ *   (`close`, plus the day's `daily` jobs and any `weekly` job that's due).
+ * Every job says who does it (`assign`), so nothing depends on volunteers:
+ * - `everyone`: on every list in its section (their own station, or a shop job the
+ *   first person covers);
+ * - `rotate`: one person's turn each day, rotating through who's working;
+ * - `assigned`: the specific people a manager picked.
+ * Sections (`role`): Technician (everyone who works on clients) and Inventory
+ * Management (team members marked "Manages inventory").
  */
 
 export type HkCadence = 'client' | 'open' | 'daily' | 'close' | 'weekly'
-/** Whose obligations: artists and technicians, or whoever manages inventory (Team → Manages inventory). */
+/** Which section: technicians (everyone who works on clients) or inventory management (Team → Manages inventory). */
 export type HkRole = 'artist' | 'inventory'
+/** Who does it: everyone in the section, one person's turn each day, or specific people. */
+export type HkAssign = 'everyone' | 'rotate' | 'assigned'
+/** The three moments in a stylist's day that every job belongs to. */
+export type HkMoment = 'arrive' | 'client' | 'close'
 export type HkScope = 'each' | 'shop'
 
 /** Fixed tones, the same bold brand circles as the round action buttons (ToolButton). */
@@ -51,17 +60,34 @@ export const HK_ICONS = [
 export type HkIcon = (typeof HK_ICONS)[number]
 
 export const HK_CADENCES: { id: HkCadence; label: string; hint: string }[] = [
-  { id: 'open', label: 'Opening', hint: 'Once, when the day starts' },
-  { id: 'client', label: 'After each client', hint: 'Tap every time · counts up all day' },
-  { id: 'daily', label: 'During the day', hint: 'Once a day' },
-  { id: 'close', label: 'Before you leave', hint: 'Once, at the end of the day' },
-  { id: 'weekly', label: 'Every week', hint: 'Once in any 7 days' },
+  { id: 'open', label: 'When you arrive', hint: 'Once, at the start of your day' },
+  { id: 'client', label: 'After each client', hint: 'Every client' },
+  { id: 'daily', label: 'Once a day', hint: 'Any time before you leave' },
+  { id: 'close', label: 'When you close out', hint: 'After your last client' },
+  { id: 'weekly', label: 'Once a week', hint: 'Once in any 7 days' },
 ]
 
 export const HK_ROLES: { id: HkRole; label: string; hint: string }[] = [
-  { id: 'artist', label: 'Artist & technician obligations', hint: 'Everyone who works on clients' },
-  { id: 'inventory', label: 'Inventory manager obligations', hint: 'Restock · Recount · Refill · Recycle' },
+  { id: 'artist', label: 'Technician', hint: 'Everyone who works on clients' },
+  { id: 'inventory', label: 'Inventory Management', hint: 'Restock · Recount · Refill · Recycle' },
 ]
+
+export const HK_ASSIGNS: { id: HkAssign; label: string; hint: string }[] = [
+  { id: 'everyone', label: 'Everyone', hint: 'On every list in its section' },
+  { id: 'rotate', label: 'Takes turns', hint: 'One person each day, rotating through who’s working' },
+  { id: 'assigned', label: 'Assigned', hint: 'The people you pick' },
+]
+
+export const HK_MOMENTS: { id: HkMoment; label: string; verb: string }[] = [
+  { id: 'arrive', label: 'Arrive', verb: 'Start your day' },
+  { id: 'client', label: 'Client done', verb: 'Reset for the next client' },
+  { id: 'close', label: 'Close out', verb: 'Finish your day' },
+]
+
+/** Which moment a job is done at. Daily and weekly jobs are checked at close-out so nothing slips. */
+export function momentOf(cadence: HkCadence): HkMoment {
+  return cadence === 'open' ? 'arrive' : cadence === 'client' ? 'client' : 'close'
+}
 
 export type HkTaskSpec = {
   key: string
@@ -72,8 +98,10 @@ export type HkTaskSpec = {
   scope: HkScope
   /** On everyone's list. Optional jobs are ones a team member chooses to take on. */
   required: boolean
-  /** artist = artists & technicians; inventory = whoever manages inventory. */
+  /** artist = technicians; inventory = whoever manages inventory. */
   role: HkRole
+  /** Filled in from `required` and `scope` by housekeepingDefaultsFor. */
+  assign?: HkAssign
   why: string
 }
 
@@ -107,10 +135,10 @@ const sweep: Spec = {
   name: 'Sweep floor',
   icon: 'broom',
   tone: 'orange',
-  cadence: 'daily',
-  scope: 'shop',
+  cadence: 'client',
+  scope: 'each',
   required: true,
-  why: 'Clean floors keep everyone safe and the shop looking its best.',
+  why: 'A clean floor around your chair is the first thing the next client sees.',
 }
 const fridge: Spec = {
   role: 'artist',
@@ -248,11 +276,11 @@ const SALON: Spec[] = [
   fridge,
   job({
     key: 'shampoo-bowls',
-    name: 'Disinfect shampoo bowls',
+    name: 'Disinfect shampoo bowl',
     icon: 'droplets',
     tone: 'royal',
-    cadence: 'daily',
-    scope: 'shop',
+    cadence: 'client',
+    scope: 'each',
     required: true,
     why: 'Clean bowls are the first thing a client feels at the shampoo.',
   }),
@@ -328,11 +356,12 @@ const BARBER: Spec[] = [
   }),
   job({
     key: 'shampoo-bowls',
-    name: 'Disinfect shampoo bowls',
+    name: 'Disinfect shampoo bowl',
     icon: 'droplets',
     tone: 'royal',
-    cadence: 'daily',
-    scope: 'shop',
+    cadence: 'client',
+    scope: 'each',
+    required: true,
     why: 'Clean bowls are the first thing a client feels at the shampoo.',
   }),
   towels,
@@ -556,7 +585,16 @@ const BY_TYPE: Record<string, Spec[]> = { salon: SALON, barber: BARBER, nails: N
 
 /** What a new shop starts with, by trade. Owners can switch any job between required and optional, hide it, or add their own. */
 export function housekeepingDefaultsFor(businessType: string): HkTaskSpec[] {
-  return BY_TYPE[businessType] ?? GENERAL
+  return (BY_TYPE[businessType] ?? GENERAL).map((t) => ({ ...t, assign: defaultAssign(t) }))
+}
+
+/**
+ * Nothing is left to volunteers: required jobs are everyone's; a shared shop job that
+ * used to be optional becomes a daily turn; a job at your own station is everyone's.
+ */
+export function defaultAssign(t: Pick<HkTaskSpec, 'required' | 'scope'>): HkAssign {
+  if (t.required) return 'everyone'
+  return t.scope === 'shop' ? 'rotate' : 'everyone'
 }
 
 /** Jobs added after shops were first set up: given to every shop that doesn't have them yet. */
@@ -576,8 +614,10 @@ export type HkTask = {
   tone: HkTone
   cadence: HkCadence
   scope: HkScope
-  required: boolean
   role: HkRole
+  assign: HkAssign
+  /** For `assigned` jobs: who it's assigned to (as the team list spells them). */
+  assignees: string[]
   why: string
   active: boolean
 }
@@ -586,112 +626,131 @@ export type HkCheck = { id: number; taskId: number; staffName: string; at: strin
 
 export type HkReminder = { id: number; staffName: string; detail: string; at: string }
 
-/** One button's state on the board, for the person whose board it is. */
+/** Lower-cased, trimmed: how names are compared, so "Beth " and "beth" are one person. */
+export const nameKey = (name: string) => name.trim().toLowerCase()
+
+/** Who the shop has today, for turns and for who sees which section. */
+export type HkDay = {
+  /** Everyone on the team (the technicians' pool when nobody's schedule says otherwise). */
+  team: string[]
+  /** People scheduled or already in today; turns rotate through them. Empty = use the whole team. */
+  working: string[]
+  /** Team members marked "Manages inventory". */
+  inventoryManagers: string[]
+  /** Days since the epoch (local), so turns move on once a day. */
+  dayNumber: number
+}
+
+function sortedPool(names: string[]) {
+  const seen = new Map<string, string>()
+  for (const n of names) if (n.trim() && !seen.has(nameKey(n))) seen.set(nameKey(n), n)
+  return [...seen.values()].sort((a, b) => nameKey(a).localeCompare(nameKey(b)))
+}
+
+/** The people a job could fall to: inventory managers for Inventory Management, otherwise who's working (or the team). */
+export function poolFor(task: Pick<HkTask, 'role'>, day: HkDay) {
+  if (task.role === 'inventory') return sortedPool(day.inventoryManagers)
+  return sortedPool(day.working.length ? day.working : day.team)
+}
+
+/** Whose turn a rotating job is today: a fair, predictable rotation through the pool. */
+export function turnFor(task: Pick<HkTask, 'id' | 'role'>, day: HkDay): string | null {
+  const pool = poolFor(task, day)
+  if (pool.length === 0) return null
+  return pool[(day.dayNumber + task.id) % pool.length]
+}
+
+/** Who a job belongs to today. */
+export function ownersOf(task: HkTask, day: HkDay): string[] {
+  if (!task.active) return []
+  if (task.assign === 'assigned') return sortedPool(task.assignees)
+  if (task.assign === 'rotate') {
+    const t = turnFor(task, day)
+    return t ? [t] : []
+  }
+  return poolFor(task, day)
+}
+
+/** True when the job is on this person's list today. */
+export function isMine(task: HkTask, day: HkDay, staffName: string) {
+  return ownersOf(task, day).some((n) => nameKey(n) === nameKey(staffName))
+}
+
+/** One job's state today, for one person. */
 export type HkButton = {
   task: HkTask
   /** Times this person tapped it today (after-client jobs count up). */
   mine: number
-  /** For a shop job: who covered it today and when; null = nobody yet. */
-  coveredBy: { staffName: string; at: string } | null
-  /** Nothing left to do on it today for this person. */
+  /** Who did it (first, today or this week for weekly jobs); null = nobody yet. */
+  doneBy: { staffName: string; at: string; checkId: number } | null
+  /** Nothing left to do on it for this person. */
   done: boolean
-}
-
-export type HkPersonSummary = { staffName: string; done: number; total: number; clients: number }
-
-/** Lower-cased, trimmed: how names are compared, so "Beth " and "beth" are one person. */
-export const nameKey = (name: string) => name.trim().toLowerCase()
-
-/**
- * Whether a job is on one person's list: required artist jobs are on everyone's,
- * required inventory jobs on the inventory managers', and any optional job a person chose.
- */
-export function onMyList(task: HkTask, committed: ReadonlySet<number>, managesInventory = false) {
-  if (!task.active) return false
-  if (committed.has(task.id)) return true
-  if (!task.required) return false
-  return task.role === 'inventory' ? managesInventory : true
+  /** On this person's list today. */
+  onList: boolean
+  /** Who it belongs to today (for "Beth's turn"). */
+  owners: string[]
 }
 
 /**
- * This person's buttons (every active job; the screen sorts theirs from the extras).
- * Weekly jobs look at the last 7 days of taps; everything else at today's.
+ * Every active job's state for this person. Own-station jobs (`each`) are done when
+ * they did them; shop jobs when anyone covered them. Weekly jobs look at the last 7 days.
  */
-export function buildButtons(tasks: HkTask[], checks: HkCheck[], staffName: string, weekChecks: HkCheck[] = checks): HkButton[] {
+export function buildButtons(
+  tasks: HkTask[],
+  checks: HkCheck[],
+  staffName: string,
+  day: HkDay,
+  weekChecks: HkCheck[] = checks,
+): HkButton[] {
   const me = nameKey(staffName)
   return tasks
     .filter((t) => t.active)
     .map((task) => {
       const pool = task.cadence === 'weekly' ? weekChecks : checks
-      const forTask = pool.filter((c) => c.taskId === task.id)
-      const mine = forTask.filter((c) => nameKey(c.staffName) === me).length
-      const first = [...forTask].sort((a, b) => a.at.localeCompare(b.at))[0]
-      const coveredBy = task.scope === 'shop' && first ? { staffName: first.staffName, at: first.at } : null
-      const done = task.cadence === 'client' ? false : task.scope === 'shop' ? Boolean(coveredBy) : mine > 0
-      return { task, mine, coveredBy, done }
+      const forTask = pool.filter((c) => c.taskId === task.id).sort((a, b) => a.at.localeCompare(b.at))
+      const mineChecks = forTask.filter((c) => nameKey(c.staffName) === me)
+      const relevant = task.scope === 'shop' ? forTask : mineChecks
+      const first = relevant[0]
+      const owners = ownersOf(task, day)
+      return {
+        task,
+        mine: mineChecks.length,
+        doneBy: first ? { staffName: first.staffName, at: first.at, checkId: first.id } : null,
+        done: task.cadence === 'client' ? false : Boolean(first),
+        onList: owners.some((n) => nameKey(n) === me),
+        owners,
+      }
     })
 }
 
-/** One person's choices: staff name → optional job ids they've taken on. */
-export type HkCommitments = Record<string, number[]>
-
-export function commitmentsOf(commitments: HkCommitments, staffName: string): Set<number> {
-  const key = nameKey(staffName)
-  const found = Object.entries(commitments).find(([name]) => nameKey(name) === key)
-  return new Set(found?.[1] ?? [])
-}
+export type HkPersonSummary = { staffName: string; done: number; total: number; clients: number }
 
 /**
- * How far along each person is today, against their own list: required jobs for
- * their role(s) plus the optional ones they chose. After-client jobs count separately
- * as resets, and weekly jobs aren't part of a day's list. A shop job on their list
- * counts once anyone has covered it today.
+ * How far along each person is today against their own list (after-client jobs are
+ * counted as resets instead; weekly jobs only count on the day they're due to them).
  */
-export function summarizePeople(
-  tasks: HkTask[],
-  checks: HkCheck[],
-  people: string[],
-  commitments: HkCommitments = {},
-  inventoryManagers: string[] = [],
-): HkPersonSummary[] {
+export function summarizePeople(tasks: HkTask[], checks: HkCheck[], people: string[], day: HkDay, weekChecks: HkCheck[] = checks): HkPersonSummary[] {
   const clientIds = new Set(tasks.filter((t) => t.active && t.cadence === 'client').map((t) => t.id))
-  const coveredShop = new Set(checks.map((c) => c.taskId))
-  const managers = new Set(inventoryManagers.map(nameKey))
   return people.map((staffName) => {
+    const list = buildButtons(tasks, checks, staffName, day, weekChecks).filter((b) => b.onList && b.task.cadence !== 'client')
     const me = nameKey(staffName)
-    const mine = commitmentsOf(commitments, staffName)
-    const list = tasks.filter((t) => t.cadence !== 'client' && t.cadence !== 'weekly' && onMyList(t, mine, managers.has(me)))
-    const mineChecks = checks.filter((c) => nameKey(c.staffName) === me)
-    const doneIds = new Set(mineChecks.map((c) => c.taskId))
     return {
       staffName,
-      done: list.filter((t) => (t.scope === 'shop' ? coveredShop.has(t.id) : doneIds.has(t.id))).length,
+      done: list.filter((b) => b.done).length,
       total: list.length,
-      clients: mineChecks.filter((c) => clientIds.has(c.taskId)).length,
+      clients: checks.filter((c) => clientIds.has(c.taskId) && nameKey(c.staffName) === me).length,
     }
   })
 }
 
-/**
- * Shop jobs still open that someone is on the hook for: required ones and optional
- * ones somebody chose. Weekly jobs are open until covered in the last 7 days.
- */
-export function openShopJobs(
-  tasks: HkTask[],
-  checks: HkCheck[],
-  commitments: HkCommitments = {},
-  weekChecks: HkCheck[] = checks,
-): HkTask[] {
+/** Jobs nobody has finished yet today, with whose they are: the manager's "still open" list. */
+export function openJobs(tasks: HkTask[], checks: HkCheck[], day: HkDay, weekChecks: HkCheck[] = checks) {
   const today = new Set(checks.map((c) => c.taskId))
   const week = new Set(weekChecks.map((c) => c.taskId))
-  const chosen = new Set(Object.values(commitments).flat())
-  return tasks.filter(
-    (t) =>
-      t.active &&
-      t.scope === 'shop' &&
-      (t.required || chosen.has(t.id)) &&
-      !(t.cadence === 'weekly' ? week : today).has(t.id),
-  )
+  return tasks
+    .filter((t) => t.active && t.cadence !== 'client' && t.scope === 'shop')
+    .filter((t) => !(t.cadence === 'weekly' ? week : today).has(t.id))
+    .map((t) => ({ task: t, owners: ownersOf(t, day) }))
 }
 
 const OPENERS = ['Thank you', 'Appreciate you', 'Nicely done', 'That’s care', 'Love to see it', 'Thanks for that']
@@ -722,6 +781,12 @@ export function appreciation(input: {
     return { title: `${opener}, ${first}. Station #${input.count} today.`, body: why }
   }
   return { title: `${opener}, ${first}.`, body: why }
+}
+
+/** Days since the epoch for a local date: the same number on the phone and on the server, so turns agree. */
+export function dayNumberOf(dayKey: string) {
+  const [y, m, d] = dayKey.split('-').map(Number)
+  return Math.floor(Date.UTC(y, m - 1, d) / 86_400_000)
 }
 
 /** Local date of a device as YYYY-MM-DD: the day the shop is working in. */

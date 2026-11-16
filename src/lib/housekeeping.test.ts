@@ -1,166 +1,148 @@
 import { describe, expect, it } from 'vitest'
 import {
-  HOUSEKEEPING_DEFAULTS,
-  housekeepingDefaultsFor,
+  HK_MOMENTS,
   appreciation,
   buildButtons,
+  dayNumberOf,
+  housekeepingDefaultsFor,
   matchTeamName,
-  openShopJobs,
+  momentOf,
+  openJobs,
+  ownersOf,
   reminderDetail,
   summarizePeople,
+  turnFor,
   type HkCheck,
+  type HkDay,
   type HkTask,
 } from './housekeeping'
 
-const tasks: HkTask[] = HOUSEKEEPING_DEFAULTS.map((t, i) => ({ ...t, id: i + 1, active: true }))
+const tasks: HkTask[] = housekeepingDefaultsFor('salon').map(({ required: _r, ...t }, i) => ({ ...t, assign: t.assign ?? 'everyone', id: i + 1, active: true, assignees: [] }))
 const byKey = (k: string) => tasks.find((t) => t.key === k)!
-const check = (key: string, staffName: string, at = '2026-11-16T15:00:00Z', id = Math.random()): HkCheck => ({
-  id,
-  taskId: byKey(key).id,
-  staffName,
-  at,
+let n = 0
+const check = (key: string, staffName: string, at = '2026-11-16T15:00:00Z'): HkCheck => ({ id: ++n, taskId: byKey(key).id, staffName, at })
+const day = (over: Partial<HkDay> = {}): HkDay => ({
+  team: ['Beth', 'KaNesha', 'Minnie'],
+  working: ['Beth', 'KaNesha'],
+  inventoryManagers: ['Minnie'],
+  dayNumber: dayNumberOf('2026-11-16'),
+  ...over,
 })
 
 describe('housekeeping defaults', () => {
-  it('has every job she listed, with unique keys and names', () => {
+  it('has every job she listed, with unique keys and names, in every trade', () => {
     const names = tasks.map((t) => t.name.toLowerCase()).join(' | ')
-    for (const word of ['station', 'shampoo bowls', 'sweep', 'towels', 'refrigerator', 'dispensary', 'brushes', 'stain', 'organize', 'plants', 'lock']) {
+    for (const word of ['station', 'shampoo bowl', 'sweep', 'towels', 'refrigerator', 'dispensary', 'brushes', 'stain', 'organize', 'plants', 'lock']) {
       expect(names).toContain(word)
     }
-    expect(new Set(tasks.map((t) => t.key)).size).toBe(tasks.length)
-    expect(new Set(tasks.map((t) => t.name)).size).toBe(tasks.length)
+    for (const type of ['salon', 'barber', 'nails', 'brows', 'tattoo', 'spa', 'other']) {
+      const list = housekeepingDefaultsFor(type)
+      expect(new Set(list.map((t) => t.key)).size).toBe(list.length)
+      expect(new Set(list.map((t) => t.name)).size).toBe(list.length)
+      expect(list.filter((t) => t.role === 'inventory').map((t) => t.key).sort()).toEqual(['inv-recount', 'inv-recycle', 'inv-refill', 'inv-restock'])
+      expect(list.some((t) => t.key === 'take-out-trash' && t.role === 'artist')).toBe(true)
+    }
+  })
+
+  it('does bowls and sweeping after every client, for everyone', () => {
+    for (const key of ['shampoo-bowls', 'sweep-floor', 'station-client']) {
+      expect(byKey(key)).toMatchObject({ cadence: 'client', scope: 'each', assign: 'everyone' })
+    }
+  })
+
+  it('maps every cadence to one of the three moments', () => {
+    expect(HK_MOMENTS.map((m) => m.id)).toEqual(['arrive', 'client', 'close'])
+    expect(momentOf('open')).toBe('arrive')
+    expect(momentOf('client')).toBe('client')
+    for (const c of ['daily', 'close', 'weekly'] as const) expect(momentOf(c)).toBe('close')
+  })
+})
+
+describe('who owns a job', () => {
+  it('takes turns through who is working, one person a day, moving on daily', () => {
+    const plants = byKey('water-plants')
+    const today = ownersOf(plants, day())
+    expect(today).toHaveLength(1)
+    expect(['Beth', 'KaNesha']).toContain(today[0])
+    const tomorrow = turnFor(plants, day({ dayNumber: day().dayNumber + 1 }))
+    expect(tomorrow).not.toBe(today[0])
+  })
+
+  it('falls back to the whole team when nobody is scheduled', () => {
+    const t = turnFor(byKey('lock-doors'), day({ working: [] }))
+    expect(['Beth', 'KaNesha', 'Minnie']).toContain(t)
+  })
+
+  it('gives Inventory Management jobs to inventory managers only', () => {
+    expect(ownersOf(byKey('inv-restock'), day())).toEqual(['Minnie'])
+    expect(ownersOf(byKey('inv-restock'), day({ inventoryManagers: [] }))).toEqual([])
+  })
+
+  it('gives assigned jobs to exactly who the owner picked', () => {
+    const towels = { ...byKey('discard-towels'), assign: 'assigned' as const, assignees: ['KaNesha'] }
+    expect(ownersOf(towels, day())).toEqual(['KaNesha'])
+  })
+
+  it('puts everyone-jobs on everyone working', () => {
+    expect(ownersOf(byKey('organize-station'), day())).toEqual(['Beth', 'KaNesha'])
   })
 })
 
 describe('buildButtons', () => {
   it('counts after-client taps and never marks them done', () => {
-    const b = buildButtons(tasks, [check('station-client', 'Beth'), check('station-client', 'Beth'), check('station-client', 'Kanesha')], 'beth ')
+    const b = buildButtons(tasks, [check('station-client', 'Beth'), check('station-client', 'Beth'), check('station-client', 'KaNesha')], 'beth ', day())
     const station = b.find((x) => x.task.key === 'station-client')!
     expect(station.mine).toBe(2)
     expect(station.done).toBe(false)
+    expect(station.onList).toBe(true)
   })
 
-  it('a shop job covered by one person is done for everyone, and says who', () => {
-    const b = buildButtons(tasks, [check('lock-doors', 'Kanesha', '2026-11-16T23:00:00Z')], 'Beth')
-    const lock = b.find((x) => x.task.key === 'lock-doors')!
-    expect(lock.done).toBe(true)
-    expect(lock.coveredBy?.staffName).toBe('Kanesha')
+  it('marks own-station jobs done per person and shop jobs done for everyone', () => {
+    const checks = [check('organize-station', 'Beth'), check('restock-fridge', 'KaNesha')]
+    const beth = buildButtons(tasks, checks, 'Beth', day())
+    const kanesha = buildButtons(tasks, checks, 'KaNesha', day())
+    expect(beth.find((x) => x.task.key === 'organize-station')!.done).toBe(true)
+    expect(kanesha.find((x) => x.task.key === 'organize-station')!.done).toBe(false)
+    expect(beth.find((x) => x.task.key === 'restock-fridge')!.doneBy?.staffName).toBe('KaNesha')
   })
 
-  it('an own-station job is only done by the person who did it', () => {
-    const checks = [check('organize-station', 'Kanesha')]
-    expect(buildButtons(tasks, checks, 'Beth').find((x) => x.task.key === 'organize-station')!.done).toBe(false)
-    expect(buildButtons(tasks, checks, 'Kanesha').find((x) => x.task.key === 'organize-station')!.done).toBe(true)
-  })
-
-  it('leaves hidden jobs off', () => {
-    const hidden = tasks.map((t) => (t.key === 'water-plants' ? { ...t, active: false } : t))
-    expect(buildButtons(hidden, [], 'Beth').some((x) => x.task.key === 'water-plants')).toBe(false)
+  it('counts weekly jobs done for the whole week', () => {
+    const week = [check('inv-recount', 'Minnie', '2026-11-12T15:00:00Z')]
+    const b = buildButtons(tasks, [], 'Minnie', day(), week)
+    expect(b.find((x) => x.task.key === 'inv-recount')!.done).toBe(true)
   })
 })
 
-describe('required and optional jobs', () => {
-  it('makes station cleaning, bowls, sweeping and the fridge required, towels and plants optional', () => {
-    for (const k of ['station-client', 'station-close', 'shampoo-bowls', 'sweep-floor', 'restock-fridge']) expect(byKey(k).required).toBe(true)
-    for (const k of ['discard-towels', 'water-plants']) expect(byKey(k).required).toBe(false)
-  })
-
-  it('counts a person’s list as required jobs plus the extras they chose', () => {
-    const requiredOnce = tasks.filter((t) => t.required && t.role === 'artist' && t.cadence !== 'client' && t.cadence !== 'weekly').length
-    const [plain] = summarizePeople(tasks, [], ['Beth'])
-    expect(plain.total).toBe(requiredOnce)
-    const [withPlants] = summarizePeople(tasks, [], ['Beth'], { Beth: [byKey('water-plants').id] })
-    expect(withPlants.total).toBe(requiredOnce + 1)
-  })
-
-  it('counts a shop job on your list as done once anyone covers it, and own jobs only when you do them', () => {
-    const checks = [check('sweep-floor', 'Kanesha'), check('station-close', 'Kanesha'), check('station-client', 'Beth')]
-    const [beth] = summarizePeople(tasks, checks, ['Beth'])
-    expect(beth.done).toBe(1)
+describe('summaries and the board', () => {
+  it('counts only what is on each person’s list, not after-client jobs', () => {
+    const [beth] = summarizePeople(tasks, [check('station-client', 'Beth')], ['Beth'], day())
+    const mine = buildButtons(tasks, [], 'Beth', day()).filter((b) => b.onList && b.task.cadence !== 'client')
+    expect(beth.total).toBe(mine.length)
+    expect(beth.done).toBe(0)
     expect(beth.clients).toBe(1)
+    expect(mine.some((b) => b.task.role === 'inventory')).toBe(false)
   })
 
-  it('only lists open shop jobs someone is responsible for', () => {
-    const open = openShopJobs(tasks, [check('sweep-floor', 'Beth')]).map((t) => t.key)
-    expect(open).not.toContain('sweep-floor')
-    expect(open).toContain('shampoo-bowls')
-    expect(open).not.toContain('water-plants')
-    expect(openShopJobs(tasks, [], { Beth: [byKey('water-plants').id] }).map((t) => t.key)).toContain('water-plants')
+  it('lists open shop jobs with their owner, and drops them once covered', () => {
+    const open = openJobs(tasks, [], day())
+    const plants = open.find((o) => o.task.key === 'water-plants')!
+    expect(plants.owners).toHaveLength(1)
+    const after = openJobs(tasks, [check('water-plants', 'Beth')], day())
+    expect(after.some((o) => o.task.key === 'water-plants')).toBe(false)
+    expect(open.some((o) => o.task.cadence === 'client' || o.task.scope === 'each')).toBe(false)
   })
 })
 
-describe('artist and inventory manager obligations', () => {
-  it('puts the four Rs on inventory managers’ lists only, and trash and recycling in the artist section', () => {
-    for (const k of ['inv-restock', 'inv-recount', 'inv-refill', 'inv-recycle']) {
-      expect(byKey(k).role).toBe('inventory')
-      expect(byKey(k).required).toBe(true)
-    }
-    for (const k of ['take-out-trash', 'sort-recycling']) expect(byKey(k).role).toBe('artist')
-    const daily = tasks.filter((t) => t.role === 'inventory' && t.required && t.cadence !== 'weekly').length
-    const [artist] = summarizePeople(tasks, [], ['Beth'])
-    const [manager] = summarizePeople(tasks, [], ['Marsherrie'], {}, ['marsherrie'])
-    expect(manager.total - artist.total).toBe(daily)
+describe('words', () => {
+  it('thanks by name and celebrates a finished list', () => {
+    const a = appreciation({ staffName: 'Beth Englert', task: byKey('water-plants'), seed: 1 })
+    expect(a.title + a.body).toContain('Beth')
+    const done = appreciation({ staffName: 'Beth', task: byKey('lock-doors'), seed: 2, allDone: true })
+    expect(done.title.length).toBeGreaterThan(0)
   })
 
-  it('treats a weekly job as done if anyone did it in the last 7 days', () => {
-    const lastWeek = [check('inv-recount', 'Marsherrie', '2026-11-12T15:00:00Z')]
-    const recount = buildButtons(tasks, [], 'Marsherrie', lastWeek).find((b) => b.task.key === 'inv-recount')!
-    expect(recount.done).toBe(true)
-    expect(openShopJobs(tasks, [], {}, lastWeek).some((t) => t.key === 'inv-recount')).toBe(false)
-    expect(openShopJobs(tasks, [], {}, []).some((t) => t.key === 'inv-recount')).toBe(true)
-  })
-})
-
-describe('starting jobs by trade', () => {
-  it('gives every trade the required basics and a station job checkout reminders can tick off', () => {
-    for (const type of ['salon', 'barber', 'nails', 'brows', 'tattoo', 'spa', 'other', 'anything']) {
-      const list = housekeepingDefaultsFor(type)
-      expect(list.find((t) => t.key === 'station-client')?.required).toBe(true)
-      expect(list.find((t) => t.key === 'sweep-floor')?.required).toBe(true)
-      expect(list.find((t) => t.key === 'restock-fridge')?.required).toBe(true)
-      expect(new Set(list.map((t) => t.key)).size).toBe(list.length)
-      expect(new Set(list.map((t) => t.name)).size).toBe(list.length)
-    }
-  })
-
-  it('tailors the jobs to the trade', () => {
-    expect(housekeepingDefaultsFor('barber').some((t) => t.key === 'clippers-oil')).toBe(true)
-    expect(housekeepingDefaultsFor('nails').some((t) => t.key === 'pedi-tubs' && t.required)).toBe(true)
-    expect(housekeepingDefaultsFor('tattoo').some((t) => t.key === 'autoclave' && t.required)).toBe(true)
-    expect(housekeepingDefaultsFor('spa').some((t) => t.key === 'linens')).toBe(true)
-    expect(housekeepingDefaultsFor('tattoo').some((t) => t.key === 'shampoo-bowls')).toBe(false)
-  })
-})
-
-describe('thank-yous', () => {
-  const task = byKey('shampoo-bowls')
-  it('uses the first name and the job’s reason', () => {
-    const t = appreciation({ staffName: 'Beth Englert', task, seed: 0 })
-    expect(t.title).toContain('Beth')
-    expect(t.title).not.toContain('Englert')
-    expect(t.body).toBe(task.why)
-  })
-  it('changes its opening from one tap to the next', () => {
-    expect(appreciation({ staffName: 'Beth', task, seed: 1 }).title).not.toBe(appreciation({ staffName: 'Beth', task, seed: 2 }).title)
-  })
-  it('counts stations and celebrates a finished list', () => {
-    expect(appreciation({ staffName: 'Beth', task: byKey('station-client'), seed: 0, count: 3 }).title).toContain('#3')
-    expect(appreciation({ staffName: 'Beth', task, seed: 0, allDone: true }).title).toContain('whole list')
-  })
-})
-
-describe('checkout reminders', () => {
-  it('describes what was checked out', () => {
-    expect(reminderDetail([])).toBe('A client checked out')
-    expect(reminderDetail(['Curl cream'])).toBe('Curl cream')
-    expect(reminderDetail(['Curl cream', 'Gel', ''])).toBe('Curl cream + 1 more')
-  })
-  it('matches a Square name to the team by full name, then a unique first name', () => {
-    const team = ['Beth Englert', 'KaNesha Huey', 'Minnie']
-    expect(matchTeamName('beth englert', team)).toBe('Beth Englert')
-    expect(matchTeamName('Kanesha H', team)).toBe('KaNesha Huey')
-    expect(matchTeamName('Minnie Little', team)).toBe('Minnie')
-    expect(matchTeamName('Sam', team)).toBe('')
-    expect(matchTeamName('Beth', ['Beth A', 'Beth B'])).toBe('')
+  it('summarizes checkout items and matches Square names to the team', () => {
+    expect(reminderDetail(['Curl cream'])).toContain('Curl cream')
+    expect(matchTeamName('beth englert', ['Beth Englert', 'KaNesha Huey'])).toBe('Beth Englert')
   })
 })

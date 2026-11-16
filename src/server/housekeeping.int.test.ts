@@ -80,14 +80,28 @@ maybe("housekeeping", () => {
     });
   });
 
-  it("lets a team member take on and drop optional jobs", async () => {
+  it("assigns jobs to people, and turns rotate through who's working", async () => {
     await runForBusiness(a, async () => {
       const plants = (await hk.listTasks()).find((t) => t.key === "water-plants")!;
-      expect(plants.required).toBe(false);
-      expect((await hk.setCommitment("Beth", plants.id, true))["Beth"]).toEqual([plants.id]);
-      await hk.setCommitment("Beth", plants.id, true);
-      expect((await hk.listCommitments())["Beth"]).toHaveLength(1);
-      expect((await hk.setCommitment("beth", plants.id, false))["Beth"]).toBeUndefined();
+      expect(plants.assign).toBe("rotate");
+      await hk.updateTask(plants.id, { assign: "assigned" });
+      await hk.setAssignees(plants.id, ["Beth", "beth", "KaNesha"]);
+      const after = (await hk.listTasks()).find((t) => t.id === plants.id)!;
+      expect(after.assign).toBe("assigned");
+      expect(after.assignees.map((n) => n.toLowerCase()).sort()).toEqual(["beth", "kanesha"]);
+      await hk.setAssignees(plants.id, []);
+      await hk.updateTask(plants.id, { assign: "rotate" });
+      const board = await hk.loadBoard(day, [day]);
+      expect(board.working.some((w) => w.toLowerCase() === "beth")).toBe(true);
+    });
+  });
+
+  it("does bowls and sweeping after every client", async () => {
+    await runForBusiness(a, async () => {
+      const tasks = await hk.listTasks();
+      for (const key of ["shampoo-bowls", "sweep-floor"]) {
+        expect(tasks.find((t) => t.key === key)).toMatchObject({ cadence: "client", scope: "each", assign: "everyone" });
+      }
     });
   });
 
@@ -95,16 +109,16 @@ maybe("housekeeping", () => {
     await runForBusiness(b, async () => {
       await db.update(schema.businessProfile).set({ businessType: "barber" }).where(eq(schema.businessProfile.businessId, b));
       const tasks = await hk.listTasks();
-      expect(tasks.some((t) => t.key === "clippers-oil" && t.required)).toBe(true);
+      expect(tasks.some((t) => t.key === "clippers-oil")).toBe(true);
       expect(tasks.some((t) => t.key === "clean-dispensary")).toBe(false);
     });
   });
 
   it("lets owners add, hide and remove jobs", async () => {
     await runForBusiness(a, async () => {
-      const added = await hk.addTask({ name: "Wipe mirrors", icon: "sparkles", tone: "teal", cadence: "daily", scope: "shop", required: false, role: "artist", why: "" });
+      const added = await hk.addTask({ name: "Wipe mirrors", icon: "sparkles", tone: "teal", cadence: "daily", scope: "shop", role: "artist", assign: "rotate", why: "" });
       const mine = added.find((t) => t.name === "Wipe mirrors")!;
-      await expect(hk.addTask({ name: "wipe mirrors", icon: "sparkles", tone: "teal", cadence: "daily", scope: "shop", required: false, role: "artist", why: "" })).rejects.toThrow();
+      await expect(hk.addTask({ name: "wipe mirrors", icon: "sparkles", tone: "teal", cadence: "daily", scope: "shop", role: "artist", assign: "rotate", why: "" })).rejects.toThrow();
       const builtIn = added.find((t) => t.key === "water-plants")!;
       const afterHide = await hk.deleteTask(builtIn.id);
       expect(afterHide.find((t) => t.id === builtIn.id)?.active).toBe(false);

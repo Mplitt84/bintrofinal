@@ -16,7 +16,10 @@ import { mine, owned } from "./tenant.js";
 import { expenses, integrationLogs, integrations, products, squareOutbox } from "../../db/schema.js";
 import { SQUARE_STAFF_NAME, applyMovement, findProductByBarcode } from "./inventory.server.js";
 import { addCheckoutReminder } from "./housekeeping.server.js";
-import { matchTeamName, reminderDetail } from "../lib/housekeeping.js";
+import { sendClientCheckout, sendClose } from "./housekeeping-push.server.js";
+import { matchTeamName, nameKey, reminderDetail } from "../lib/housekeeping.js";
+import { localDay, zonedInstant } from "../lib/schedule.js";
+import { staffShifts } from "../../db/schema.js";
 import { findExpenseReceipt, findTeamMembers, findExpensesForMonth, findInventorySpend, findProductCategories, upsertProductCategories, type MonthWindow } from "./business.server.js";
 
 export type Provider = "square" | "quickbooks";
@@ -31,7 +34,8 @@ const SQUARE_VERSION = "2025-01-23";
  * Housekeeping's "reset your station" reminder goes to the right person. Connections
  * made before they were added still work; reminders then go to whoever is working.
  */
-const SQUARE_SCOPES = "ITEMS_READ ORDERS_READ MERCHANT_PROFILE_READ INVENTORY_READ INVENTORY_WRITE PAYMENTS_READ EMPLOYEES_READ";
+const SQUARE_SCOPES =
+  "ITEMS_READ ORDERS_READ MERCHANT_PROFILE_READ INVENTORY_READ INVENTORY_WRITE PAYMENTS_READ EMPLOYEES_READ APPOINTMENTS_READ APPOINTMENTS_ALL_READ";
 const QB_MINOR_VERSION = "75";
 
 /** Alternate env var names accepted for backward compatibility with existing Netlify settings. */
@@ -625,12 +629,13 @@ async function checkoutStaffName(
  */
 export async function syncSquareSales() {
   const row = await activeIntegration("square");
-  const { locations = [] } = await squareFetch<{ locations?: Array<{ id: string; status?: string }> }>(
+  const { locations = [] } = await squareFetch<{ locations?: Array<{ id: string; status?: string; timezone?: string }> }>(
     row.accessToken,
     "/v2/locations",
   );
   const locationIds = locations.filter((l) => l.status !== "INACTIVE").map((l) => l.id).slice(0, 10);
   if (locationIds.length === 0) return { sales: 0, units: 0, skipped: 0 };
+  const shopZone = locations.find((l) => l.status !== "INACTIVE")?.timezone || "America/Chicago";
 
   const since = row.lastSyncAt ?? row.connectedAt ?? new Date(Date.now() - 86_400_000);
   const mapped = await db.select({ id: products.id, variation: products.squareVariationId }).from(products).where(mine(products));
@@ -672,14 +677,20 @@ export async function syncSquareSales() {
       sales++;
       if (closed > remindAfter) {
         try {
-          await addCheckoutReminder({
-            ref: `square:${order.id}`,
-            staffName: await checkoutStaffName(row.accessToken, order, team, canReadStaff, staffCache),
-            detail: reminderDetail((order.line_items ?? []).map((l) => l.name ?? "")),
-            at: closed,
-          });
+          const staffName = await checkoutStaffName(row.accessToken, order, team, canReadStaff, staffCache);
+          const detail = reminderDetail((order.line_items ?? []).map((l) => l.name ?? ""));
+          const ref = `square:${order.id}`;
+          await addCheckoutReminder({ ref, staffName, detail, at: closed });
+          if (staffName) {
+            const { dayKey, weekday } = localDay(closed, shopZone);
+            await sendClientCheckout(staffName, ref, detail, dayKey, weekday);
+            // Their last booked client today: close-out reminder right away.
+            const shifts = await db.select().from(staffShifts).where(and(mine(staffShifts), eq(staffShifts.dayKey, dayKey)));
+            const shift = shifts.find((sh) => nameKey(sh.staffName) === nameKey(staffName));
+            if (shift && closed.getTime() >= shift.endsAt.getTime() - 20 * 60_000) await sendClose(staffName, dayKey, weekday, true);
+          }
         } catch (error) {
-          console.error("Couldn't add a housekeeping reminder", error);
+          console.error("Couldn't send a housekeeping reminder", error);
         }
       }
       for (const line of order.line_items ?? []) {
@@ -1113,4 +1124,83 @@ export async function pushMonthToQuickBooks(window: MonthWindow) {
 
   await saveIntegration("quickbooks", { lastSyncAt: new Date() });
   return { sentExpenses, sentVendors, sentReceipts, receiptErrors, monthClosed };
+}
+
+// ---------------------------------------------------------------------------
+// Square Appointments → each team member's day (for housekeeping reminders)
+// ---------------------------------------------------------------------------
+
+type SquareBooking = {
+  status?: string;
+  start_at?: string;
+  appointment_segments?: Array<{ duration_minutes?: number; team_member_id?: string }>;
+};
+
+const LIVE_BOOKING = new Set(["ACCEPTED", "PENDING"]);
+
+/**
+ * Reads today's Square Appointments bookings and saves each team member's first start
+ * and last end as their shift (`staff_shifts`, source square). Needs the
+ * APPOINTMENTS_READ + APPOINTMENTS_ALL_READ scopes; without them (or without Square)
+ * it does nothing and the usual schedules are used instead.
+ */
+export async function syncSquareShifts(now = new Date()) {
+  const row = await findIntegration("square");
+  if (!row?.accessToken || !isConfigured("square")) return null;
+  const scopes = String((row.meta as { scopes?: string } | undefined)?.scopes ?? "");
+  if (!scopes.includes("APPOINTMENTS_ALL_READ")) return null;
+  const active = await activeIntegration("square");
+  const locationId = await squareLocationId(active);
+  const { location } = await squareFetch<{ location?: { timezone?: string } }>(active.accessToken, `/v2/locations/${encodeURIComponent(locationId)}`);
+  const zone = location?.timezone || "America/Chicago";
+  const { dayKey, weekday } = localDay(now, zone);
+  const from = zonedInstant(dayKey, "00:00", zone);
+  const to = new Date(from.getTime() + 24 * 3_600_000);
+
+  const bookings: SquareBooking[] = [];
+  let cursor = "";
+  do {
+    const q = new URLSearchParams({ location_id: locationId, start_at_min: from.toISOString(), start_at_max: to.toISOString(), limit: "100" });
+    if (cursor) q.set("cursor", cursor);
+    const page = await squareFetch<{ bookings?: SquareBooking[]; cursor?: string }>(active.accessToken, `/v2/bookings?${q}`);
+    bookings.push(...(page.bookings ?? []));
+    cursor = page.cursor ?? "";
+  } while (cursor);
+
+  const team = (await findTeamMembers()).map((t) => t.name);
+  const names = new Map<string, string>();
+  const byPerson = new Map<string, { start: Date; end: Date }>();
+  for (const b of bookings) {
+    if (!b.start_at || (b.status && !LIVE_BOOKING.has(b.status))) continue;
+    const memberId = b.appointment_segments?.find((seg) => seg.team_member_id)?.team_member_id;
+    if (!memberId) continue;
+    if (!names.has(memberId)) {
+      try {
+        const { team_member } = await squareFetch<{ team_member?: { given_name?: string; family_name?: string } }>(
+          active.accessToken,
+          `/v2/team-members/${encodeURIComponent(memberId)}`,
+        );
+        names.set(memberId, matchTeamName([team_member?.given_name, team_member?.family_name].filter(Boolean).join(" "), team));
+      } catch {
+        names.set(memberId, "");
+      }
+    }
+    const staffName = names.get(memberId);
+    if (!staffName) continue;
+    const start = new Date(b.start_at);
+    const minutes = (b.appointment_segments ?? []).reduce((sum, seg) => sum + (seg.duration_minutes ?? 0), 0);
+    const end = new Date(start.getTime() + minutes * 60_000);
+    const cur = byPerson.get(staffName);
+    byPerson.set(staffName, { start: cur && cur.start < start ? cur.start : start, end: cur && cur.end > end ? cur.end : end });
+  }
+  for (const [staffName, shift] of byPerson) {
+    await db
+      .insert(staffShifts)
+      .values({ ...owned(), staffName, dayKey, startsAt: shift.start, endsAt: shift.end, source: "square", updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: [staffShifts.businessId, staffShifts.staffName, staffShifts.dayKey, staffShifts.source],
+        set: { startsAt: shift.start, endsAt: shift.end, updatedAt: new Date() },
+      });
+  }
+  return { dayKey, weekday, zone, shifts: [...byPerson].map(([staffName, s]) => ({ staffName, ...s })) };
 }

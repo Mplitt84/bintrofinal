@@ -689,6 +689,8 @@ export const housekeepingTasks = pgTable("housekeeping_tasks", {
   required: boolean().notNull().default(false),
   /** artist = artists & technicians · inventory = whoever manages inventory (team_members.managesInventory). */
   role: text().notNull().default("artist"),
+  /** everyone · rotate (one person's turn each day) · assigned (people in housekeeping_commitments). */
+  assign: text().notNull().default("everyone"),
   sortOrder: integer("sort_order").notNull().default(0),
   active: boolean().notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -728,7 +730,7 @@ export const housekeepingReminders = pgTable("housekeeping_reminders", {
   unique("housekeeping_reminders_business_ref").on(t.businessId, t.ref),
 ]);
 
-/** Optional housekeeping jobs a team member has chosen to be responsible for. */
+/** For `assigned` housekeeping jobs: who a manager assigned them to. */
 export const housekeepingCommitments = pgTable("housekeeping_commitments", {
   /** Which business this belongs to. Every query filters on it. */
   businessId: integer("business_id").notNull().default(1),
@@ -775,3 +777,88 @@ export const colorWasteLogs = pgTable("color_waste_logs", {
 }, (t) => [
   unique("color_waste_logs_business_month").on(t.businessId, t.month),
 ]);
+
+/** A team member's usual week: one row per working day (0 = Sunday), local times HH:MM. */
+export const staffSchedules = pgTable("staff_schedules", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
+  id: serial().primaryKey(),
+  staffName: text("staff_name").notNull(),
+  weekday: integer().notNull(),
+  start: text().notNull(),
+  end: text().notNull(),
+}, (t) => [
+  unique("staff_schedules_person_day").on(t.businessId, t.staffName, t.weekday),
+]);
+
+/** How a team member wants housekeeping reminders: on or off, which ones, and where their day comes from. */
+export const staffReminderPrefs = pgTable("staff_reminder_prefs", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
+  id: serial().primaryKey(),
+  staffName: text("staff_name").notNull(),
+  /** Master switch: false = no reminders at all. */
+  enabled: boolean().notNull().default(true),
+  onArrive: boolean("on_arrive").notNull().default(true),
+  onClient: boolean("on_client").notNull().default(true),
+  onClose: boolean("on_close").notNull().default(true),
+  /** square = their Square Appointments bookings set the day · schedule = their usual week. */
+  source: text().notNull().default("schedule"),
+  /** IANA time zone the schedule's times are in (from their device). */
+  timeZone: text("time_zone").notNull().default("America/Chicago"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  unique("staff_reminder_prefs_person").on(t.businessId, t.staffName),
+]);
+
+/** Phones and browsers a team member turned reminders on for (Web Push). */
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
+  id: serial().primaryKey(),
+  staffName: text("staff_name").notNull(),
+  endpoint: text().notNull().unique(),
+  p256dh: text().notNull(),
+  auth: text().notNull(),
+  userAgent: text("user_agent").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** A team member's day as Square Appointments sees it: first booking start and last booking end. */
+export const staffShifts = pgTable("staff_shifts", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
+  id: serial().primaryKey(),
+  staffName: text("staff_name").notNull(),
+  /** The shop's local date, YYYY-MM-DD. */
+  dayKey: text("day_key").notNull(),
+  startsAt: timestamp("starts_at").notNull(),
+  endsAt: timestamp("ends_at").notNull(),
+  source: text().notNull().default("square"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  unique("staff_shifts_person_day").on(t.businessId, t.staffName, t.dayKey, t.source),
+]);
+
+/** Each reminder sent, so arriving / close-out reminders go once a day and checkout ones once per checkout. */
+export const reminderLog = pgTable("reminder_log", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
+  id: serial().primaryKey(),
+  staffName: text("staff_name").notNull(),
+  /** arrive · client · close */
+  kind: text().notNull(),
+  /** dayKey for arrive / close, the checkout ref for client. */
+  ref: text().notNull(),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+}, (t) => [
+  unique("reminder_log_once").on(t.businessId, t.staffName, t.kind, t.ref),
+]);
+
+/** The site's Web Push (VAPID) key pair, made on first use so no setup is needed. One row. */
+export const pushKeys = pgTable("push_keys", {
+  id: integer().primaryKey(),
+  publicKey: text("public_key").notNull(),
+  privateKey: text("private_key").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});

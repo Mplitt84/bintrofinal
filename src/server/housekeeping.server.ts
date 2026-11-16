@@ -5,15 +5,15 @@
  */
 import { and, asc, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { businessProfile, housekeepingChecks, housekeepingCommitments, housekeepingReminders, housekeepingTasks, teamMembers } from "../../db/schema.js";
+import { businessProfile, housekeepingChecks, housekeepingCommitments, housekeepingReminders, housekeepingTasks, staffSchedules, staffShifts, teamMembers } from "../../db/schema.js";
 import {
   ADDED_LATER_KEYS,
   housekeepingDefaultsFor,
   STATION_TASK_KEY,
   nameKey,
   type HkCadence,
+  type HkAssign,
   type HkCheck,
-  type HkCommitments,
   type HkIcon,
   type HkReminder,
   type HkRole,
@@ -25,7 +25,7 @@ import { mine, owned } from "./tenant.js";
 
 type TaskRow = typeof housekeepingTasks.$inferSelect;
 
-function toTask(r: TaskRow): HkTask {
+function toTask(r: TaskRow, assignees: string[] = []): HkTask {
   return {
     id: r.id,
     key: r.key,
@@ -34,8 +34,9 @@ function toTask(r: TaskRow): HkTask {
     tone: r.tone as HkTone,
     cadence: r.cadence as HkCadence,
     scope: r.scope as HkScope,
-    required: r.required,
     role: (r.role === "inventory" ? "inventory" : "artist") as HkRole,
+    assign: (["everyone", "rotate", "assigned"].includes(r.assign) ? r.assign : "everyone") as HkAssign,
+    assignees,
     why: r.why,
     active: r.active,
   };
@@ -56,7 +57,10 @@ export async function listTasks(): Promise<HkTask[]> {
     if (toAdd.length) await db.insert(housekeepingTasks).values(toAdd.map((t) => ({ ...t, ...owned() }))).onConflictDoNothing();
     rows = await db.select().from(housekeepingTasks).where(mine(housekeepingTasks)).orderBy(asc(housekeepingTasks.sortOrder), asc(housekeepingTasks.id));
   }
-  return rows.map(toTask);
+  const assigned = await db.select().from(housekeepingCommitments).where(mine(housekeepingCommitments));
+  const byTask = new Map<number, string[]>();
+  for (const a of assigned) byTask.set(a.taskId, [...(byTask.get(a.taskId) ?? []), a.staffName]);
+  return rows.map((r) => toTask(r, byTask.get(r.id) ?? []));
 }
 
 async function checksFor(dayKeys: string[]): Promise<Array<HkCheck & { dayKey: string }>> {
@@ -88,57 +92,51 @@ export type HousekeepingBoard = {
   /** The last 7 days' check-offs (for the week view), each with its day. */
   week: Array<HkCheck & { dayKey: string }>;
   reminders: HkReminder[];
-  /** Optional jobs each person has chosen to be responsible for. */
-  commitments: HkCommitments;
   /** Everyone on the team, providers first: the people the board lists. */
   people: string[];
-  /** Team members marked "Manages inventory": their lists carry the inventory obligations. */
+  /** Team members marked "Manages inventory": Inventory Management is theirs. */
   inventoryManagers: string[];
+  /** Who's working today: usual schedule for this weekday, Square bookings, or already checked in. */
+  working: string[];
 };
 
-/** Everything the Housekeeping screen needs for one day (the device's local date and the 6 before it). */
-export async function loadBoard(dayKey: string, weekKeys: string[]): Promise<HousekeepingBoard> {
-  const [tasks, week, reminders, team, commitments] = await Promise.all([
+/** Who's in today: their usual schedule says so, Square has them booked, or they've already checked something off. */
+export async function workingToday(dayKey: string, weekday: number, todaysChecks: Array<{ staffName: string }>) {
+  const [scheduled, shifts] = await Promise.all([
+    db.select({ staffName: staffSchedules.staffName }).from(staffSchedules).where(and(mine(staffSchedules), eq(staffSchedules.weekday, weekday))),
+    db.select({ staffName: staffShifts.staffName }).from(staffShifts).where(and(mine(staffShifts), eq(staffShifts.dayKey, dayKey))),
+  ]);
+  const seen = new Map<string, string>();
+  for (const r of [...scheduled, ...shifts, ...todaysChecks]) if (!seen.has(nameKey(r.staffName))) seen.set(nameKey(r.staffName), r.staffName);
+  return [...seen.values()];
+}
+
+/** Everything the Housekeeping screen needs for one day (the device's local date, weekday and the 6 days before). */
+export async function loadBoard(dayKey: string, weekKeys: string[], weekday = new Date(`${dayKey}T12:00:00`).getDay()): Promise<HousekeepingBoard> {
+  const [tasks, week, reminders, team] = await Promise.all([
     listTasks(),
     checksFor([...new Set([dayKey, ...weekKeys])]),
     openReminders(),
     db.select().from(teamMembers).where(mine(teamMembers)).orderBy(asc(teamMembers.name)),
-    listCommitments(),
   ]);
   const people = [...team.filter((t) => t.isProvider), ...team.filter((t) => !t.isProvider)].map((t) => t.name);
+  const checks = week.filter((c) => c.dayKey === dayKey).map(({ dayKey: _d, ...c }) => c);
   return {
     tasks,
-    checks: week.filter((c) => c.dayKey === dayKey).map(({ dayKey: _d, ...c }) => c),
+    checks,
     week,
     reminders,
-    commitments,
     people,
     inventoryManagers: team.filter((t) => t.managesInventory).map((t) => t.name),
+    working: await workingToday(dayKey, weekday, checks),
   };
 }
 
-/** Everyone's chosen optional jobs, by name. */
-export async function listCommitments(): Promise<HkCommitments> {
-  const rows = await db.select().from(housekeepingCommitments).where(mine(housekeepingCommitments));
-  const out: HkCommitments = {};
-  for (const r of rows) (out[r.staffName] ??= []).push(r.taskId);
-  return out;
-}
-
-/** Take on (or let go of) an optional job. Required jobs are on everyone's list already. */
-export async function setCommitment(staffName: string, taskId: number, on: boolean) {
-  const name = staffName.trim();
-  if (!name) throw new Error("Pick who you are first.");
-  const [task] = await db.select().from(housekeepingTasks).where(and(mine(housekeepingTasks), eq(housekeepingTasks.id, taskId)));
-  if (!task) throw new Error("That job isn't on the list any more.");
-  if (on) {
-    await db.insert(housekeepingCommitments).values({ ...owned(), staffName: name, taskId }).onConflictDoNothing();
-  } else {
-    const rows = await db.select().from(housekeepingCommitments).where(and(mine(housekeepingCommitments), eq(housekeepingCommitments.taskId, taskId)));
-    const ids = rows.filter((r) => nameKey(r.staffName) === nameKey(name)).map((r) => r.id);
-    if (ids.length) await db.delete(housekeepingCommitments).where(and(mine(housekeepingCommitments), inArray(housekeepingCommitments.id, ids)));
-  }
-  return listCommitments();
+/** Who an `assigned` job belongs to: replaces the list. */
+export async function setAssignees(taskId: number, names: string[]) {
+  await db.delete(housekeepingCommitments).where(and(mine(housekeepingCommitments), eq(housekeepingCommitments.taskId, taskId)));
+  const clean = [...new Map(names.map((n) => [nameKey(n), n.trim()])).values()].filter(Boolean);
+  if (clean.length) await db.insert(housekeepingCommitments).values(clean.map((staffName) => ({ ...owned(), staffName, taskId })));
 }
 
 /**
@@ -204,9 +202,11 @@ export type TaskInput = {
   tone: HkTone;
   cadence: HkCadence;
   scope: HkScope;
-  required: boolean;
   role: HkRole;
+  assign: HkAssign;
   why: string;
+  /** For `assigned` jobs. */
+  assignees?: string[];
 };
 
 /** A job the owner adds. Its name must be new to this shop. */
@@ -215,15 +215,27 @@ export async function addTask(input: TaskInput) {
   if (!name) throw new Error("Give the job a name.");
   const existing = await listTasks();
   if (existing.some((t) => nameKey(t.name) === nameKey(name))) throw new Error("There's already a job with that name.");
+  const { assignees, ...fields } = input;
   // Added jobs sit after the built-in ones, in the order they were added.
-  await db.insert(housekeepingTasks).values({ ...owned(), ...input, name, why: input.why.trim(), key: "", sortOrder: 1000 + existing.length * 10 });
+  const [row] = await db
+    .insert(housekeepingTasks)
+    .values({ ...owned(), ...fields, name, why: input.why.trim(), required: input.assign === "everyone", key: "", sortOrder: 1000 + existing.length * 10 })
+    .returning({ id: housekeepingTasks.id });
+  if (assignees) await setAssignees(row.id, assignees);
   return listTasks();
 }
 
 /** Change a job's look, timing, or hide it. Built-in jobs can be hidden but keep their key. */
 export async function updateTask(id: number, patch: Partial<TaskInput> & { active?: boolean }) {
+  const { assignees, ...fields } = patch;
+  if (assignees) await setAssignees(id, assignees);
   const set = Object.fromEntries(
-    Object.entries({ ...patch, name: patch.name?.trim(), why: patch.why?.trim() }).filter(([, v]) => v !== undefined),
+    Object.entries({
+      ...fields,
+      name: fields.name?.trim(),
+      why: fields.why?.trim(),
+      required: fields.assign ? fields.assign === "everyone" : undefined,
+    }).filter(([, v]) => v !== undefined),
   );
   if (set.name === "") throw new Error("Give the job a name.");
   if (Object.keys(set).length) {

@@ -44,13 +44,18 @@ export const TENANT_TABLES = [
   "housekeeping_commitments",
   "sustainability_partners",
   "color_waste_logs",
+  "staff_schedules",
+  "staff_reminder_prefs",
+  "push_subscriptions",
+  "staff_shifts",
+  "reminder_log",
 ] as const;
 
 /**
  * Tables that belong to everyone, or whose row is reached by a key that is already
  * unique across every business (a session token, a business row itself).
  */
-export const SHARED_TABLES = ["businesses", "app_sessions", "pilot_invites", "sign_in_attempts"] as const;
+export const SHARED_TABLES = ["businesses", "app_sessions", "pilot_invites", "sign_in_attempts", "push_keys"] as const;
 
 const TENANT_SET: ReadonlySet<string> = new Set(TENANT_TABLES);
 
