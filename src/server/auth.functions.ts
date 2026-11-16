@@ -3,7 +3,8 @@ import { deleteCookie, getCookie } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import type { AuthState } from '@/lib/auth'
 import { SESSION_COOKIE, addUser, authEnabled, endSession, isSiteOwner, listUsers, ownerEmail, removeUser, userForToken } from './auth.server'
-import { addInvite, listInvites, removeInvite } from './pilot.server'
+import { addInvite, listInvites, listRefusedSignIns, removeInvite } from './pilot.server'
+import { pilotPremium } from './account.server'
 import { signupOpen } from './signup.server'
 import { requireOwner, requireSiteOwner } from './auth.middleware'
 
@@ -19,6 +20,8 @@ export const getAuthState = createServerFn({ method: 'GET' }).handler(async (): 
     // The business id stays on the server; the app only needs who is signed in.
     user: stripBusiness(who),
     siteOwner: isSiteOwner(who),
+    // During the pilot only the site owner lets anyone in; testers can't add people.
+    canAddPeople: !pilotPremium() || isSiteOwner(who),
     ownerConfigured: Boolean(ownerEmail()),
     signupOpen: enabled && signupOpen(),
   }
@@ -39,6 +42,9 @@ export const addAccess = createServerFn({ method: 'POST' })
   .inputValidator(z.object({ email: z.string().max(200), role: z.enum(['owner', 'staff']) }))
   .handler(async ({ data, context }) => {
     try {
+      if (pilotPremium() && context?.user && !isSiteOwner(context.user)) {
+        throw new Error('During the pilot, only Bintro can add people. Email hello@bintroapp.com if someone on your team needs access.')
+      }
       await addUser(data.email, data.role, context?.user?.email ?? '')
       return { ok: true as const, users: await listUsers() }
     } catch (error) {
@@ -86,3 +92,7 @@ export const removePilotInvite = createServerFn({ method: 'POST' })
       return { ok: false as const, message: error instanceof Error ? error.message : 'Couldn’t remove that invite.' }
     }
   })
+
+export const getRefusedSignIns = createServerFn({ method: 'GET' })
+  .middleware([requireSiteOwner])
+  .handler(async () => listRefusedSignIns())

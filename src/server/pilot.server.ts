@@ -11,9 +11,12 @@
  * deliberately cross-business and carry the marker the tenancy guard looks for.
  * Only the site owner can reach the functions that read or change it.
  */
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { appUsers, pilotInvites } from "../../db/schema.js";
+import { appUsers, pilotInvites, signInAttempts } from "../../db/schema.js";
+import { findBusinessProfile } from "./business.server.js";
+import { sendNote } from "./email.server.js";
+import { DEFAULT_BUSINESS_ID, runForBusiness } from "./tenant.js";
 
 const siteWide = sql`/* cross-business: pilot invites belong to the site */ true`;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -86,4 +89,66 @@ export async function recordClaim(email: string, businessId: number | null) {
     .update(pilotInvites)
     .set(businessId === null ? { claimedAt: null, claimedBusinessId: null } : { claimedBusinessId: businessId })
     .where(and(siteWide, eq(pilotInvites.email, email)));
+}
+
+// ---------------------------------------------------------------------------
+// Refused sign-ins: how the site owner learns the link got passed around
+// ---------------------------------------------------------------------------
+
+export type RefusedSignIn = { email: string; name: string; at: string; tries: number };
+
+/**
+ * Logs a Google account that isn't allowed in and, at most once a day per email,
+ * emails the site owner about it. Never throws: a failed alert must not change
+ * what the person signing in sees.
+ */
+export async function recordRefusedSignIn(person: { email: string; name: string }, ownerEmail: string) {
+  try {
+    const dayAgo = new Date(Date.now() - 86_400_000);
+    const [recent] = await db
+      .select({ id: signInAttempts.id })
+      .from(signInAttempts)
+      .where(and(siteWide, eq(signInAttempts.email, person.email), gt(signInAttempts.createdAt, dayAgo)));
+    await db.insert(signInAttempts).values({ email: person.email, name: person.name.slice(0, 120) });
+    if (recent || !ownerEmail) return;
+    const when = new Date().toLocaleString("en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: process.env.BUSINESS_TIMEZONE?.trim() || "America/Chicago",
+    });
+    await runForBusiness(DEFAULT_BUSINESS_ID, async () =>
+      sendNote(
+        await findBusinessProfile(),
+        ownerEmail,
+        "Someone not invited tried to sign in to Bintro",
+        [
+          `${person.name || "Someone"} (${person.email}) tried to sign in on ${when} and was turned away.`,
+          "",
+          "They aren't on your pilot tester list, so they saw nothing inside the app.",
+          "If they should be testing, invite them in Settings → Pilot testers. If not, someone may have passed the link along.",
+          "",
+          "You'll get at most one of these a day for the same email.",
+        ].join("\n"),
+      ),
+    );
+  } catch (error) {
+    console.error("Couldn't record a refused sign-in", error);
+  }
+}
+
+/** Latest refused sign-ins, one line per email, newest first (site owner only). */
+export async function listRefusedSignIns(): Promise<RefusedSignIn[]> {
+  const rows = await db
+    .select({
+      email: signInAttempts.email,
+      name: sql<string>`max(${signInAttempts.name})`,
+      at: sql<Date>`max(${signInAttempts.createdAt})`,
+      tries: sql<number>`count(*)::int`,
+    })
+    .from(signInAttempts)
+    .where(siteWide)
+    .groupBy(signInAttempts.email)
+    .orderBy(desc(sql`max(${signInAttempts.createdAt})`))
+    .limit(30);
+  return rows.map((r) => ({ email: r.email, name: r.name, at: new Date(r.at).toISOString(), tries: Number(r.tries) }));
 }

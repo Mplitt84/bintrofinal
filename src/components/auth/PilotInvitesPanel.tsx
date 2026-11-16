@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { FlaskConical, Trash2, UserPlus } from 'lucide-react'
 import type { AuthState } from '@/lib/auth'
-import { addPilotInvite, getPilotInvites, removePilotInvite } from '@/server/auth.functions'
+import { addPilotInvite, getPilotInvites, getRefusedSignIns, removePilotInvite } from '@/server/auth.functions'
 import { useToast } from '@/components/ui/Toast'
 import { timeAgo } from '@/components/ui/bits'
 
+type Refused = { email: string; name: string; at: string; tries: number }
 type Invite = { id: number; email: string; note: string; invitedAt: string; joinedAt: string | null }
 
 /**
@@ -18,9 +19,12 @@ export function PilotInvitesPanel({ auth }: { auth: AuthState }) {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [confirmId, setConfirmId] = useState<number | null>(null)
+  const [refused, setRefused] = useState<Refused[]>([])
 
   useEffect(() => {
-    if (auth.siteOwner) getPilotInvites().then(setInvites).catch(() => setInvites([]))
+    if (!auth.siteOwner) return
+    getPilotInvites().then(setInvites).catch(() => setInvites([]))
+    getRefusedSignIns().then(setRefused).catch(() => setRefused([]))
   }, [auth.siteOwner])
 
   if (!auth.enabled || !auth.siteOwner) return null
@@ -43,7 +47,7 @@ export function PilotInvitesPanel({ auth }: { auth: AuthState }) {
       </h3>
       <p className="text-ink-2 text-sm mt-1 mb-3">
         Only you can see this list. Each tester gets their own empty business the first time they sign in, with
-        themselves as owner. Testers never see each other, your business or anyone's email.
+        themselves as owner. Testers never see each other, your business or anyone's email, and they can't add anyone to the app.
       </p>
       <ul className="list-none p-0 m-0 mb-3 divide-y divide-line">
         {(invites ?? []).length === 0 && invites && (
@@ -94,7 +98,27 @@ export function PilotInvitesPanel({ auth }: { auth: AuthState }) {
           <UserPlus size={15} /> Invite
         </button>
       </div>
-      <p className="text-ink-2 text-[12px] mt-2 mb-0">
+      <h4 className="mt-5 mb-1 text-[15px] font-bold">Tried to get in</h4>
+      <p className="text-ink-2 text-[12px] mt-0 mb-2">
+        Google accounts that tried to sign in without an invite. They saw nothing inside. You also get an email the
+        first time each one tries (at most once a day).
+      </p>
+      {refused.length === 0 ? (
+        <p className="text-sm text-ink-2 m-0">Nobody yet.</p>
+      ) : (
+        <ul className="list-none p-0 m-0 divide-y divide-line">
+          {refused.map((r) => (
+            <li key={r.email} className="py-2 text-sm">
+              <b>{r.email}</b>
+              <span className="text-ink-2">
+                {r.name ? ` · ${r.name}` : ''} · {timeAgo(r.at)}
+                {r.tries > 1 ? ` · ${r.tries} tries` : ''}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-ink-2 text-[12px] mt-3 mb-0">
         Use the Google account email they'll sign in with. Don't add testers under Sign-in &amp; access — that puts them
         inside your business.
       </p>

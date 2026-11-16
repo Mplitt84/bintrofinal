@@ -543,3 +543,14 @@ export async function sendTestEmail(profile: BusinessProfile): Promise<SendResul
     0,
   );
 }
+
+/** A short plain note to one address (site-owner alerts). Never throws. */
+export async function sendNote(profile: BusinessProfile, to: string, subject: string, text: string): Promise<SendResult> {
+  const html = `<div style="font-family:system-ui,sans-serif;white-space:pre-wrap">${escapeHtml(text)}</div>`;
+  try {
+    return await deliver({ profile, to, subject, text, html }, 0);
+  } catch (error) {
+    console.error("Alert email failed", error);
+    return { ok: false, reason: "send_failed", message: "Couldn't send the alert." };
+  }
+}

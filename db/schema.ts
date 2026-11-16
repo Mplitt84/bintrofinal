@@ -506,6 +506,18 @@ export const pilotInvites = pgTable("pilot_invites", {
   claimedBusinessId: integer("claimed_business_id"),
 });
 
+/**
+ * Google accounts that tried to sign in and weren't allowed: how the site owner
+ * finds out a link got passed around. Site-wide, like pilot_invites.
+ */
+export const signInAttempts = pgTable("sign_in_attempts", {
+  id: serial().primaryKey(),
+  /** Lower-cased Google account email. */
+  email: text().notNull(),
+  name: text().notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [index("sign_in_attempts_email").on(t.email)]);
+
 /** Signed-in browsers. Only a SHA-256 of the cookie token is stored. */
 export const appSessions = pgTable("app_sessions", {
   tokenHash: text("token_hash").primaryKey(),

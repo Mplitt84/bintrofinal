@@ -35,14 +35,19 @@ maybe("pilot invites", () => {
   afterAll(async () => {
     const emails = [1, 2, 3, 4].map((n) => tester(n).email);
     await db.delete(schema.pilotInvites).where(inArray(schema.pilotInvites.email, emails));
+    await db.delete(schema.signInAttempts).where(inArray(schema.signInAttempts.email, emails));
     for (const id of made) {
       for (const t of [schema.appUsers, schema.account, schema.businessProfile]) await db.delete(t).where(eq(t.businessId, id));
       await db.delete(schema.businesses).where(eq(schema.businesses.id, id));
     }
   });
 
-  it("refuses an email nobody invited while sign-up is closed", async () => {
+  it("refuses an email nobody invited while sign-up is closed, and logs it for the site owner", async () => {
     await expect(auth.userForGoogle(tester(4))).rejects.toThrow("not-allowed");
+    await expect(auth.userForGoogle(tester(4))).rejects.toThrow("not-allowed");
+    const seen = (await pilot.listRefusedSignIns()).find((r) => r.email === tester(4).email);
+    expect(seen?.tries).toBe(2);
+    expect(seen?.name).toBe("Tester 4");
   });
 
   it("gives each invited tester their own business, as its owner", async () => {

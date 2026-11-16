@@ -14,7 +14,7 @@ import { and, asc, eq, gt, lt, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { DEFAULT_BUSINESS_ID, businessId, mine } from "./tenant.js";
 import { createBusinessForOwner, signupOpen } from "./signup.server.js";
-import { claimInvite, hasOpenInvite, recordClaim } from "./pilot.server.js";
+import { claimInvite, hasOpenInvite, recordClaim, recordRefusedSignIn } from "./pilot.server.js";
 import { appSessions, appUsers } from "../../db/schema.js";
 import type { AuthUser } from "../lib/auth.js";
 
@@ -156,7 +156,10 @@ export async function userForGoogle(profile: GoogleProfile) {
   }
   // Nobody by that email yet: start them a business of their own, when sign-up is open.
   if (!user && signupOpen()) user = await createBusinessForOwner(profile);
-  if (!user) throw new Error("not-allowed");
+  if (!user) {
+    await recordRefusedSignIn(profile, ownerEmail());
+    throw new Error("not-allowed");
+  }
   // Once linked, the email must keep belonging to the same Google account.
   if (user.googleSub && user.googleSub !== profile.sub) throw new Error("not-allowed");
   await db
