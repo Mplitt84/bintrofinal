@@ -23,7 +23,7 @@
  */
 export const LEGAL = {
   /** The legal entity that owns and runs Bintro. */
-  company: 'Shag Noir Salon LLC',
+  company: 'Bintro LLC',
   product: 'Bintro',
   /** Where customers send legal and privacy requests. */
   email: 'hello@bintroapp.com',
@@ -35,7 +35,7 @@ export const LEGAL = {
   governingState: 'Texas',
   /** County for disputes. */
   venue: 'Travis County, Texas',
-  effectiveDate: 'November 11, 2026',
+  effectiveDate: 'November 16, 2026',
 }
 
 export const LEGAL_IS_DRAFT = Object.values(LEGAL).some((v) => v.includes('['))
