@@ -591,7 +591,7 @@ function ProfileForm({
   );
 }
 
-function TeamManager({
+export function TeamManager({
   team,
   onTeam,
   staffName,

@@ -663,3 +663,63 @@ export const retailGoals = pgTable(
   },
   (t) => [unique("retail_goals_business_staff_period").on(t.businessId, t.staffName, t.periodKey)],
 );
+
+/**
+ * Housekeeping: the shop's cleaning and closing jobs, each a bold round button.
+ * Starts with Bintro's defaults (`key` set); owners add their own (`key` empty).
+ */
+export const housekeepingTasks = pgTable("housekeeping_tasks", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
+  id: serial().primaryKey(),
+  /** Id of a built-in task (src/lib/housekeeping.ts), "" for one the owner added. */
+  key: text().notNull().default(""),
+  name: text().notNull(),
+  /** Icon id from HOUSEKEEPING_ICONS. */
+  icon: text().notNull().default("sparkles"),
+  /** Tone id from TOOL_TONES. */
+  tone: text().notNull().default("garnet"),
+  /** client = after every client (counts up) · open · daily · close = once a day. */
+  cadence: text().notNull().default("daily"),
+  /** each = every team member does their own · shop = one person covers it for everyone. */
+  scope: text().notNull().default("each"),
+  /** One line on why it matters, shown in the thank-you. */
+  why: text().notNull().default(""),
+  sortOrder: integer("sort_order").notNull().default(0),
+  active: boolean().notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  unique("housekeeping_tasks_business_name").on(t.businessId, t.name),
+]);
+
+/** One tap on a housekeeping button: who did which job, on which local day. */
+export const housekeepingChecks = pgTable("housekeeping_checks", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
+  id: serial().primaryKey(),
+  taskId: integer("task_id").notNull(),
+  staffName: text("staff_name").notNull(),
+  /** The shop's local date (YYYY-MM-DD), sent by the device so the day ends when the shop's day ends. */
+  dayKey: text("day_key").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  index("housekeeping_checks_day").on(t.businessId, t.dayKey),
+]);
+
+/** "A client just checked out — reset your station": one per completed Square checkout. */
+export const housekeepingReminders = pgTable("housekeeping_reminders", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
+  id: serial().primaryKey(),
+  /** Team member it's for, as the team list spells it; "" = whoever is working. */
+  staffName: text("staff_name").notNull().default(""),
+  /** Where it came from, e.g. "square:<order id>", so one checkout makes one reminder. */
+  ref: text().notNull(),
+  /** What was checked out, for the reminder line ("Curl cream + 1 more"). */
+  detail: text().notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  doneAt: timestamp("done_at"),
+  doneBy: text("done_by").notNull().default(""),
+}, (t) => [
+  unique("housekeeping_reminders_business_ref").on(t.businessId, t.ref),
+]);
