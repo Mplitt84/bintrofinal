@@ -110,3 +110,79 @@ export function wasteTotals(months: WasteMonth[]) {
     savedCents: priced.length ? priced.reduce((sum, m) => sum + (m.savedVsLastCents ?? 0), 0) : null,
   }
 }
+
+/**
+ * A color line as the shop mixes it: what a tube and the developer cost, and the mix
+ * ratio (color : developer, by weight, e.g. 1 : 1.5 permanent, 1 : 2 gloss). Each shop
+ * enters its own; nothing is assumed about a brand.
+ */
+export type ColorMix = {
+  id: number
+  name: string
+  /** Price of one tube (or bottle) of color, in cents. */
+  colorCents: number
+  /** Its size in ounces. */
+  colorOz: number
+  /** Price of one bottle of developer, in cents; 0 = not entered yet. */
+  developerCents: number
+  /** Its size in ounces; 0 = not entered yet. */
+  developerOz: number
+  /** Parts of color in the ratio (the 1 in 1 : 1.5). */
+  colorParts: number
+  /** Parts of developer (the 1.5). 0 = color used on its own. */
+  developerParts: number
+}
+
+export type MixMath = {
+  /** Cents per ounce of color straight from the tube; null until price and size are in. */
+  colorPerOz: number | null
+  /** Cents per ounce of developer; null until price and size are in. */
+  developerPerOz: number | null
+  /** Cents per ounce once mixed; null until everything it needs is in. */
+  mixedPerOz: number | null
+  /** Ounces of mixed color one tube makes. */
+  ozPerTube: number | null
+  /** What's missing for the mixed cost, in plain words ('' = nothing). */
+  missing: string
+}
+
+const perOz = (cents: number, oz: number) => (cents > 0 && oz > 0 ? cents / oz : null)
+
+/** The cost of an ounce of mixed color: (color $/oz × color parts + developer $/oz × developer parts) ÷ all parts. */
+export function mixMath(m: Pick<ColorMix, 'colorCents' | 'colorOz' | 'developerCents' | 'developerOz' | 'colorParts' | 'developerParts'>): MixMath {
+  const colorPerOz = perOz(m.colorCents, m.colorOz)
+  const developerPerOz = perOz(m.developerCents, m.developerOz)
+  const cp = m.colorParts > 0 ? m.colorParts : 0
+  const dp = m.developerParts > 0 ? m.developerParts : 0
+  const ozPerTube = m.colorOz > 0 && cp > 0 ? (m.colorOz * (cp + dp)) / cp : null
+  let missing = ''
+  if (colorPerOz === null) missing = 'the tube price and size'
+  else if (cp <= 0) missing = 'the mix ratio'
+  else if (dp > 0 && developerPerOz === null) missing = 'the developer price and size'
+  const mixedPerOz = missing ? null : (colorPerOz! * cp + (dp > 0 ? developerPerOz! * dp : 0)) / (cp + dp)
+  return { colorPerOz, developerPerOz, mixedPerOz, ozPerTube, missing }
+}
+
+/** "1:1.5", "1 : 2", "1-2", "1/1.5" → parts; null when it can't be read. */
+export function parseRatio(text: string): { colorParts: number; developerParts: number } | null {
+  const m = text.trim().match(/^(\d+(?:\.\d+)?)\s*[:/\-x]\s*(\d+(?:\.\d+)?)$/i)
+  if (!m) return null
+  const colorParts = Number(m[1])
+  const developerParts = Number(m[2])
+  return colorParts > 0 && developerParts >= 0 ? { colorParts, developerParts } : null
+}
+
+const trim = (n: number) => String(Number(n.toFixed(2)))
+export const ratioLabel = (m: Pick<ColorMix, 'colorParts' | 'developerParts'>) => `${trim(m.colorParts)} : ${trim(m.developerParts)}`
+
+/** A plain average of the mixes that are complete, in cents per mixed ounce; null when none are. */
+export function averageMixCost(mixes: ColorMix[]): number | null {
+  const costs = mixes.map((m) => mixMath(m).mixedPerOz).filter((c): c is number => c !== null)
+  return costs.length ? costs.reduce((a, b) => a + b, 0) / costs.length : null
+}
+
+/** One-tap starts for hair color: name and ratio only; every price is the shop's own. */
+export const MIX_STARTERS: Array<Pick<ColorMix, 'name' | 'colorParts' | 'developerParts'>> = [
+  { name: 'Permanent color', colorParts: 1, developerParts: 1.5 },
+  { name: 'Gloss / toner', colorParts: 1, developerParts: 2 },
+]

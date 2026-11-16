@@ -679,7 +679,7 @@ export const housekeepingTasks = pgTable("housekeeping_tasks", {
   icon: text().notNull().default("sparkles"),
   /** Tone id from TOOL_TONES. */
   tone: text().notNull().default("garnet"),
-  /** client = after every client (counts up) · open · daily · close = once a day. */
+  /** When in the day: client = after every client (counts up) · open · daily (during the day) · close. How often is `repeat`. */
   cadence: text().notNull().default("daily"),
   /** each = every team member does their own · shop = one person covers it for everyone. */
   scope: text().notNull().default("each"),
@@ -689,8 +689,10 @@ export const housekeepingTasks = pgTable("housekeeping_tasks", {
   required: boolean().notNull().default(false),
   /** artist = artists & technicians · inventory = whoever manages inventory (team_members.managesInventory). */
   role: text().notNull().default("artist"),
-  /** everyone · rotate (one person's turn each day) · assigned (people in housekeeping_commitments). */
+  /** everyone · rotate (one person's turn each time it comes up) · assigned (people in housekeeping_commitments). */
   assign: text().notNull().default("everyone"),
+  /** How often it comes up (HkRepeat in src/lib/housekeeping.ts); {} = every day. */
+  repeat: jsonb().$type<Record<string, unknown>>().notNull().default({}),
   sortOrder: integer("sort_order").notNull().default(0),
   active: boolean().notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -776,6 +778,25 @@ export const colorWasteLogs = pgTable("color_waste_logs", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
   unique("color_waste_logs_business_month").on(t.businessId, t.month),
+]);
+
+/** A color line as the shop mixes it: tube and developer prices and sizes, and the mix ratio. Ounces and parts are stored ×100. */
+export const colorMixes = pgTable("color_mixes", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
+  id: serial().primaryKey(),
+  name: text().notNull(),
+  colorCents: integer("color_cents").notNull().default(0),
+  /** Tube size in hundredths of an ounce (2.06 oz = 206). */
+  colorOzX100: integer("color_oz_x100").notNull().default(0),
+  developerCents: integer("developer_cents").notNull().default(0),
+  developerOzX100: integer("developer_oz_x100").notNull().default(0),
+  /** Ratio parts ×100: 1 : 1.5 = 100 and 150. */
+  colorPartsX100: integer("color_parts_x100").notNull().default(100),
+  developerPartsX100: integer("developer_parts_x100").notNull().default(100),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  unique("color_mixes_business_name").on(t.businessId, t.name),
 ]);
 
 /** A team member's usual week: one row per working day (0 = Sunday), local times HH:MM. */

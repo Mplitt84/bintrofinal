@@ -3,12 +3,16 @@
  * "a client just checked out" reminders that Square sales create.
  * The rules for what a board shows live in src/lib/housekeeping.ts.
  */
-import { and, asc, desc, eq, gt, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, isNull, lte } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { businessProfile, housekeepingChecks, housekeepingCommitments, housekeepingReminders, housekeepingTasks, staffSchedules, staffShifts, teamMembers } from "../../db/schema.js";
 import {
   ADDED_LATER_KEYS,
+  DEFAULT_REPEAT,
+  HK_REPEATS,
   housekeepingDefaultsFor,
+  periodOf,
+  shiftDay,
   STATION_TASK_KEY,
   nameKey,
   type HkCadence,
@@ -16,6 +20,7 @@ import {
   type HkCheck,
   type HkIcon,
   type HkReminder,
+  type HkRepeat,
   type HkRole,
   type HkScope,
   type HkTask,
@@ -24,6 +29,24 @@ import {
 import { mine, owned } from "./tenant.js";
 
 type TaskRow = typeof housekeepingTasks.$inferSelect;
+
+/** A stored repeat, cleaned up: unknown kinds become every day, numbers kept in range. */
+export function cleanRepeat(raw: unknown): HkRepeat {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Partial<HkRepeat>;
+  const kind = HK_REPEATS.some((k) => k.id === r.kind) ? r.kind! : "daily";
+  const int = (v: unknown, lo: number, hi: number, d: number) => (Number.isFinite(Number(v)) ? Math.min(hi, Math.max(lo, Math.round(Number(v)))) : d);
+  return {
+    kind,
+    days: Array.isArray(r.days) ? [...new Set(r.days.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort() : [],
+    every: int(r.every, 1, 52, 1),
+    anchor: typeof r.anchor === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.anchor) ? r.anchor : DEFAULT_REPEAT.anchor,
+    monthDay: int(r.monthDay, 1, 31, 1),
+    flex: Boolean(r.flex),
+  };
+}
+
+/** How far back the board reads taps: covers a flexible month and the week table. */
+const HISTORY_DAYS = 40;
 
 function toTask(r: TaskRow, assignees: string[] = []): HkTask {
   return {
@@ -37,6 +60,7 @@ function toTask(r: TaskRow, assignees: string[] = []): HkTask {
     role: (r.role === "inventory" ? "inventory" : "artist") as HkRole,
     assign: (["everyone", "rotate", "assigned"].includes(r.assign) ? r.assign : "everyone") as HkAssign,
     assignees,
+    repeat: cleanRepeat(r.repeat),
     why: r.why,
     active: r.active,
   };
@@ -63,12 +87,11 @@ export async function listTasks(): Promise<HkTask[]> {
   return rows.map((r) => toTask(r, byTask.get(r.id) ?? []));
 }
 
-async function checksFor(dayKeys: string[]): Promise<Array<HkCheck & { dayKey: string }>> {
-  if (dayKeys.length === 0) return [];
+async function checksBetween(from: string, to: string): Promise<HkCheck[]> {
   const rows = await db
     .select()
     .from(housekeepingChecks)
-    .where(and(mine(housekeepingChecks), inArray(housekeepingChecks.dayKey, dayKeys)))
+    .where(and(mine(housekeepingChecks), gte(housekeepingChecks.dayKey, from), lte(housekeepingChecks.dayKey, to)))
     .orderBy(asc(housekeepingChecks.createdAt));
   return rows.map((r) => ({ id: r.id, taskId: r.taskId, staffName: r.staffName, at: r.createdAt.toISOString(), dayKey: r.dayKey }));
 }
@@ -87,10 +110,8 @@ export async function openReminders(): Promise<HkReminder[]> {
 
 export type HousekeepingBoard = {
   tasks: HkTask[];
-  /** Today's check-offs. */
-  checks: HkCheck[];
-  /** The last 7 days' check-offs (for the week view), each with its day. */
-  week: Array<HkCheck & { dayKey: string }>;
+  /** Check-offs from the last ~40 days, each with its day: flexible weekly/monthly jobs and the week table read them. */
+  history: HkCheck[];
   reminders: HkReminder[];
   /** Everyone on the team, providers first: the people the board lists. */
   people: string[];
@@ -111,20 +132,19 @@ export async function workingToday(dayKey: string, weekday: number, todaysChecks
   return [...seen.values()];
 }
 
-/** Everything the Housekeeping screen needs for one day (the device's local date, weekday and the 6 days before). */
-export async function loadBoard(dayKey: string, weekKeys: string[], weekday = new Date(`${dayKey}T12:00:00`).getDay()): Promise<HousekeepingBoard> {
-  const [tasks, week, reminders, team] = await Promise.all([
+/** Everything the Housekeeping screen needs for one day (the device's local date and weekday). */
+export async function loadBoard(dayKey: string, weekday = new Date(`${dayKey}T12:00:00`).getDay()): Promise<HousekeepingBoard> {
+  const [tasks, history, reminders, team] = await Promise.all([
     listTasks(),
-    checksFor([...new Set([dayKey, ...weekKeys])]),
+    checksBetween(shiftDay(dayKey, -HISTORY_DAYS), dayKey),
     openReminders(),
     db.select().from(teamMembers).where(mine(teamMembers)).orderBy(asc(teamMembers.name)),
   ]);
   const people = [...team.filter((t) => t.isProvider), ...team.filter((t) => !t.isProvider)].map((t) => t.name);
-  const checks = week.filter((c) => c.dayKey === dayKey).map(({ dayKey: _d, ...c }) => c);
+  const checks = history.filter((c) => c.dayKey === dayKey);
   return {
     tasks,
-    checks,
-    week,
+    history,
     reminders,
     people,
     inventoryManagers: team.filter((t) => t.managesInventory).map((t) => t.name),
@@ -144,7 +164,7 @@ export async function setAssignees(taskId: number, names: string[]) {
  * for shop jobs); after-client jobs count every tap. Returns false when the tap
  * didn't add anything (already done today).
  */
-export async function checkTask(input: { taskId: number; staffName: string; dayKey: string; weekKeys?: string[]; reminderId?: number }) {
+export async function checkTask(input: { taskId: number; staffName: string; dayKey: string; reminderId?: number }) {
   const [task] = await db
     .select()
     .from(housekeepingTasks)
@@ -155,12 +175,12 @@ export async function checkTask(input: { taskId: number; staffName: string; dayK
 
   let added = true;
   if (task.cadence !== "client") {
-    // Weekly jobs count once in the last 7 days; the rest once today.
-    const days = task.cadence === "weekly" ? [...new Set([input.dayKey, ...(input.weekKeys ?? [])])] : [input.dayKey];
+    // A job counts once in its stretch: today, or the whole week / month for flexible jobs.
+    const { start } = periodOf(cleanRepeat(task.repeat), input.dayKey);
     const today = await db
       .select({ staffName: housekeepingChecks.staffName })
       .from(housekeepingChecks)
-      .where(and(mine(housekeepingChecks), eq(housekeepingChecks.taskId, task.id), inArray(housekeepingChecks.dayKey, days)));
+      .where(and(mine(housekeepingChecks), eq(housekeepingChecks.taskId, task.id), gte(housekeepingChecks.dayKey, start), lte(housekeepingChecks.dayKey, input.dayKey)));
     const already = task.scope === "shop" ? today.length > 0 : today.some((c) => nameKey(c.staffName) === nameKey(staffName));
     if (already) added = false;
   }
@@ -204,6 +224,7 @@ export type TaskInput = {
   scope: HkScope;
   role: HkRole;
   assign: HkAssign;
+  repeat?: HkRepeat;
   why: string;
   /** For `assigned` jobs. */
   assignees?: string[];
@@ -219,7 +240,7 @@ export async function addTask(input: TaskInput) {
   // Added jobs sit after the built-in ones, in the order they were added.
   const [row] = await db
     .insert(housekeepingTasks)
-    .values({ ...owned(), ...fields, name, why: input.why.trim(), required: input.assign === "everyone", key: "", sortOrder: 1000 + existing.length * 10 })
+    .values({ ...owned(), ...fields, repeat: cleanRepeat(fields.repeat), name, why: input.why.trim(), required: input.assign === "everyone", key: "", sortOrder: 1000 + existing.length * 10 })
     .returning({ id: housekeepingTasks.id });
   if (assignees) await setAssignees(row.id, assignees);
   return listTasks();
@@ -234,6 +255,7 @@ export async function updateTask(id: number, patch: Partial<TaskInput> & { activ
       ...fields,
       name: fields.name?.trim(),
       why: fields.why?.trim(),
+      repeat: fields.repeat ? cleanRepeat(fields.repeat) : undefined,
       required: fields.assign ? fields.assign === "everyone" : undefined,
     }).filter(([, v]) => v !== undefined),
   );

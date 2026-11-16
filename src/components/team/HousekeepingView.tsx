@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Bath,
+  CalendarClock,
+  Pencil,
   Bell,
   BellOff,
   BrushCleaning,
@@ -40,20 +42,27 @@ import { useToast } from '@/components/ui/Toast'
 import { TOOL_TONES } from '@/components/ui/ToolButton'
 import { deriveInitials } from '@/lib/inventory-defaults'
 import {
+  DEFAULT_REPEAT,
   HK_ASSIGNS,
   HK_CADENCES,
   HK_ICONS,
   HK_MOMENTS,
+  HK_REPEATS,
   HK_ROLES,
   HK_TONES,
+  WEEKDAY_SHORT,
   appreciation,
   buildButtons,
-  dayNumberOf,
+  comingUp,
   localDayKey,
   momentOf,
   nameKey,
+  nextDue,
   openJobs,
+  repeatLabel,
+  shiftDay,
   summarizePeople,
+  turnFor,
   type HkAssign,
   type HkButton,
   type HkCadence,
@@ -62,6 +71,7 @@ import {
   type HkIcon,
   type HkMoment,
   type HkReminder,
+  type HkRepeat,
   type HkRole,
   type HkScope,
   type HkTask,
@@ -120,6 +130,7 @@ const MOMENT_LOOK: Record<HkMoment, { icon: typeof Sun; tone: HkTone }> = {
 const tone = (t: HkTone) => TOOL_TONES[t] ?? TOOL_TONES.garnet
 const first = (n: string) => n.trim().split(/\s+/)[0] ?? n
 const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+const dayLabel = (dayKey: string) => new Date(`${dayKey}T12:00:00`).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
 
 /** The last 7 local days, today first. */
 function weekKeys(today = new Date()) {
@@ -155,13 +166,14 @@ export function HousekeepingView({
   const [thanks, setThanks] = useState<Thanks | null>(null)
   const [moment, setMoment] = useState<HkMoment | null>(null)
   const [manageOpen, setManageOpen] = useState(false)
+  const [editTask, setEditTask] = useState<HkTask | null>(null)
   const [remindersOpen, setRemindersOpen] = useState(false)
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 100))
 
   const today = localDayKey()
   const load = useCallback(async () => {
     try {
-      setBoard(await getHousekeeping({ data: { dayKey: localDayKey(), weekKeys: weekKeys(), weekday: new Date().getDay() } }))
+      setBoard(await getHousekeeping({ data: { dayKey: localDayKey(), weekday: new Date().getDay() } }))
       setError('')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Couldn’t load housekeeping.')
@@ -194,7 +206,7 @@ export function HousekeepingView({
             // You're working if you're here tapping, whatever the schedule says.
             working: me && !board.working.some((w) => nameKey(w) === nameKey(me)) ? [...board.working, me] : board.working,
             inventoryManagers: board.inventoryManagers,
-            dayNumber: dayNumberOf(today),
+            dayKey: today,
           }
         : null,
     [board, me, today],
@@ -203,11 +215,11 @@ export function HousekeepingView({
     const list = board?.people ?? []
     return me && !list.some((p) => nameKey(p) === nameKey(me)) ? [me, ...list] : list
   }, [board?.people, me])
-  const buttons = useMemo(() => (board && day && me ? buildButtons(board.tasks, board.checks, me, day, board.week) : []), [board, day, me])
+  const buttons = useMemo(() => (board && day && me ? buildButtons(board.tasks, board.history, me, day) : []), [board, day, me])
   const mine = buttons.filter((b) => b.onList)
   const byMoment = (m: HkMoment) => mine.filter((b) => momentOf(b.task.cadence) === m)
   const summary = useMemo(
-    () => (board && day && me ? summarizePeople(board.tasks, board.checks, [me], day, board.week)[0] : null),
+    () => (board && day && me ? summarizePeople(board.tasks, board.history, [me], day)[0] : null),
     [board, day, me],
   )
   const myReminders = (board?.reminders ?? []).filter((r) => !r.staffName || !me || nameKey(r.staffName) === nameKey(me))
@@ -222,7 +234,7 @@ export function HousekeepingView({
     let added = 0
     for (const b of list) {
       const r = await checkHousekeeping({
-        data: { taskId: b.task.id, staffName: me, dayKey: today, weekKeys: weekKeys(), reminderId: reminder?.id },
+        data: { taskId: b.task.id, staffName: me, dayKey: today, reminderId: reminder?.id },
       })
       if (!r.ok) {
         setBusy(false)
@@ -279,9 +291,16 @@ export function HousekeepingView({
     )
   }
 
-  const everyone = summarizePeople(board.tasks, board.checks, people, day, board.week)
+  const everyone = summarizePeople(board.tasks, board.history, people, day)
   const working = new Set(day.working.map(nameKey))
-  const stillOpen = openJobs(board.tasks, board.checks, day, board.week)
+  const stillOpen = openJobs(board.tasks, board.history, day)
+  const upcoming = comingUp(board.tasks, day)
+  const openEdit = isOwner
+    ? (t: HkTask) => {
+        setEditTask(t)
+        setManageOpen(true)
+      }
+    : undefined
   const resetsToday = Math.round((summary?.clients ?? 0) / clientJobCount)
 
   return (
@@ -456,7 +475,13 @@ export function HousekeepingView({
               </button>
             )}
             {isOwner && (
-              <button className="btn btn-tonal btn-sm" onClick={() => setManageOpen(true)}>
+              <button
+                className="btn btn-tonal btn-sm"
+                onClick={() => {
+                  setEditTask(null)
+                  setManageOpen(true)
+                }}
+              >
                 <Plus size={15} /> Edit duties
               </button>
             )}
@@ -464,21 +489,48 @@ export function HousekeepingView({
         </div>
         {stillOpen.length > 0 ? (
           <ul className="list-none m-0 p-0 mb-4 grid gap-1.5">
-            {stillOpen.map(({ task, owners }) => (
-              <li key={task.id} className="flex items-center gap-2 text-sm flex-wrap">
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: TOOL_TONES.orange.bg }} aria-hidden="true" />
-                <b>{task.name}</b>
-                <span className="text-ink-2">
-                  · {owners.length === 0 ? (task.role === 'inventory' ? 'no inventory manager set' : 'nobody assigned') : owners.length === 1 ? `${first(owners[0])}’s` : 'anyone'}
-                  {task.cadence === 'weekly' ? ' · this week' : ''}
-                </span>
+            {stillOpen.map(({ task, owners, long }) => (
+              <li key={task.id}>
+                <BoardLine task={task} onEdit={openEdit}>
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: TOOL_TONES.orange.bg }} aria-hidden="true" />
+                  <b>{task.name}</b>
+                  <span className="text-ink-2">
+                    · {owners.length === 0 ? (task.role === 'inventory' ? 'no inventory manager set' : 'nobody assigned') : owners.length === 1 ? `${first(owners[0])}’s` : 'anyone'}
+                    {long ? (task.repeat.kind === 'monthly' ? ' · this month' : ' · this week') : ''}
+                    {task.repeat.kind !== 'daily' ? ` · ${repeatLabel(task.repeat)}` : ''}
+                  </span>
+                </BoardLine>
               </li>
             ))}
           </ul>
         ) : (
           <p className="text-sm m-0 mb-4 text-good font-semibold">Every shared job is covered. Thank you, team.</p>
         )}
-        <WeekTable tasks={board.tasks} week={board.week} people={people} day={day} />
+        {upcoming.length > 0 && (
+          <div className="mb-4">
+            <h3 className="m-0 mb-1.5 text-[14px] font-bold flex items-center gap-1.5">
+              <CalendarClock size={15} aria-hidden="true" /> Coming up
+            </h3>
+            <ul className="list-none m-0 p-0 grid gap-1">
+              {upcoming.map(({ task, next }) => {
+                const who = task.assign === 'rotate' ? turnFor(task, { ...day, dayKey: next, working: [] }) : null
+                return (
+                  <li key={task.id}>
+                    <BoardLine task={task} onEdit={openEdit}>
+                      <span className="text-ink-2 w-[92px] shrink-0">{dayLabel(next)}</span>
+                      <b>{task.name}</b>
+                      <span className="text-ink-2">
+                        · {repeatLabel(task.repeat)}
+                        {who ? ` · ${first(who)}’s turn` : ''}
+                      </span>
+                    </BoardLine>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+        <WeekTable tasks={board.tasks} history={board.history} people={people} day={day} />
       </section>
 
       <MomentSheet
@@ -488,6 +540,14 @@ export function HousekeepingView({
         busy={busy}
         onClose={() => setMoment(null)}
         onToggle={(b) => void toggle(b)}
+        onEdit={
+          openEdit
+            ? (t) => {
+                setMoment(null)
+                openEdit(t)
+              }
+            : undefined
+        }
         onAllDone={async (list) => {
           setMoment(null)
           await complete(list)
@@ -498,6 +558,9 @@ export function HousekeepingView({
       {isOwner && (
         <ManageJobsSheet
           open={manageOpen}
+          startWith={editTask}
+          today={today}
+          day={day}
           onClose={() => setManageOpen(false)}
           tasks={board.tasks}
           people={board.people}
@@ -526,6 +589,18 @@ function TurnsLine({ buttons }: { buttons: HkButton[] }) {
   )
 }
 
+/** A line on the board; owners can tap it to edit that duty. */
+function BoardLine({ task, onEdit, children }: { task: HkTask; onEdit?: (t: HkTask) => void; children: React.ReactNode }) {
+  const cls = 'flex items-center gap-2 text-sm flex-wrap text-left'
+  if (!onEdit) return <div className={cls}>{children}</div>
+  return (
+    <button type="button" onClick={() => onEdit(task)} className={`${cls} w-full bg-transparent border-0 p-0 py-0.5 cursor-pointer rounded-md hover:bg-surface`} title="Edit this duty">
+      {children}
+      <Pencil size={13} className="text-ink-2 ml-auto shrink-0" aria-hidden="true" />
+    </button>
+  )
+}
+
 /** One bold circle: color, icon, a check once done, a count for after-client jobs. */
 function JobCircle({ button, me, onTap }: { button: HkButton; me: string; onTap: () => void }) {
   const { task, done, mine, doneBy } = button
@@ -538,13 +613,19 @@ function JobCircle({ button, me, onTap }: { button: HkButton; me: string; onTap:
         : 'Every client'
       : doneBy
         ? `${nameKey(doneBy.staffName) === nameKey(me) ? 'You' : first(doneBy.staffName)} · ${
-            task.cadence === 'weekly' ? new Date(doneBy.at).toLocaleDateString([], { weekday: 'short' }) : timeLabel(doneBy.at)
+            button.long ? new Date(doneBy.at).toLocaleDateString([], { weekday: 'short' }) : timeLabel(doneBy.at)
           }`
         : task.assign === 'rotate'
-          ? 'Your turn today'
+          ? button.long
+            ? task.repeat.kind === 'monthly'
+              ? 'Your turn this month'
+              : 'Your turn this week'
+            : 'Your turn today'
           : task.assign === 'assigned'
             ? 'Assigned to you'
-            : HK_CADENCES.find((c) => c.id === task.cadence)?.label ?? ''
+            : task.repeat.kind !== 'daily'
+              ? repeatLabel(task.repeat)
+              : HK_CADENCES.find((c) => c.id === task.cadence)?.label ?? ''
   return (
     <button
       type="button"
@@ -582,6 +663,7 @@ function MomentSheet({
   busy,
   onClose,
   onToggle,
+  onEdit,
   onAllDone,
 }: {
   moment: HkMoment | null
@@ -590,6 +672,7 @@ function MomentSheet({
   busy: boolean
   onClose: () => void
   onToggle: (b: HkButton) => void
+  onEdit?: (t: HkTask) => void
   onAllDone: (list: HkButton[]) => void
 }) {
   const info = HK_MOMENTS.find((m) => m.id === moment)
@@ -619,11 +702,11 @@ function MomentSheet({
               const Icon = GLYPHS[b.task.icon] ?? Sparkles
               const done = b.task.cadence !== 'client' && b.done
               return (
-                <li key={b.task.id}>
+                <li key={b.task.id} className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => onToggle(b)}
-                    className={`w-full flex items-center gap-3 rounded-2xl border border-line p-3 text-left cursor-pointer ${done ? 'bg-surface' : 'bg-white'}`}
+                    className={`flex-1 min-w-0 flex items-center gap-3 rounded-2xl border border-line p-3 text-left cursor-pointer ${done ? 'bg-surface' : 'bg-white'}`}
                   >
                     <span className="relative grid place-items-center w-12 h-12 rounded-full shrink-0" style={{ background: t.bg, color: t.fg, opacity: done ? 0.5 : 1 }}>
                       <Icon size={22} strokeWidth={2.2} />
@@ -632,7 +715,8 @@ function MomentSheet({
                       <b className={`block text-[15px] ${done ? 'line-through text-ink-2' : ''}`}>{b.task.name}</b>
                       <span className="block text-[12px] text-ink-2 leading-snug">
                         {b.task.role === 'inventory' ? 'Inventory Management · ' : ''}
-                        {b.task.assign === 'rotate' ? 'Your turn today · ' : b.task.assign === 'assigned' ? 'Assigned to you · ' : ''}
+                        {b.task.assign === 'rotate' ? (b.long ? 'Your turn this stretch · ' : 'Your turn today · ') : b.task.assign === 'assigned' ? 'Assigned to you · ' : ''}
+                        {b.task.repeat.kind !== 'daily' && b.task.cadence !== 'client' ? `${repeatLabel(b.task.repeat)} · ` : ''}
                         {b.task.cadence === 'client'
                           ? b.mine
                             ? `${b.mine} today`
@@ -650,6 +734,11 @@ function MomentSheet({
                       {done && <Check size={16} strokeWidth={3} />}
                     </span>
                   </button>
+                  {onEdit && (
+                    <button type="button" className="btn btn-text btn-sm !px-2 shrink-0" aria-label={`Edit ${b.task.name}`} title="Edit this duty" onClick={() => onEdit(b.task)}>
+                      <Pencil size={16} />
+                    </button>
+                  )}
                 </li>
               )
             })}
@@ -692,7 +781,7 @@ function ThanksCard({ thanks, onClose }: { thanks: Thanks; onClose: () => void }
 }
 
 /** The week at a glance: each person's list, day by day (✓ all done, n/N partly, · not in). */
-function WeekTable({ tasks, week, people, day }: { tasks: HkTask[]; week: Array<HkCheck & { dayKey: string }>; people: string[]; day: HkDay }) {
+function WeekTable({ tasks, history, people, day }: { tasks: HkTask[]; history: HkCheck[]; people: string[]; day: HkDay }) {
   const days = weekKeys().reverse()
   if (people.length === 0) return null
   const clientIds = new Set(tasks.filter((t) => t.cadence === 'client').map((t) => t.id))
@@ -715,9 +804,9 @@ function WeekTable({ tasks, week, people, day }: { tasks: HkTask[]; week: Array<
             <tr key={p} className="border-t border-line">
               <td className="py-2 pr-2 font-semibold whitespace-nowrap">{p}</td>
               {days.map((d) => {
-                const checks = week.filter((c) => c.dayKey === d)
+                const checks = history.filter((c) => c.dayKey === d)
                 const did = checks.some((c) => nameKey(c.staffName) === nameKey(p))
-                const s = summarizePeople(tasks, checks, [p], { ...day, working: [...new Set([...checks.map((c) => c.staffName), p])], dayNumber: dayNumberOf(d) })[0]
+                const s = summarizePeople(tasks, history, [p], { ...day, working: [...new Set([...checks.map((c) => c.staffName), p])], dayKey: d })[0]
                 const full = did && s.total > 0 && s.done === s.total
                 const resets = Math.round(checks.filter((c) => clientIds.has(c.taskId) && nameKey(c.staffName) === nameKey(p)).length / Math.max(1, clientIds.size))
                 return (
@@ -927,8 +1016,106 @@ type Draft = {
   role: HkRole
   assign: HkAssign
   assignees: string[]
+  repeat: HkRepeat
 }
-const EMPTY_DRAFT: Draft = { name: '', why: '', icon: 'sparkles', tone: 'garnet', cadence: 'daily', scope: 'shop', role: 'artist', assign: 'rotate', assignees: [] }
+const EMPTY_DRAFT: Draft = { name: '', why: '', icon: 'sparkles', tone: 'garnet', cadence: 'daily', scope: 'shop', role: 'artist', assign: 'rotate', assignees: [], repeat: DEFAULT_REPEAT }
+
+/** How often a duty comes up, with the next few dates (and whose turn) so the owner sees it alternate. */
+function RepeatEditor({ value, onChange, today, task, day }: { value: HkRepeat; onChange: (r: HkRepeat) => void; today: string; task: Pick<HkTask, 'id' | 'role' | 'assign' | 'assignees'>; day: HkDay }) {
+  const set = (patch: Partial<HkRepeat>) => onChange({ ...value, ...patch })
+  const every = Math.max(1, value.every || 1)
+  const showDays = value.kind === 'days' || (value.kind === 'weeks' && !value.flex)
+  const next: string[] = []
+  let from = today
+  for (let i = 0; i < 4; i++) {
+    const d = nextDue(value, from)
+    if (!d) break
+    next.push(d)
+    from = shiftDay(d, 1)
+  }
+  const preview = next.map((d) => {
+    const who =
+      task.assign === 'rotate'
+        ? turnFor({ id: task.id || 0, role: task.role, repeat: value }, { ...day, dayKey: d, working: [] })
+        : task.assign === 'assigned'
+          ? task.assignees.map(first).join(', ')
+          : null
+    return `${dayLabel(d)}${who ? ` · ${first(who)}` : ''}`
+  })
+  return (
+    <div className="grid gap-3 rounded-2xl border border-line p-3">
+      <ChipRow
+        label="How often"
+        value={value.kind}
+        options={HK_REPEATS.map((r) => ({ id: r.id, label: r.label }))}
+        onChange={(kind) =>
+          onChange({
+            ...value,
+            kind,
+            anchor: (kind === 'weeks' || kind === 'interval') && !value.anchor ? today : value.anchor,
+            every: kind === 'interval' && every < 2 ? 2 : kind === 'weeks' ? every : every,
+            days: kind === 'days' && value.days.length === 0 ? [new Date(`${today}T12:00:00`).getDay()] : value.days,
+          })
+        }
+      />
+      {(value.kind === 'weeks' || value.kind === 'interval') && (
+        <div className="flex items-center gap-2 flex-wrap text-sm">
+          <b>Every</b>
+          <input
+            className="field-input !py-1.5 !w-[72px]"
+            type="number"
+            min={value.kind === 'interval' ? 2 : 1}
+            max={52}
+            value={every}
+            onChange={(e) => set({ every: Math.max(1, Math.min(52, Number(e.target.value) || 1)) })}
+            aria-label="Every how many"
+          />
+          <b>{value.kind === 'weeks' ? (every === 1 ? 'week' : 'weeks') : 'days'}</b>
+          <span className="text-ink-2 ml-2">starting</span>
+          <input className="field-input !py-1.5 !w-auto" type="date" value={value.anchor || today} onChange={(e) => set({ anchor: e.target.value })} aria-label="Starting" />
+        </div>
+      )}
+      {value.kind === 'monthly' && !value.flex && (
+        <label className="flex items-center gap-2 text-sm">
+          <b>On the</b>
+          <select className="field-input !py-1.5 !w-auto" value={value.monthDay} onChange={(e) => set({ monthDay: Number(e.target.value) })}>
+            {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+            <option value={31}>Last day</option>
+          </select>
+        </label>
+      )}
+      {(value.kind === 'weeks' || value.kind === 'monthly' || (value.kind === 'interval' && every > 1)) && (
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" className="w-4 h-4 accent-[var(--color-action)]" checked={value.flex} onChange={(e) => set({ flex: e.target.checked })} />
+          {value.kind === 'weeks' ? 'Any day that week (done once)' : value.kind === 'monthly' ? 'Any day that month (done once)' : 'Any day in those days (done once)'}
+        </label>
+      )}
+      {showDays && (
+        <div>
+          <span className="block text-sm font-semibold mb-1.5">On</span>
+          <div className="flex gap-1.5 flex-wrap">
+            {WEEKDAY_SHORT.map((label, wd) => {
+              const on = value.days.includes(wd)
+              return (
+                <button key={label} type="button" className="chip !px-3" aria-pressed={on} onClick={() => set({ days: on ? value.days.filter((d) => d !== wd) : [...value.days, wd].sort() })}>
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+      <p className="text-[12px] text-ink-2 m-0">
+        <b className="text-ink">{repeatLabel(value)}.</b> {preview.length ? `Next: ${preview.join(' → ')}` : 'Doesn’t come up in the next two months.'}
+        {task.assign === 'rotate' && preview.length > 1 ? ' (turns move on each time it comes up)' : ''}
+      </p>
+    </div>
+  )
+}
 
 function ChipRow<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { id: T; label: string }[]; onChange: (v: T) => void }) {
   return (
@@ -947,12 +1134,18 @@ function ChipRow<T extends string>({ label, value, options, onChange }: { label:
 
 function ManageJobsSheet({
   open,
+  startWith,
+  today,
+  day,
   onClose,
   tasks,
   people,
   onTasks,
 }: {
   open: boolean
+  startWith: HkTask | null
+  today: string
+  day: HkDay
   onClose: () => void
   tasks: HkTask[]
   people: string[]
@@ -971,14 +1164,26 @@ function ManageJobsSheet({
   }
   function startEdit(t: HkTask) {
     setEditing(t)
-    setDraft({ name: t.name, why: t.why, icon: t.icon, tone: t.tone, cadence: t.cadence, scope: t.scope, role: t.role, assign: t.assign, assignees: t.assignees })
+    setDraft({ name: t.name, why: t.why, icon: t.icon, tone: t.tone, cadence: t.cadence, scope: t.scope, role: t.role, assign: t.assign, assignees: t.assignees, repeat: t.repeat })
     setFormOpen(true)
   }
+
+  // Opened from a line on the board: go straight to that duty.
+  useEffect(() => {
+    if (!open) return
+    if (startWith) startEdit(startWith)
+    else setFormOpen(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, startWith])
 
   async function save() {
     if (draft.assign === 'assigned' && draft.assignees.length === 0) return toast('Pick who this is assigned to.')
     setBusy(true)
-    const payload = { ...draft, scope: draft.assign === 'rotate' ? ('shop' as const) : draft.scope }
+    const payload = {
+      ...draft,
+      scope: draft.assign === 'rotate' ? ('shop' as const) : draft.scope,
+      repeat: draft.cadence === 'client' ? DEFAULT_REPEAT : draft.repeat,
+    }
     const r = editing ? await updateHousekeepingTask({ data: { id: editing.id, patch: payload } }) : await addHousekeepingTask({ data: payload })
     setBusy(false)
     if (!r.ok) return toast(r.message)
@@ -1029,7 +1234,7 @@ function ManageJobsSheet({
                         <span className="flex-1 min-w-0 text-sm">
                           <b className={t.active ? '' : 'text-ink-2'}>{t.name}</b>
                           <span className="block text-[12px] text-ink-2">
-                            {HK_MOMENTS.find((m) => m.id === momentOf(t.cadence))?.label} · {HK_CADENCES.find((x) => x.id === t.cadence)?.label} · {whoLabel(t)}
+                            {HK_MOMENTS.find((m) => m.id === momentOf(t.cadence))?.label} · {t.cadence === 'client' ? 'Every client' : repeatLabel(t.repeat)} · {whoLabel(t)}
                             {t.active ? '' : ' · off'}
                           </span>
                         </span>
@@ -1062,9 +1267,18 @@ function ManageJobsSheet({
             <input className="field-input" maxLength={140} value={draft.why} placeholder="Clean mirrors make every finished look shine." onChange={(e) => setDraft({ ...draft, why: e.target.value })} />
           </Field>
           <ChipRow label="Section" value={draft.role} options={HK_ROLES.map((r) => ({ id: r.id, label: r.label }))} onChange={(role) => setDraft({ ...draft, role })} />
-          <ChipRow label="When" value={draft.cadence} options={HK_CADENCES.map((c) => ({ id: c.id, label: c.label }))} onChange={(cadence) => setDraft({ ...draft, cadence })} />
+          <ChipRow label="When in the day" value={draft.cadence} options={HK_CADENCES.map((c) => ({ id: c.id, label: c.label }))} onChange={(cadence) => setDraft({ ...draft, cadence })} />
           <ChipRow label="Who" value={draft.assign} options={HK_ASSIGNS.map((a) => ({ id: a.id, label: a.label }))} onChange={(assign) => setDraft({ ...draft, assign })} />
           <p className="text-[12px] text-ink-2 -mt-2 mb-0">{HK_ASSIGNS.find((a) => a.id === draft.assign)?.hint}</p>
+          {draft.cadence !== 'client' && (
+            <RepeatEditor
+              value={draft.repeat}
+              onChange={(repeat) => setDraft({ ...draft, repeat })}
+              today={today}
+              day={day}
+              task={{ id: editing?.id ?? 0, role: draft.role, assign: draft.assign, assignees: draft.assignees }}
+            />
+          )}
           {draft.assign === 'everyone' && (
             <ChipRow
               label="Done by"

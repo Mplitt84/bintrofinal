@@ -3,25 +3,20 @@
  * Used by the Square sync (each checkout, last client) and the scheduled reminder job
  * (arriving, close-out). Never imports the integrations module, so both can use it.
  */
-import { buildButtons, dayNumberOf, momentOf, nameKey, type HkDay, type HkMoment } from "../lib/housekeeping.js";
+import { buildButtons, momentOf, nameKey, type HkDay, type HkMoment } from "../lib/housekeeping.js";
 import { loadBoard } from "./housekeeping.server.js";
 import { claimReminder, pushToStaff, wantsClientPush } from "./push.server.js";
 
 /** The jobs still on this person's list for a moment today. */
 export async function jobsLeft(staffName: string, dayKey: string, weekday: number, moment: HkMoment) {
-  const weekKeys = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(`${dayKey}T12:00:00Z`);
-    d.setUTCDate(d.getUTCDate() - i);
-    return d.toISOString().slice(0, 10);
-  });
-  const board = await loadBoard(dayKey, weekKeys, weekday);
+  const board = await loadBoard(dayKey, weekday);
   const day: HkDay = {
     team: board.people,
     working: board.working.some((w) => nameKey(w) === nameKey(staffName)) ? board.working : [...board.working, staffName],
     inventoryManagers: board.inventoryManagers,
-    dayNumber: dayNumberOf(dayKey),
+    dayKey,
   };
-  return buildButtons(board.tasks, board.checks, staffName, day, board.week)
+  return buildButtons(board.tasks, board.history, staffName, day)
     .filter((b) => b.onList && momentOf(b.task.cadence) === moment && (moment === "client" || !b.done))
     .map((b) => b.task.name);
 }
