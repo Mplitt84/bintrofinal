@@ -2,9 +2,10 @@ import { createServerFn } from '@tanstack/react-start'
 import { deleteCookie, getCookie } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import type { AuthState } from '@/lib/auth'
-import { SESSION_COOKIE, addUser, authEnabled, endSession, listUsers, ownerEmail, removeUser, userForToken } from './auth.server'
+import { SESSION_COOKIE, addUser, authEnabled, endSession, isSiteOwner, listUsers, ownerEmail, removeUser, userForToken } from './auth.server'
+import { addInvite, listInvites, removeInvite } from './pilot.server'
 import { signupOpen } from './signup.server'
-import { requireOwner } from './auth.middleware'
+import { requireOwner, requireSiteOwner } from './auth.middleware'
 
 /** Public: whether sign-in is on and who is signed in. */
 const stripBusiness = (u: { id: number; email: string; name: string; role: 'owner' | 'staff' } | null) =>
@@ -12,10 +13,12 @@ const stripBusiness = (u: { id: number; email: string; name: string; role: 'owne
 
 export const getAuthState = createServerFn({ method: 'GET' }).handler(async (): Promise<AuthState> => {
   const enabled = authEnabled()
+  const who = enabled ? await userForToken(getCookie(SESSION_COOKIE)) : null
   return {
     enabled,
     // The business id stays on the server; the app only needs who is signed in.
-    user: enabled ? stripBusiness(await userForToken(getCookie(SESSION_COOKIE))) : null,
+    user: stripBusiness(who),
+    siteOwner: isSiteOwner(who),
     ownerConfigured: Boolean(ownerEmail()),
     signupOpen: enabled && signupOpen(),
   }
@@ -52,5 +55,34 @@ export const removeAccess = createServerFn({ method: 'POST' })
       return { ok: true as const, users: await listUsers() }
     } catch (error) {
       return { ok: false as const, message: error instanceof Error ? error.message : 'Couldn’t remove that person.' }
+    }
+  })
+
+/** Site owner only: the pilot tester invite list. Nobody else ever sees these emails. */
+export const getPilotInvites = createServerFn({ method: 'GET' })
+  .middleware([requireSiteOwner])
+  .handler(async () => listInvites())
+
+export const addPilotInvite = createServerFn({ method: 'POST' })
+  .middleware([requireSiteOwner])
+  .inputValidator(z.object({ email: z.string().max(200), note: z.string().max(200) }))
+  .handler(async ({ data, context }) => {
+    try {
+      await addInvite(data.email, data.note, context?.user?.email ?? '')
+      return { ok: true as const, invites: await listInvites() }
+    } catch (error) {
+      return { ok: false as const, message: error instanceof Error ? error.message : 'Couldn’t add that invite.' }
+    }
+  })
+
+export const removePilotInvite = createServerFn({ method: 'POST' })
+  .middleware([requireSiteOwner])
+  .inputValidator(z.object({ id: z.number().int() }))
+  .handler(async ({ data }) => {
+    try {
+      await removeInvite(data.id)
+      return { ok: true as const, invites: await listInvites() }
+    } catch (error) {
+      return { ok: false as const, message: error instanceof Error ? error.message : 'Couldn’t remove that invite.' }
     }
   })

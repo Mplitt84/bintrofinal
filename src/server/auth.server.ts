@@ -14,6 +14,7 @@ import { and, asc, eq, gt, lt, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { DEFAULT_BUSINESS_ID, businessId, mine } from "./tenant.js";
 import { createBusinessForOwner, signupOpen } from "./signup.server.js";
+import { claimInvite, hasOpenInvite, recordClaim } from "./pilot.server.js";
 import { appSessions, appUsers } from "../../db/schema.js";
 import type { AuthUser } from "../lib/auth.js";
 
@@ -143,6 +144,16 @@ export async function userForGoogle(profile: GoogleProfile) {
       .returning();
     user ??= (await db.select().from(appUsers).where(and(signInLookup, eq(appUsers.email, profile.email))))[0];
   }
+  // An invited pilot tester's first sign-in: a brand-new business of their own.
+  if (!user && (await claimInvite(profile.email))) {
+    try {
+      user = await createBusinessForOwner(profile, "pilot invite");
+      await recordClaim(profile.email, user.businessId);
+    } catch (error) {
+      await recordClaim(profile.email, null);
+      throw error;
+    }
+  }
   // Nobody by that email yet: start them a business of their own, when sign-up is open.
   if (!user && signupOpen()) user = await createBusinessForOwner(profile);
   if (!user) throw new Error("not-allowed");
@@ -213,10 +224,28 @@ export async function listUsers() {
 export async function addUser(email: string, role: "owner" | "staff", addedBy: string) {
   const clean = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) throw new Error("That doesn't look like an email address.");
-  await db
-    .insert(appUsers)
-    .values({ businessId: businessId(), email: clean, role, addedBy })
-    .onConflictDoUpdate({ target: appUsers.email, set: { role } });
+  // Emails are unique across all of Bintro. Never touch someone who belongs to another
+  // business, and never pull an invited pilot tester into this one: they get their own.
+  const [existing] = await db
+    .select({ id: appUsers.id, businessId: appUsers.businessId })
+    .from(appUsers)
+    .where(and(signInLookup, eq(appUsers.email, clean)));
+  if (existing && existing.businessId !== businessId()) throw new Error(CANT_ADD);
+  if (!existing && (await hasOpenInvite(clean))) throw new Error(CANT_ADD);
+  if (existing) {
+    await db.update(appUsers).set({ role }).where(and(mine(appUsers), eq(appUsers.id, existing.id)));
+    return;
+  }
+  await db.insert(appUsers).values({ businessId: businessId(), email: clean, role, addedBy });
+}
+
+const CANT_ADD = "That email can't be added here. It may already be set up with Bintro somewhere else.";
+
+/** The person who runs this Bintro site (BINTRO_OWNER_EMAIL, owner of business 1). Only they manage pilot invites. */
+export function isSiteOwner(user: { email: string; role: string; businessId: number } | null) {
+  return Boolean(
+    user && ownerEmail() && user.email === ownerEmail() && user.role === "owner" && user.businessId === DEFAULT_BUSINESS_ID,
+  );
 }
 
 export async function removeUser(id: number, actingUserId: number) {

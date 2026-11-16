@@ -35,6 +35,7 @@ import { LEGAL_LINKS } from "@/components/legal/LegalPage";
 import { LEGAL } from "@/lib/legal";
 import type { AuthState } from "@/lib/auth";
 import { AccessPanel } from "@/components/auth/AccessPanel";
+import { PilotInvitesPanel } from "@/components/auth/PilotInvitesPanel";
 import { AppearanceSettings } from "@/components/business/AppearanceSettings";
 import { ScannerSettings } from "@/components/business/ScannerSettings";
 import {
@@ -251,6 +252,7 @@ export function SettingsView({
         </>
       )}
       <AccessPanel auth={auth} />
+      <PilotInvitesPanel auth={auth} />
       <YourDataCard />
       <ProblemsCard />
       <HelpSupport />

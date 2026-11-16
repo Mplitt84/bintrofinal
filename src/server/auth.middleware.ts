@@ -1,6 +1,6 @@
 import { createMiddleware } from '@tanstack/react-start'
 import { getCookie } from '@tanstack/react-start/server'
-import { SESSION_COOKIE, authEnabled, userForToken } from './auth.server'
+import { SESSION_COOKIE, authEnabled, isSiteOwner, userForToken } from './auth.server'
 import { DEFAULT_BUSINESS_ID, runForBusiness } from './tenant'
 import type { SessionUser } from './auth.server'
 
@@ -26,5 +26,13 @@ export const requireOwner = createMiddleware({ type: 'function' })
   .middleware([requireUser])
   .server(async ({ next, context }) => {
     if (context.user && context.user.role !== 'owner') throw new Error('Only an owner can do that.')
+    return next()
+  })
+
+/** Site-owner-only actions (pilot invites): BINTRO_OWNER_EMAIL, signed in as owner of business 1. */
+export const requireSiteOwner = createMiddleware({ type: 'function' })
+  .middleware([requireUser])
+  .server(async ({ next, context }) => {
+    if (!isSiteOwner(context.user)) throw new Error('Only the site owner can do that.')
     return next()
   })
