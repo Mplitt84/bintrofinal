@@ -131,7 +131,37 @@ export async function integrationErrorLog(provider: Provider) {
 }
 
 export async function disconnectIntegration(provider: Provider) {
+  if (provider === "quickbooks") {
+    // Tell Intuit too, so the next Connect asks which company instead of reusing this one.
+    const row = await findIntegration("quickbooks");
+    if (row?.refreshToken) await revokeQuickBooksToken(row.refreshToken);
+  }
   await db.delete(integrations).where(and(mine(integrations), eq(integrations.provider, provider)));
+}
+
+/**
+ * Cancels Bintro's access to a QuickBooks company at Intuit. Without this, Intuit quietly
+ * reuses an earlier approval on the next Connect and never shows the company picker.
+ * Best effort: a failure is logged, never thrown.
+ */
+async function revokeQuickBooksToken(token: string) {
+  try {
+    const { id, secret } = credentials("quickbooks");
+    const res = await fetch("https://developer.api.intuit.com/v2/oauth2/tokens/revoke", {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${id}:${secret}`).toString("base64")}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) {
+      await logIntegrationError({ provider: "quickbooks", action: "revoke", status: res.status, intuitTid: res.headers.get("intuit_tid") ?? "", message: (await res.text().catch(() => "")).slice(0, 300) || "Revoke refused" });
+    }
+  } catch (error) {
+    console.error("QuickBooks revoke failed", error);
+  }
 }
 
 export async function integrationStatus() {
@@ -349,7 +379,11 @@ export async function completeAuthorization(
       message: `Couldn't read company ${params.realmId} (${isSandbox("quickbooks") ? "sandbox" : "production"} keys): ${JSON.stringify(info.Fault ?? info).slice(0, 300)}`,
     });
     // Don't call it connected: nothing could be sent there anyway.
-    if (res.status === 401 || res.status === 403) throw new WrongCompanyError();
+    if (res.status === 401 || res.status === 403) {
+      // Cancel this approval at Intuit so the next Connect shows the company picker.
+      await revokeQuickBooksToken(tokens.refreshToken);
+      throw new WrongCompanyError();
+    }
   }
   await saveIntegration(provider, {
     accessToken: tokens.accessToken,
