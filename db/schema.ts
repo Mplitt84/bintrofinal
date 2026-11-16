@@ -685,6 +685,10 @@ export const housekeepingTasks = pgTable("housekeeping_tasks", {
   scope: text().notNull().default("each"),
   /** One line on why it matters, shown in the thank-you. */
   why: text().notNull().default(""),
+  /** On everyone's list. Optional jobs are ones a team member chooses to take on (housekeeping_commitments). */
+  required: boolean().notNull().default(false),
+  /** artist = artists & technicians · inventory = whoever manages inventory (team_members.managesInventory). */
+  role: text().notNull().default("artist"),
   sortOrder: integer("sort_order").notNull().default(0),
   active: boolean().notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -722,4 +726,52 @@ export const housekeepingReminders = pgTable("housekeeping_reminders", {
   doneBy: text("done_by").notNull().default(""),
 }, (t) => [
   unique("housekeeping_reminders_business_ref").on(t.businessId, t.ref),
+]);
+
+/** Optional housekeeping jobs a team member has chosen to be responsible for. */
+export const housekeepingCommitments = pgTable("housekeeping_commitments", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
+  id: serial().primaryKey(),
+  staffName: text("staff_name").notNull(),
+  taskId: integer("task_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  unique("housekeeping_commitments_person_task").on(t.businessId, t.staffName, t.taskId),
+]);
+
+/** Who the business works with to stay green (recycling programs, certifications, donations), written in by the team. */
+export const sustainabilityPartners = pgTable("sustainability_partners", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
+  id: serial().primaryKey(),
+  name: text().notNull(),
+  /** recycling · certification · donation · supplier · other */
+  kind: text().notNull().default("recycling"),
+  contact: text().notNull().default(""),
+  website: text().notNull().default(""),
+  /** Month the partnership started, YYYY-MM, or "". */
+  since: text().notNull().default(""),
+  notes: text().notNull().default(""),
+  addedBy: text("added_by").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  unique("sustainability_partners_business_name").on(t.businessId, t.name),
+]);
+
+/** Color waste weighed each month (stored in grams), and what an ounce of color cost that month, for savings. */
+export const colorWasteLogs = pgTable("color_waste_logs", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
+  id: serial().primaryKey(),
+  /** YYYY-MM */
+  month: text().notNull(),
+  grams: integer().notNull(),
+  /** What an ounce of mixed color costs the shop this month; 0 = not given, so no money is shown. */
+  costCentsPerOz: integer("cost_cents_per_oz").notNull().default(0),
+  note: text().notNull().default(""),
+  loggedBy: text("logged_by").notNull().default(""),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  unique("color_waste_logs_business_month").on(t.businessId, t.month),
 ]);

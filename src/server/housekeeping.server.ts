@@ -5,15 +5,18 @@
  */
 import { and, asc, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { housekeepingChecks, housekeepingReminders, housekeepingTasks, teamMembers } from "../../db/schema.js";
+import { businessProfile, housekeepingChecks, housekeepingCommitments, housekeepingReminders, housekeepingTasks, teamMembers } from "../../db/schema.js";
 import {
-  HOUSEKEEPING_DEFAULTS,
+  ADDED_LATER_KEYS,
+  housekeepingDefaultsFor,
   STATION_TASK_KEY,
   nameKey,
   type HkCadence,
   type HkCheck,
+  type HkCommitments,
   type HkIcon,
   type HkReminder,
+  type HkRole,
   type HkScope,
   type HkTask,
   type HkTone,
@@ -31,19 +34,26 @@ function toTask(r: TaskRow): HkTask {
     tone: r.tone as HkTone,
     cadence: r.cadence as HkCadence,
     scope: r.scope as HkScope,
+    required: r.required,
+    role: (r.role === "inventory" ? "inventory" : "artist") as HkRole,
     why: r.why,
     active: r.active,
   };
 }
 
-/** Every job, starting the shop off with Bintro's defaults the first time. */
+/** Every job, starting the shop off with its trade's defaults the first time. */
 export async function listTasks(): Promise<HkTask[]> {
   let rows = await db.select().from(housekeepingTasks).where(mine(housekeepingTasks)).orderBy(asc(housekeepingTasks.sortOrder), asc(housekeepingTasks.id));
-  if (rows.length === 0) {
-    await db
-      .insert(housekeepingTasks)
-      .values(HOUSEKEEPING_DEFAULTS.map((t, i) => ({ ...owned(), ...t, sortOrder: (i + 1) * 10 })))
-      .onConflictDoNothing();
+  // New shops get their trade's list; shops set up before a job was added get just that job.
+  const have = new Set(rows.map((r) => r.key));
+  const missing = rows.length === 0 ? null : ADDED_LATER_KEYS.filter((k) => !have.has(k));
+  if (missing === null || missing.length > 0) {
+    const [profile] = await db.select({ type: businessProfile.businessType }).from(businessProfile).where(mine(businessProfile));
+    const defaults = housekeepingDefaultsFor(profile?.type ?? "");
+    const toAdd = defaults
+      .map((t, i) => ({ ...t, sortOrder: (i + 1) * 10 }))
+      .filter((t) => missing === null || missing.includes(t.key));
+    if (toAdd.length) await db.insert(housekeepingTasks).values(toAdd.map((t) => ({ ...t, ...owned() }))).onConflictDoNothing();
     rows = await db.select().from(housekeepingTasks).where(mine(housekeepingTasks)).orderBy(asc(housekeepingTasks.sortOrder), asc(housekeepingTasks.id));
   }
   return rows.map(toTask);
@@ -78,17 +88,22 @@ export type HousekeepingBoard = {
   /** The last 7 days' check-offs (for the week view), each with its day. */
   week: Array<HkCheck & { dayKey: string }>;
   reminders: HkReminder[];
+  /** Optional jobs each person has chosen to be responsible for. */
+  commitments: HkCommitments;
   /** Everyone on the team, providers first: the people the board lists. */
   people: string[];
+  /** Team members marked "Manages inventory": their lists carry the inventory obligations. */
+  inventoryManagers: string[];
 };
 
 /** Everything the Housekeeping screen needs for one day (the device's local date and the 6 before it). */
 export async function loadBoard(dayKey: string, weekKeys: string[]): Promise<HousekeepingBoard> {
-  const [tasks, week, reminders, team] = await Promise.all([
+  const [tasks, week, reminders, team, commitments] = await Promise.all([
     listTasks(),
     checksFor([...new Set([dayKey, ...weekKeys])]),
     openReminders(),
     db.select().from(teamMembers).where(mine(teamMembers)).orderBy(asc(teamMembers.name)),
+    listCommitments(),
   ]);
   const people = [...team.filter((t) => t.isProvider), ...team.filter((t) => !t.isProvider)].map((t) => t.name);
   return {
@@ -96,8 +111,34 @@ export async function loadBoard(dayKey: string, weekKeys: string[]): Promise<Hou
     checks: week.filter((c) => c.dayKey === dayKey).map(({ dayKey: _d, ...c }) => c),
     week,
     reminders,
+    commitments,
     people,
+    inventoryManagers: team.filter((t) => t.managesInventory).map((t) => t.name),
   };
+}
+
+/** Everyone's chosen optional jobs, by name. */
+export async function listCommitments(): Promise<HkCommitments> {
+  const rows = await db.select().from(housekeepingCommitments).where(mine(housekeepingCommitments));
+  const out: HkCommitments = {};
+  for (const r of rows) (out[r.staffName] ??= []).push(r.taskId);
+  return out;
+}
+
+/** Take on (or let go of) an optional job. Required jobs are on everyone's list already. */
+export async function setCommitment(staffName: string, taskId: number, on: boolean) {
+  const name = staffName.trim();
+  if (!name) throw new Error("Pick who you are first.");
+  const [task] = await db.select().from(housekeepingTasks).where(and(mine(housekeepingTasks), eq(housekeepingTasks.id, taskId)));
+  if (!task) throw new Error("That job isn't on the list any more.");
+  if (on) {
+    await db.insert(housekeepingCommitments).values({ ...owned(), staffName: name, taskId }).onConflictDoNothing();
+  } else {
+    const rows = await db.select().from(housekeepingCommitments).where(and(mine(housekeepingCommitments), eq(housekeepingCommitments.taskId, taskId)));
+    const ids = rows.filter((r) => nameKey(r.staffName) === nameKey(name)).map((r) => r.id);
+    if (ids.length) await db.delete(housekeepingCommitments).where(and(mine(housekeepingCommitments), inArray(housekeepingCommitments.id, ids)));
+  }
+  return listCommitments();
 }
 
 /**
@@ -105,7 +146,7 @@ export async function loadBoard(dayKey: string, weekKeys: string[]): Promise<Hou
  * for shop jobs); after-client jobs count every tap. Returns false when the tap
  * didn't add anything (already done today).
  */
-export async function checkTask(input: { taskId: number; staffName: string; dayKey: string; reminderId?: number }) {
+export async function checkTask(input: { taskId: number; staffName: string; dayKey: string; weekKeys?: string[]; reminderId?: number }) {
   const [task] = await db
     .select()
     .from(housekeepingTasks)
@@ -116,10 +157,12 @@ export async function checkTask(input: { taskId: number; staffName: string; dayK
 
   let added = true;
   if (task.cadence !== "client") {
+    // Weekly jobs count once in the last 7 days; the rest once today.
+    const days = task.cadence === "weekly" ? [...new Set([input.dayKey, ...(input.weekKeys ?? [])])] : [input.dayKey];
     const today = await db
       .select({ staffName: housekeepingChecks.staffName })
       .from(housekeepingChecks)
-      .where(and(mine(housekeepingChecks), eq(housekeepingChecks.taskId, task.id), eq(housekeepingChecks.dayKey, input.dayKey)));
+      .where(and(mine(housekeepingChecks), eq(housekeepingChecks.taskId, task.id), inArray(housekeepingChecks.dayKey, days)));
     const already = task.scope === "shop" ? today.length > 0 : today.some((c) => nameKey(c.staffName) === nameKey(staffName));
     if (already) added = false;
   }
@@ -161,6 +204,8 @@ export type TaskInput = {
   tone: HkTone;
   cadence: HkCadence;
   scope: HkScope;
+  required: boolean;
+  role: HkRole;
   why: string;
 };
 
@@ -195,6 +240,7 @@ export async function deleteTask(id: number) {
     await db.update(housekeepingTasks).set({ active: false }).where(and(mine(housekeepingTasks), eq(housekeepingTasks.id, id)));
   } else {
     await db.delete(housekeepingChecks).where(and(mine(housekeepingChecks), eq(housekeepingChecks.taskId, id)));
+    await db.delete(housekeepingCommitments).where(and(mine(housekeepingCommitments), eq(housekeepingCommitments.taskId, id)));
     await db.delete(housekeepingTasks).where(and(mine(housekeepingTasks), eq(housekeepingTasks.id, id)));
   }
   return listTasks();
@@ -218,4 +264,5 @@ export async function addCheckoutReminder(input: { ref: string; staffName: strin
 export async function renameInHousekeeping(from: string, to: string) {
   await db.update(housekeepingChecks).set({ staffName: to }).where(and(mine(housekeepingChecks), eq(housekeepingChecks.staffName, from)));
   await db.update(housekeepingReminders).set({ staffName: to }).where(and(mine(housekeepingReminders), eq(housekeepingReminders.staffName, from)));
+  await db.update(housekeepingCommitments).set({ staffName: to }).where(and(mine(housekeepingCommitments), eq(housekeepingCommitments.staffName, from)));
 }

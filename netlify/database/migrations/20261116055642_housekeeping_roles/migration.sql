@@ -1,0 +1,1 @@
+ALTER TABLE "housekeeping_tasks" ADD COLUMN "role" text DEFAULT 'artist' NOT NULL;

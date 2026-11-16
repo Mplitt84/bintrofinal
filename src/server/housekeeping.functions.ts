@@ -8,6 +8,7 @@ import {
   deleteTask,
   dismissReminder,
   loadBoard,
+  setCommitment,
   openReminders,
   stationTaskId,
   undoCheck,
@@ -20,8 +21,10 @@ const TaskFields = z.object({
   name: z.string().trim().min(1).max(40),
   icon: z.enum(HK_ICONS),
   tone: z.enum(HK_TONES),
-  cadence: z.enum(["client", "open", "daily", "close"]),
+  cadence: z.enum(["client", "open", "daily", "close", "weekly"]),
   scope: z.enum(["each", "shop"]),
+  required: z.boolean(),
+  role: z.enum(["artist", "inventory"]),
   why: z.string().max(140),
 });
 
@@ -34,7 +37,13 @@ export const getHousekeeping = createServerFn({ method: "POST" })
 export const checkHousekeeping = createServerFn({ method: "POST" })
   .middleware([requireUser])
   .inputValidator(
-    z.object({ taskId: z.number().int(), staffName: Name, dayKey: Day, reminderId: z.number().int().optional() }),
+    z.object({
+      taskId: z.number().int(),
+      staffName: Name,
+      dayKey: Day,
+      weekKeys: z.array(Day).max(7).optional(),
+      reminderId: z.number().int().optional(),
+    }),
   )
   .handler(async ({ data }) => {
     try {
@@ -97,3 +106,15 @@ export const deleteHousekeepingTask = createServerFn({ method: "POST" })
 export const getCheckoutReminders = createServerFn({ method: "GET" })
   .middleware([requireUser])
   .handler(async () => ({ reminders: await openReminders(), stationTaskId: await stationTaskId() }));
+
+/** A team member takes on (or lets go of) an optional job. Anyone can choose for themselves. */
+export const setHousekeepingCommitment = createServerFn({ method: "POST" })
+  .middleware([requireUser])
+  .inputValidator(z.object({ staffName: Name, taskId: z.number().int(), on: z.boolean() }))
+  .handler(async ({ data }) => {
+    try {
+      return { ok: true as const, commitments: await setCommitment(data.staffName, data.taskId, data.on) };
+    } catch (error) {
+      return { ok: false as const, message: error instanceof Error ? error.message : "Couldn’t save that." };
+    }
+  });
