@@ -10,10 +10,10 @@
  * client id/secret env vars; tokens are stored in the integrations table.
  */
 import { randomBytes } from "node:crypto";
-import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, like, lt, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { mine, owned } from "./tenant.js";
-import { expenses, integrationLogs, integrations, products, squareOutbox } from "../../db/schema.js";
+import { expenses, integrationLogs, integrations, movements, products, squareOutbox, squareSyncedOrders } from "../../db/schema.js";
 import { SQUARE_STAFF_NAME, applyMovement, findProductByBarcode } from "./inventory.server.js";
 import { addCheckoutReminder } from "./housekeeping.server.js";
 import { sendClientCheckout, sendClose } from "./housekeeping-push.server.js";
@@ -169,6 +169,7 @@ export async function integrationStatus() {
       accountName: row?.accountName ?? "",
       lastSyncAt: row?.lastSyncAt?.toISOString() ?? null,
       connectedAt: row?.connectedAt?.toISOString() ?? null,
+      salesCleanup: ((row?.meta as { salesCleanup?: SalesCleanup } | undefined)?.salesCleanup ?? null) as SalesCleanup | null,
     };
   });
 }
@@ -624,8 +625,30 @@ async function checkoutStaffName(
 }
 
 /**
- * Logs every Square sale completed since the last sync as an "out" movement.
- * Items Bintro doesn't know (never imported) are counted and skipped.
+ * Claims a Square order for this business. Returns true only for the one sync that gets
+ * there first, so two syncs running at once (schedule, "Sync now", a count pulling sales
+ * first) can never log the same sale twice. Orders logged before claims existed are
+ * recognised by their movement note and claimed without being logged again.
+ */
+async function claimSquareOrder(orderId: string, closedAt: Date | null) {
+  const note = `Square sale ${orderId}`;
+  const [already] = await db
+    .select({ id: movements.id })
+    .from(movements)
+    .where(and(mine(movements), eq(movements.staffName, SQUARE_STAFF_NAME), eq(movements.note, note)))
+    .limit(1);
+  const claimed = await db
+    .insert(squareSyncedOrders)
+    .values({ ...owned(), orderId, closedAt })
+    .onConflictDoNothing()
+    .returning({ id: squareSyncedOrders.id });
+  return claimed.length > 0 && !already;
+}
+
+/**
+ * Logs every Square sale completed since the last sync as an "out" movement, once per
+ * order. Progress is saved after every order, so a sync cut short never starts over.
+ * Checkout reminders run after the sales are logged and never hold them up.
  */
 export async function syncSquareSales() {
   const row = await activeIntegration("square");
@@ -634,25 +657,24 @@ export async function syncSquareSales() {
     "/v2/locations",
   );
   const locationIds = locations.filter((l) => l.status !== "INACTIVE").map((l) => l.id).slice(0, 10);
-  if (locationIds.length === 0) return { sales: 0, units: 0, skipped: 0 };
+  if (locationIds.length === 0) return { sales: 0, units: 0, skipped: 0, alreadyLogged: 0 };
   const shopZone = locations.find((l) => l.status !== "INACTIVE")?.timezone || "America/Chicago";
+
+  // Put right anything double-counted before (by checking with Square), then carry on.
+  await removeDuplicateSquareSales().catch((error) => console.error("Square double-count check failed", error));
 
   const since = row.lastSyncAt ?? row.connectedAt ?? new Date(Date.now() - 86_400_000);
   const mapped = await db.select({ id: products.id, variation: products.squareVariationId }).from(products).where(mine(products));
   const productByVariation = new Map(mapped.filter((p) => p.variation).map((p) => [p.variation, p.id]));
-
-  // Housekeeping: each checkout reminds the stylist who rang it up to reset their station.
-  const scopes = String((row.meta as { scopes?: string } | undefined)?.scopes ?? "");
-  const canReadStaff = scopes.includes("PAYMENTS_READ") && scopes.includes("EMPLOYEES_READ");
-  const team = (await findTeamMembers()).map((t) => t.name);
-  const staffCache = new Map<string, string>();
-  const remindAfter = new Date(Date.now() - 6 * 3_600_000);
+  const remindAfter = new Date(Date.now() - 2 * 3_600_000);
+  const toRemind: Array<{ order: SquareOrder; closed: Date }> = [];
 
   let cursor = "";
   let latest = since;
   let sales = 0;
   let units = 0;
   let skipped = 0;
+  let alreadyLogged = 0;
   do {
     const page = await squareFetch<{ orders?: SquareOrder[]; cursor?: string }>(row.accessToken, "/v2/orders/search", {
       method: "POST",
@@ -673,48 +695,170 @@ export async function syncSquareSales() {
       const closed = order.closed_at ? new Date(order.closed_at) : null;
       // start_at is inclusive; skip the order the last sync already ended on.
       if (!closed || closed <= since) continue;
-      if (closed > latest) latest = closed;
-      sales++;
-      if (closed > remindAfter) {
-        try {
-          const staffName = await checkoutStaffName(row.accessToken, order, team, canReadStaff, staffCache);
-          const detail = reminderDetail((order.line_items ?? []).map((l) => l.name ?? ""));
-          const ref = `square:${order.id}`;
-          await addCheckoutReminder({ ref, staffName, detail, at: closed });
-          if (staffName) {
-            const { dayKey, weekday } = localDay(closed, shopZone);
-            await sendClientCheckout(staffName, ref, detail, dayKey, weekday);
-            // Their last booked client today: close-out reminder right away.
-            const shifts = await db.select().from(staffShifts).where(and(mine(staffShifts), eq(staffShifts.dayKey, dayKey)));
-            const shift = shifts.find((sh) => nameKey(sh.staffName) === nameKey(staffName));
-            if (shift && closed.getTime() >= shift.endsAt.getTime() - 20 * 60_000) await sendClose(staffName, dayKey, weekday, true);
+      if (await claimSquareOrder(order.id, closed)) {
+        sales++;
+        for (const line of order.line_items ?? []) {
+          const qty = Math.round(Number(line.quantity ?? 0));
+          const productId = line.catalog_object_id ? productByVariation.get(line.catalog_object_id) : undefined;
+          if (!productId || qty <= 0) {
+            skipped++;
+            continue;
           }
-        } catch (error) {
-          console.error("Couldn't send a housekeeping reminder", error);
+          await applyMovement({ productId, type: "out", delta: -qty, staffName: SQUARE_STAFF_NAME, note: `Square sale ${order.id}` });
+          units += qty;
         }
+        if (closed > remindAfter) toRemind.push({ order, closed });
+      } else {
+        alreadyLogged++;
       }
-      for (const line of order.line_items ?? []) {
-        const qty = Math.round(Number(line.quantity ?? 0));
-        const productId = line.catalog_object_id ? productByVariation.get(line.catalog_object_id) : undefined;
-        if (!productId || qty <= 0) {
-          skipped++;
-          continue;
-        }
-        await applyMovement({
-          productId,
-          type: "out",
-          delta: -qty,
-          staffName: SQUARE_STAFF_NAME,
-          note: `Square sale ${order.id}`,
-        });
-        units += qty;
+      if (closed > latest) {
+        latest = closed;
+        await saveIntegration("square", { lastSyncAt: latest });
       }
     }
     cursor = page.cursor ?? "";
   } while (cursor);
 
   await saveIntegration("square", { lastSyncAt: latest });
-  return { sales, units, skipped };
+  if (toRemind.length) await sendCheckoutReminders(row, toRemind, shopZone).catch((error) => console.error("Checkout reminders failed", error));
+  return { sales, units, skipped, alreadyLogged };
+}
+
+/** Housekeeping: each new checkout reminds the stylist who rang it up to reset their station. */
+async function sendCheckoutReminders(row: { accessToken: string; meta: unknown }, list: Array<{ order: SquareOrder; closed: Date }>, shopZone: string) {
+  const scopes = String((row.meta as { scopes?: string } | undefined)?.scopes ?? "");
+  const canReadStaff = scopes.includes("PAYMENTS_READ") && scopes.includes("EMPLOYEES_READ");
+  const team = (await findTeamMembers()).map((t) => t.name);
+  const staffCache = new Map<string, string>();
+  for (const { order, closed } of list.slice(-20)) {
+    try {
+      const staffName = await checkoutStaffName(row.accessToken, order, team, canReadStaff, staffCache);
+      const detail = reminderDetail((order.line_items ?? []).map((l) => l.name ?? ""));
+      const ref = `square:${order.id}`;
+      await addCheckoutReminder({ ref, staffName, detail, at: closed });
+      if (!staffName) continue;
+      const { dayKey, weekday } = localDay(closed, shopZone);
+      await sendClientCheckout(staffName, ref, detail, dayKey, weekday);
+      // Their last booked client today: close-out reminder right away.
+      const shifts = await db.select().from(staffShifts).where(and(mine(staffShifts), eq(staffShifts.dayKey, dayKey)));
+      const shift = shifts.find((sh) => nameKey(sh.staffName) === nameKey(staffName));
+      if (shift && closed.getTime() >= shift.endsAt.getTime() - 20 * 60_000) await sendClose(staffName, dayKey, weekday, true);
+    } catch (error) {
+      console.error("Couldn't send a housekeeping reminder", error);
+    }
+  }
+}
+
+export type SalesCleanup = { at: string; ordersChecked: number; ordersFixed: number; removed: number; units: number; valueCents: number };
+
+/**
+ * Finds Square sales logged more than once and takes the extras back out. An order is
+ * only touched after comparing Bintro's movements with Square's own copy of that order,
+ * so a real sale with the same product on two lines is never removed. Each extra
+ * movement is deleted and its units go back on the shelf (Square's own stock was never
+ * changed by these, so nothing is sent to Square). The result is kept on the
+ * integration (`meta.salesCleanup`) for Settings to show.
+ */
+export async function removeDuplicateSquareSales(): Promise<SalesCleanup | null> {
+  const row = await activeIntegration("square");
+  // Orders with a product logged more than once, and how many movements each has now.
+  const groups = await db
+    .select({ note: movements.note, productId: movements.productId, n: sql<number>`count(*)::int` })
+    .from(movements)
+    .where(and(mine(movements), eq(movements.staffName, SQUARE_STAFF_NAME), like(movements.note, "Square sale %")))
+    .groupBy(movements.note, movements.productId);
+  const perOrder = new Map<string, { total: number; repeated: boolean }>();
+  for (const g of groups) {
+    const id = g.note.slice("Square sale ".length).trim();
+    const cur = perOrder.get(id) ?? { total: 0, repeated: false };
+    perOrder.set(id, { total: cur.total + Number(g.n), repeated: cur.repeated || Number(g.n) > 1 });
+  }
+  const suspects = [...perOrder].filter(([id, o]) => id && o.repeated);
+  if (suspects.length === 0) return null;
+  // Skip orders already compared with Square at this same number of movements.
+  const seen = new Map(
+    (
+      await db
+        .select({ orderId: squareSyncedOrders.orderId, n: squareSyncedOrders.checkedMovements })
+        .from(squareSyncedOrders)
+        .where(and(mine(squareSyncedOrders), inArray(squareSyncedOrders.orderId, suspects.map(([id]) => id))))
+    ).map((r) => [r.orderId, r.n]),
+  );
+  const orderIds = suspects.filter(([id, o]) => seen.get(id) !== o.total).map(([id]) => id);
+  if (orderIds.length === 0) return null;
+
+  const mapped = await db
+    .select({ id: products.id, variation: products.squareVariationId, retail: products.retailPriceCents })
+    .from(products)
+    .where(mine(products));
+  const productByVariation = new Map(mapped.filter((p) => p.variation).map((p) => [p.variation, p.id]));
+  const retailOf = new Map(mapped.map((p) => [p.id, p.retail]));
+
+  const result: SalesCleanup = { at: new Date().toISOString(), ordersChecked: 0, ordersFixed: 0, removed: 0, units: 0, valueCents: 0 };
+  for (let i = 0; i < orderIds.length; i += 100) {
+    const batch = orderIds.slice(i, i + 100);
+    const { orders = [] } = await squareFetch<{ orders?: SquareOrder[] }>(row.accessToken, "/v2/orders/batch-retrieve", {
+      method: "POST",
+      body: JSON.stringify({ order_ids: batch }),
+    });
+    for (const order of orders) {
+      result.ordersChecked++;
+      // What Square says was sold on this order, per Bintro product.
+      const expected = new Map<number, number>();
+      for (const line of order.line_items ?? []) {
+        const productId = line.catalog_object_id ? productByVariation.get(line.catalog_object_id) : undefined;
+        const qty = Math.round(Number(line.quantity ?? 0));
+        if (productId && qty > 0) expected.set(productId, (expected.get(productId) ?? 0) + qty);
+      }
+      const logged = await db
+        .select({ id: movements.id, productId: movements.productId, delta: movements.delta })
+        .from(movements)
+        .where(and(mine(movements), eq(movements.staffName, SQUARE_STAFF_NAME), eq(movements.note, `Square sale ${order.id}`)))
+        .orderBy(desc(movements.id));
+      let fixedThis = false;
+      for (const productId of new Set(logged.map((m) => m.productId))) {
+        let extra = logged.filter((m) => m.productId === productId).reduce((sum, m) => sum - m.delta, 0) - (expected.get(productId) ?? 0);
+        // Newest first: the first sync's movements stay.
+        for (const m of logged.filter((x) => x.productId === productId)) {
+          if (extra <= 0) break;
+          const units = -m.delta;
+          if (units <= 0 || units > extra) continue;
+          // Only the run that actually deletes the row puts its units back.
+          const gone = await db.delete(movements).where(and(mine(movements), eq(movements.id, m.id))).returning({ id: movements.id });
+          if (gone.length === 0) continue;
+          await db
+            .update(products)
+            .set({ qty: sql`${products.qty} + ${units}`, updatedAt: new Date() })
+            .where(and(mine(products), eq(products.id, productId)));
+          extra -= units;
+          result.removed++;
+          result.units += units;
+          result.valueCents += units * (retailOf.get(productId) ?? 0);
+          fixedThis = true;
+        }
+      }
+      if (fixedThis) result.ordersFixed++;
+      const [{ left }] = await db
+        .select({ left: sql<number>`count(*)::int` })
+        .from(movements)
+        .where(and(mine(movements), eq(movements.staffName, SQUARE_STAFF_NAME), eq(movements.note, `Square sale ${order.id}`)));
+      await db
+        .insert(squareSyncedOrders)
+        .values({ ...owned(), orderId: order.id, closedAt: order.closed_at ? new Date(order.closed_at) : null, checkedMovements: Number(left) })
+        .onConflictDoUpdate({ target: [squareSyncedOrders.businessId, squareSyncedOrders.orderId], set: { checkedMovements: Number(left) } });
+    }
+  }
+  if (result.removed > 0) {
+    const fresh = await findIntegration("square");
+    const meta = (fresh?.meta ?? {}) as Record<string, unknown>;
+    const before = (meta.salesCleanup ?? null) as SalesCleanup | null;
+    const total: SalesCleanup = before
+      ? { ...result, ordersChecked: before.ordersChecked + result.ordersChecked, ordersFixed: before.ordersFixed + result.ordersFixed, removed: before.removed + result.removed, units: before.units + result.units, valueCents: before.valueCents + result.valueCents }
+      : result;
+    await saveIntegration("square", { meta: { ...meta, salesCleanup: total } });
+    console.log("Removed double-counted Square sales", result);
+  }
+  return result;
 }
 
 /** Used by the scheduled function: sync quietly if Square is connected, otherwise do nothing. */

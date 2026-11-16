@@ -260,7 +260,7 @@ export async function setMonthBudget(month: string, amountCents: number | null) 
   await db
     .insert(budgets)
     .values({ ...owned(), month, amountCents })
-    .onConflictDoUpdate({ target: budgets.month, set: { amountCents } });
+    .onConflictDoUpdate({ target: [budgets.businessId, budgets.month], set: { amountCents } });
 }
 
 export type MonthWindow = { key: string; start: string; end: string };

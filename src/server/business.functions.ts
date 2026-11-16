@@ -1,4 +1,4 @@
-import { requireUser } from "./auth.middleware";
+import { requireOwner, requireUser } from "./auth.middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import {
@@ -34,6 +34,7 @@ import {
   pushMonthToQuickBooks,
   integrationErrorLog,
   syncSquareSales,
+  removeDuplicateSquareSales,
 } from "./integrations.server.js";
 import { TAX_GROUPS, type TaxGroupId } from "../lib/tax-categories.js";
 import { assertFeature, assertTeamRoom } from "./account.server.js";
@@ -311,6 +312,15 @@ export const squareSyncSales = createServerFn({ method: "POST" }).middleware([re
   return attempt(async () => {
     await assertFeature("square");
     return syncSquareSales();
+  });
+});
+
+/** Owner: compare logged Square sales with Square's own orders and take out any counted twice. */
+export const squareFixDoubleCounts = createServerFn({ method: "POST" }).middleware([requireOwner]).handler(async () => {
+  return attempt(async () => {
+    await assertFeature("square");
+    const r = await removeDuplicateSquareSales();
+    return r ?? { at: new Date().toISOString(), ordersChecked: 0, ordersFixed: 0, removed: 0, units: 0, valueCents: 0 };
   });
 });
 
