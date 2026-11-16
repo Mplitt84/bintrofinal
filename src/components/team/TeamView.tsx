@@ -32,7 +32,7 @@ export function TeamView({
         title={page === 'housekeeping' ? 'Housekeeping' : 'Team'}
         lead={
           page === 'housekeeping'
-            ? 'Every job, every day, with a thank-you for each one. Tap your name, then tap a circle when it’s done.'
+            ? 'Your day in three taps: Arrive, Client done, Close out. Every job already has an owner, so nothing slips.'
             : 'Everyone who works here, what they do, and the shop’s daily housekeeping.'
         }
       />

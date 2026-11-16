@@ -28,7 +28,7 @@ const QUERY = /\bdb\s*\.\s*(?:select|insert|update|delete)\b/g;
 const SCOPED = /\bmine\s*\(|\bowned\s*\(\)|businessId|business_id|cross-business|signInLookup/;
 
 /** Tables every business shares, so they carry no business_id of their own. */
-const SHARED = /\b(?:businesses|appSessions|app_sessions|pilotInvites|pilot_invites|signInAttempts|sign_in_attempts)\b/;
+const SHARED = /\b(?:businesses|appSessions|app_sessions|pilotInvites|pilot_invites|signInAttempts|sign_in_attempts|pushKeys|push_keys)\b/;
 
 function serverFiles() {
   const found: string[] = [];
