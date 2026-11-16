@@ -1,10 +1,11 @@
 /**
  * Light-bulb tips: short, practical reminders about saving money, planning
  * purchases, sustainability and running stock well. Shown in the tip sheet
- * (bulb in the header) and as a once-a-day pop-up. Client-safe.
+ * (bulb in the header) and as a once-a-day pop-up drawn from a small weekly set
+ * (`weeklyTips`). New tips are added each quarter with `added` set. Client-safe.
  */
 
-export type TipCategory = 'save' | 'plan' | 'green' | 'stock' | 'stylist'
+export type TipCategory = 'save' | 'value' | 'plan' | 'green' | 'stock' | 'stylist'
 
 /** Tabs a tip can be tied to; mirrors the tab ids in `routes/index.tsx`. */
 export type TipTab = 'scan' | 'products' | 'restock' | 'calendar' | 'budget' | 'activity' | 'formulas' | 'settings'
@@ -20,13 +21,17 @@ export type Tip = {
   body: string
   /** Tabs where this tip is most useful; it's shown first there. Omitted = anywhere. */
   tabs?: TipTab[]
-  audience?: Audience
+  /** One audience, or several trades (`['nails', 'spa']`). */
+  audience?: Audience | Audience[]
+  /** Quarter the tip was added (`2026-Q4`). New tips lead the weekly rotation in their quarter. */
+  added?: string
   /** Optional shortcut to the tab where the tip can be acted on. */
   action?: { label: string; tab: TipTab; section?: 'import' | 'categories' }
 }
 
 export const TIP_CATEGORIES: { id: TipCategory; label: string; short: string }[] = [
   { id: 'save', label: 'Save money', short: 'Save' },
+  { id: 'value', label: 'Add value', short: 'Value' },
   { id: 'plan', label: 'Plan ahead', short: 'Plan' },
   { id: 'green', label: 'Sustainability', short: 'Green' },
   { id: 'stock', label: 'Smarter stock', short: 'Stock' },
@@ -352,6 +357,209 @@ export const TIPS: Tip[] = [
     body: 'Named scans show who used what, which makes training easier and unexplained shrinkage much easier to spot.',
     tabs: ['activity', 'scan'],
   },
+  // Added 2026-Q4: nails (money, value, sustainability, sanitation & organization),
+  // several shared with other trades. Sanitation tips defer to the state board on purpose:
+  // the rules differ by state.
+  {
+    id: 'nails-half-files',
+    category: 'save',
+    title: 'Cut files and buffers in half',
+    body: 'Files and buffers are one client only, so get two clients out of each one by cutting them in half before use. Build what they cost into your price.',
+    tabs: ['restock', 'budget'],
+    audience: 'nails',
+    added: '2026-Q4',
+  },
+  {
+    id: 'nails-dappen-dish',
+    category: 'save',
+    title: 'Dispense gel and dip into a dappen dish',
+    body: 'Pour or brush out only what one set needs instead of working straight from the bottle. Less waste, and the bottle stays clean.',
+    tabs: ['scan'],
+    audience: 'nails',
+    added: '2026-Q4',
+  },
+  {
+    id: 'nails-cap-bottles',
+    category: 'save',
+    title: 'Close bottles between every step',
+    body: 'Gel and acrylic liquid go off when they sit open or near the lamp. Cap them as you go.',
+    tabs: ['scan'],
+    audience: 'nails',
+    added: '2026-Q4',
+  },
+  {
+    id: 'nails-capsule-colors',
+    category: 'save',
+    title: 'Build a capsule color wall',
+    body: 'Lots of shades that hardly anyone picks are money sitting on a shelf. Keep the colors clients actually choose, rotate a few seasonal ones, and let slow movers sell out.',
+    tabs: ['products', 'activity'],
+    audience: 'nails',
+    added: '2026-Q4',
+  },
+  {
+    id: 'beauty-gallon-cleaners',
+    category: 'save',
+    title: 'Buy cleaning supplies and disinfectant by the gallon',
+    body: 'Big sizes poured into labeled small bottles at the station cost less per use.',
+    tabs: ['restock'],
+    audience: 'beauty',
+    added: '2026-Q4',
+  },
+  {
+    id: 'beauty-addons-at-consult',
+    category: 'value',
+    title: 'Offer add-ons at the start, not mid-service',
+    body: 'Bring them up during the consult, while the client is choosing. Halfway through, it feels like pressure.',
+    tabs: ['formulas', 'calendar'],
+    audience: 'beauty',
+    added: '2026-Q4',
+  },
+  {
+    id: 'nails-two-addons',
+    category: 'value',
+    title: 'Name two add-ons that fit this client',
+    body: 'A cuticle treatment for dry cuticles, or one accent nail for someone who loves art. Pick from their history. Don’t read off the whole menu.',
+    tabs: ['formulas'],
+    audience: 'nails',
+    added: '2026-Q4',
+  },
+  {
+    id: 'beauty-named-bundles',
+    category: 'value',
+    title: 'Bundle add-ons into a named set',
+    body: '“Express mani + one statement nail” feels like a treat. Three separate add-ons feel like a growing bill.',
+    tabs: ['activity'],
+    audience: 'beauty',
+    added: '2026-Q4',
+  },
+  {
+    id: 'nails-wear-your-work',
+    category: 'value',
+    title: 'Wear your work',
+    body: 'Keep your own nails done with what you’re offering. It’s the easiest way to sell art without saying a word.',
+    audience: 'nails',
+    added: '2026-Q4',
+  },
+  {
+    id: 'nails-cuticle-oil-home',
+    category: 'value',
+    title: 'Send them home with the cuticle oil you used',
+    body: 'Show it, tell them why it helps their set last, and have it on the shelf.',
+    tabs: ['products', 'formulas'],
+    audience: 'nails',
+    added: '2026-Q4',
+  },
+  {
+    id: 'nails-short-massage',
+    category: 'value',
+    title: 'A short hand or calf massage makes the service feel bigger',
+    body: 'It takes almost no product and a few minutes, and clients remember it.',
+    audience: ['nails', 'spa'],
+    added: '2026-Q4',
+  },
+  {
+    id: 'nails-waterless',
+    category: 'green',
+    title: 'Try waterless manis and pedis',
+    body: 'You use less water and fewer paper towels, and there’s no basin to drain and disinfect.',
+    audience: ['nails', 'spa'],
+    added: '2026-Q4',
+  },
+  {
+    id: 'beauty-washable-wipes',
+    category: 'green',
+    title: 'Swap single-use cotton for washable wipes where your state board allows',
+    body: 'Use them for tables and prep, not for anything that touches a client’s open skin.',
+    tabs: ['budget'],
+    audience: 'beauty',
+    added: '2026-Q4',
+  },
+  {
+    id: 'nails-reuse-displays',
+    category: 'green',
+    title: 'Reuse display stands',
+    body: 'When a new collection comes out, change the color cards and keep the stand.',
+    tabs: ['products'],
+    audience: 'nails',
+    added: '2026-Q4',
+  },
+  {
+    id: 'beauty-safer-choice',
+    category: 'green',
+    title: 'Use EPA Safer Choice cleaners for general cleaning',
+    body: 'That’s floors, counters and the restroom. Tools still need your state board–approved disinfectant.',
+    tabs: ['restock'],
+    audience: 'beauty',
+    added: '2026-Q4',
+  },
+  {
+    id: 'nails-practice-tips',
+    category: 'green',
+    title: 'Send old nail tips home for practice',
+    body: 'Clean leftover tips work well for practicing French and art, so they don’t all go in the trash.',
+    audience: 'nails',
+    added: '2026-Q4',
+  },
+  {
+    id: 'beauty-two-tool-sets',
+    category: 'stock',
+    title: 'Keep two sets of metal tools per station',
+    body: 'One gets cleaned and sterilized while you use the other, so nobody waits and nothing gets rushed.',
+    tabs: ['products', 'restock'],
+    audience: ['nails', 'brows', 'barber'],
+    added: '2026-Q4',
+  },
+  {
+    id: 'beauty-clean-before-disinfect',
+    category: 'stock',
+    title: 'Clean before you disinfect',
+    body: 'Scrub off dust and product with soap and water first. Disinfectant can’t reach a dirty tool.',
+    audience: 'beauty',
+    added: '2026-Q4',
+  },
+  {
+    id: 'beauty-sealed-pouches',
+    category: 'stock',
+    title: 'Keep sterilized tools sealed until the client sits down',
+    body: 'Open the pouch in front of them. Clients notice, and it builds trust.',
+    audience: ['nails', 'brows', 'tattoo'],
+    added: '2026-Q4',
+  },
+  {
+    id: 'beauty-dry-storage',
+    category: 'stock',
+    title: 'Never store clean tools wet or next to dirty ones',
+    body: 'Dry them fully, then keep them in a closed container away from used tools and single-use items.',
+    audience: 'beauty',
+    added: '2026-Q4',
+  },
+  {
+    id: 'beauty-uv-storage',
+    category: 'stock',
+    title: 'UV boxes are for storage, not sterilizing',
+    body: 'Use them to hold clean tools if your state board allows. Sterilizing needs an autoclave or dry heat sterilizer.',
+    audience: ['nails', 'brows'],
+    added: '2026-Q4',
+  },
+  {
+    id: 'beauty-scan-disposables',
+    category: 'stock',
+    title: 'Scan pouches, files and liners like stock',
+    body: 'The things you throw away after every client run out fastest. Give them a par in Bintro so you never run out mid-day.',
+    tabs: ['products', 'restock', 'scan'],
+    audience: 'beauty',
+    added: '2026-Q4',
+    action: { label: 'Open Products', tab: 'products' },
+  },
+  {
+    id: 'beauty-autoclave-log',
+    category: 'stock',
+    title: 'Log every autoclave cycle',
+    body: 'Write down the date and cycle on each batch. If an inspector asks, it’s all there.',
+    tabs: ['calendar'],
+    audience: ['nails', 'tattoo', 'brows'],
+    added: '2026-Q4',
+  },
 ]
 
 const BEAUTY_TYPES = new Set(['salon', 'barber', 'nails', 'brows', 'tattoo', 'spa', 'other'])
@@ -362,12 +570,24 @@ function audienceFor(businessType: string): Audience | null {
   return BEAUTY_TYPES.has(businessType) ? 'beauty' : null
 }
 
-/** Hair tips go to salons and barbers; beauty tips to every beauty business. */
-function tipFits(tip: Tip, businessType: string) {
+function fitsOne(audience: Audience, businessType: string) {
+  if (audience === 'hair') return HAIR_TYPES.has(businessType)
+  if (audience === 'beauty') return audience === audienceFor(businessType)
+  return audience === businessType
+}
+
+/** Hair tips go to salons and barbers; beauty tips to every beauty business; a list to each trade on it. */
+export function tipFits(tip: Tip, businessType: string) {
   if (!tip.audience) return true
-  if (tip.audience === 'hair') return HAIR_TYPES.has(businessType)
-  if (tip.audience === 'beauty') return tip.audience === audienceFor(businessType)
-  return tip.audience === businessType
+  const list = Array.isArray(tip.audience) ? tip.audience : [tip.audience]
+  return list.some((a) => fitsOne(a, businessType))
+}
+
+/** Written for this trade in particular (not the everyone or all-beauty tips). For the industry preview. */
+export function tipIsForTrade(tip: Tip, businessType: string) {
+  if (!tip.audience) return false
+  const list = (Array.isArray(tip.audience) ? tip.audience : [tip.audience]).filter((a) => a !== 'beauty')
+  return list.some((a) => fitsOne(a, businessType))
 }
 
 /**
@@ -389,4 +609,53 @@ export function tipsFor(businessType: string, tab: TipTab, category?: TipCategor
 /** Days since the epoch in local time; changes once a day at local midnight. */
 export function dayNumber(date = new Date()) {
   return Math.floor((date.getTime() - date.getTimezoneOffset() * 60000) / 86400000)
+}
+
+// ---------------------------------------------------------------------------
+// Weekly rotation for the pop-up
+// ---------------------------------------------------------------------------
+
+/** How many tips make up one week's pop-up set. One pops up a day. */
+export const TIPS_PER_WEEK = 5
+
+/** Calendar quarter of a date in local time, as `2026-Q4`. */
+export function quarterOf(date = new Date()) {
+  return `${date.getFullYear()}-Q${Math.floor(date.getMonth() / 3) + 1}`
+}
+
+/** Whole weeks (Monday start, local time) since the first Monday on or before this quarter began. */
+export function weekOfQuarter(date = new Date()) {
+  const start = new Date(date.getFullYear(), Math.floor(date.getMonth() / 3) * 3, 1)
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7))
+  const today = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  return Math.floor(Math.round((today.getTime() - start.getTime()) / 86_400_000) / 7)
+}
+
+/** Key for the current week (`2026-Q4-w6`), so a device can tell when the set has changed. */
+export function weekKey(date = new Date()) {
+  return `${quarterOf(date)}-w${weekOfQuarter(date)}`
+}
+
+/**
+ * This week's pop-up tips: a small, fixed set so the pop-up never feels like a flood.
+ * The order puts tips added this quarter first, then mixes the themes (one money tip,
+ * one value tip, one green tip…) so a week isn't five of the same kind. Each week
+ * moves on by TIPS_PER_WEEK, and the rotation starts over each quarter, so new tips
+ * lead after every quarterly update.
+ */
+export function weeklyTips(businessType: string, date = new Date(), size = TIPS_PER_WEEK): Tip[] {
+  const fits = TIPS.filter((t) => tipFits(t, businessType))
+  if (fits.length <= size) return fits
+  const quarter = quarterOf(date)
+  const mix = (list: Tip[]) => {
+    const byCat = TIP_CATEGORIES.map((c) => list.filter((t) => t.category === c.id))
+    const out: Tip[] = []
+    for (let i = 0; out.length < list.length; i++) {
+      for (const group of byCat) if (group[i]) out.push(group[i])
+    }
+    return out
+  }
+  const order = [...mix(fits.filter((t) => t.added === quarter)), ...mix(fits.filter((t) => t.added !== quarter))]
+  const startAt = (weekOfQuarter(date) * size) % order.length
+  return Array.from({ length: size }, (_, i) => order[(startAt + i) % order.length])
 }

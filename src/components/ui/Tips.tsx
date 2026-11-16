@@ -1,17 +1,41 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowRight, Boxes, CalendarClock, Scissors, ChevronLeft, ChevronRight, Leaf, Lightbulb, PiggyBank, X } from 'lucide-react'
+import { ArrowRight, Boxes, CalendarClock, Gem, Scissors, ChevronLeft, ChevronRight, Leaf, Lightbulb, PiggyBank, X } from 'lucide-react'
 import { Sheet } from '@/components/ui/Sheet'
 import { useBusiness } from '@/components/business/BusinessContext'
-import { TIP_CATEGORIES, tipsFor, type Tip, type TipCategory, type TipTab } from '@/lib/tips'
+import { TIP_CATEGORIES, TIPS_PER_WEEK, dayNumber, tipsFor, weekKey, weeklyTips, type Tip, type TipCategory, type TipTab } from '@/lib/tips'
 
 const LAST_SHOWN_KEY = 'bintro-tips-last-shown'
-const SHOWN_COUNT_KEY = 'bintro-tips-shown-count'
+const WEEK_KEY = 'bintro-tips-week'
+const WEEK_COUNT_KEY = 'bintro-tips-week-count'
 const AUTO_KEY = 'bintro-tips-auto'
 const PREFS_EVENT = 'bintro-tips-prefs'
 
-/** How often the tip pop-up comes back. */
-export const TIP_INTERVAL_MINUTES = 10
-const TIP_INTERVAL_MS = TIP_INTERVAL_MINUTES * 60_000
+/**
+ * How the pop-up paces itself: one tip a day at most, drawn from this week's small set
+ * (`weeklyTips`, TIPS_PER_WEEK tips). Once the week's set has been shown, the pop-up
+ * rests until next week. The light bulb always opens every tip.
+ */
+export const TIP_POPUP_SUMMARY = `One tip a day from this week's ${TIPS_PER_WEEK}`
+
+/** Pop-ups shown so far this week on this device (resets when the week changes). */
+function shownThisWeek() {
+  if (readStorage(WEEK_KEY) !== weekKey()) return 0
+  return Number(readStorage(WEEK_COUNT_KEY)) || 0
+}
+
+function countShown() {
+  const n = shownThisWeek() + 1
+  writeStorage(WEEK_KEY, weekKey())
+  writeStorage(WEEK_COUNT_KEY, String(n))
+  return n
+}
+
+/** A tip is due when none has popped up today and this week's set isn't used up. */
+function tipDue() {
+  const last = lastShown()
+  const shownToday = last > 0 && dayNumber(new Date(last)) === dayNumber()
+  return !shownToday && shownThisWeek() < TIPS_PER_WEEK
+}
 
 export type TipNavigate = (tab: TipTab, section?: 'import' | 'categories') => void
 
@@ -19,6 +43,7 @@ const CATEGORY_ICON: Record<TipCategory, typeof Lightbulb> = {
   save: PiggyBank,
   plan: CalendarClock,
   green: Leaf,
+  value: Gem,
   stock: Boxes,
   stylist: Scissors,
 }
@@ -69,12 +94,12 @@ export function useTipPopups() {
   return on
 }
 
-/** True once a new tip is due (every TIP_INTERVAL_MINUTES) until it's seen (pop-up shown or sheet opened). */
+/** True once today's tip is due until it's seen (pop-up shown or sheet opened). */
 export function useFreshTip() {
   const popups = useTipPopups()
   const [due, setDue] = useState(false)
   useEffect(() => {
-    const check = () => setDue(Date.now() - lastShown() >= TIP_INTERVAL_MS)
+    const check = () => setDue(tipDue())
     check()
     const timer = setInterval(check, 30_000)
     return () => clearInterval(timer)
@@ -252,7 +277,7 @@ export function TipSheet({
         <span className="text-sm">
           <b className="block">Tip pop-ups</b>
           <span className="text-ink-2 text-[13px]">
-            A short business tip every {TIP_INTERVAL_MINUTES} minutes, matched to the tab you're on. Also in Settings → Look &amp; feel.
+            {TIP_POPUP_SUMMARY}. New tips arrive each quarter. Also in Settings → Look &amp; feel.
           </span>
         </span>
         <input
@@ -267,8 +292,8 @@ export function TipSheet({
 }
 
 /**
- * Business tip pop-up for the current tab, every TIP_INTERVAL_MINUTES. Each one shows
- * the next tip in the list, waits while a sheet is open, and can be turned off for
+ * Business tip pop-up: at most one a day, from this week's small set (`weeklyTips`),
+ * so it never floods anyone. Waits while a sheet is open, and can be turned off for
  * good in Settings → Look & feel or the tip sheet.
  */
 export function TipNudge({
@@ -295,30 +320,33 @@ export function TipNudge({
   useEffect(() => {
     if (!popups) setTip(null)
     if (!enabled || !popups || tip || tab === 'settings') return
-    const wait = Math.max(3500, lastShown() + TIP_INTERVAL_MS - Date.now())
+    if (!tipDue()) {
+      // Check again later, in case the day or the week rolls over with the app open.
+      const later = setTimeout(() => setRetry((r) => r + 1), 15 * 60_000)
+      return () => clearTimeout(later)
+    }
     const timer = setTimeout(() => {
       // Don't cover a form or pop-up someone is in the middle of; try again shortly.
       if (document.querySelector('[role="dialog"][aria-modal="true"]')) {
         setRetry((r) => r + 1)
         return
       }
-      const list = tipsFor(profile.businessType, tab)
-      if (list.length === 0) return
-      // Rotate so each pop-up brings a different tip.
-      const count = Number(readStorage(SHOWN_COUNT_KEY)) || 0
-      writeStorage(SHOWN_COUNT_KEY, String(count + 1))
-      const i = count % list.length
-      setTip(list[i])
+      if (!tipDue()) return
+      const week = weeklyTips(profile.businessType)
+      if (week.length === 0) return
+      const i = shownThisWeek() % week.length
+      countShown()
+      setTip(week[i])
       setOffset(i)
       onSeen()
-    }, wait)
+    }, 3500)
     return () => clearTimeout(timer)
   }, [enabled, popups, tab, tip, retry, profile.businessType, onSeen])
 
   if (!tip) return null
 
   function next() {
-    const list = tipsFor(profile.businessType, tab)
+    const list = weeklyTips(profile.businessType)
     const i = (offset + 1) % list.length
     setOffset(i)
     setTip(list[i])

@@ -4,7 +4,7 @@ import type { BusinessProfile } from '@/lib/business-types'
 import { PALETTES, PALETTE_FAMILIES, paletteById, type Palette } from '@/lib/palettes'
 import { updateBusinessProfile } from '@/server/business.functions'
 import { useToast } from '@/components/ui/Toast'
-import { TIP_INTERVAL_MINUTES, setTipPopups, useTipPopups } from '@/components/ui/Tips'
+import { TIP_POPUP_SUMMARY, setTipPopups, useTipPopups } from '@/components/ui/Tips'
 
 /** Settings → Look & feel: pick a color palette that matches the business's brand. */
 export function AppearanceSettings({
@@ -78,7 +78,7 @@ function TipSettings() {
       </p>
       <label className="flex items-start justify-between gap-3 cursor-pointer border border-line rounded-2xl p-3.5">
         <span className="text-sm">
-          <b className="block">Pop up a tip every {TIP_INTERVAL_MINUTES} minutes</b>
+          <b className="block">Tip pop-ups: {TIP_POPUP_SUMMARY.toLowerCase()}</b>
           <span className="text-ink-2 text-[13px]">
             {popups ? 'On. Turn off to hide tip pop-ups permanently.' : 'Hidden permanently. Turn on to see them again.'}
           </span>
