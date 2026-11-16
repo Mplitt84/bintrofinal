@@ -1156,7 +1156,7 @@ function Integrations({
             ) : s.connected ? (
               <>
                 <p className="text-sm m-0 mb-3">
-                  {s.accountName ? <b>{s.accountName}</b> : "Account linked"}
+                  {s.accountName ? <b>{s.accountName}</b> : s.accountId ? <>Company ID <b>{s.accountId}</b> (name couldn’t be read; see the error log)</> : "Account linked"}
                   {s.sandbox && <span className="text-warn"> · sandbox</span>}
                   {s.lastSyncAt && (
                     <span className="text-ink-2">

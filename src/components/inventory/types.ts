@@ -83,6 +83,8 @@ export type IntegrationStatus = {
   /** Tokens were rejected (expired or revoked); the owner must sign in again. */
   expired: boolean;
   accountName: string;
+  /** Square merchant id or QuickBooks company (realm) id. */
+  accountId?: string;
   lastSyncAt: string | null;
   connectedAt: string | null;
   /** Double-counted Square sales Bintro found and took back out (running total). */
