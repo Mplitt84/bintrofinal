@@ -167,6 +167,7 @@ export async function integrationStatus() {
       connected: Boolean(row?.accessToken),
       expired: !row?.accessToken && Boolean((row?.meta as { reconnect?: boolean } | undefined)?.reconnect),
       accountName: row?.accountName ?? "",
+      accountId: row?.accountId ?? "",
       lastSyncAt: row?.lastSyncAt?.toISOString() ?? null,
       connectedAt: row?.connectedAt?.toISOString() ?? null,
       salesCleanup: ((row?.meta as { salesCleanup?: SalesCleanup } | undefined)?.salesCleanup ?? null) as SalesCleanup | null,
@@ -329,7 +330,18 @@ export async function completeAuthorization(
     `${quickbooksApiBase()}/v3/company/${params.realmId}/companyinfo/${params.realmId}?minorversion=${QB_MINOR_VERSION}`,
     { headers: { Authorization: `Bearer ${tokens.accessToken}`, Accept: "application/json" } },
   );
-  const info = (await res.json().catch(() => ({}))) as { CompanyInfo?: { CompanyName?: string } };
+  const info = (await res.json().catch(() => ({}))) as { CompanyInfo?: { CompanyName?: string }; Fault?: unknown };
+  if (!res.ok || !info.CompanyInfo?.CompanyName) {
+    // Connected, but the company couldn't be read: usually a test (sandbox) company with
+    // production keys or the other way round. Log it so the error log says so.
+    await logIntegrationError({
+      provider: "quickbooks",
+      action: "connect-companyinfo",
+      status: res.status,
+      intuitTid: res.headers.get("intuit_tid") ?? "",
+      message: `Couldn't read company ${params.realmId} (${isSandbox("quickbooks") ? "sandbox" : "production"} keys): ${JSON.stringify(info.Fault ?? info).slice(0, 300)}`,
+    });
+  }
   await saveIntegration(provider, {
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken,
