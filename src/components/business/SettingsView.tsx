@@ -20,6 +20,7 @@ import {
   UserPlus,
   X,
   ShieldCheck,
+  ChevronDown,
 } from "lucide-react";
 import type {
   IntegrationStatus,
@@ -964,10 +965,12 @@ function SquareRetailPicker() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [open, setOpen] = useState(false);
 
   function apply(r: { chosen: boolean; categories: SquareCategory[] }) {
     setCategories(r.categories);
     setChosen(r.chosen);
+    if (r.chosen) setOpen(false);
     setPicked(new Set(r.categories.filter((c) => c.retail).map((c) => c.id)));
   }
 
@@ -1000,6 +1003,20 @@ function SquareRetailPicker() {
 
   if (error) return <p className="text-sm text-bad m-0 mb-3">{error}</p>;
   if (categories === null) return <div className="skel w-[50%] mb-3" />;
+
+  // Once chosen, one quiet line; the full list only when changing it.
+  if (chosen && !open && categories.length > 0) {
+    const names = categories.filter((c) => c.retail).map((c) => c.name);
+    return (
+      <p className="text-sm m-0 mb-3 flex items-baseline gap-2 flex-wrap">
+        <span className="text-ink-2">Retail in Bintro:</span>
+        <b className="font-semibold">{names.length ? names.join(", ") : "none picked"}</b>
+        <button type="button" className="btn btn-text btn-sm !px-1 !py-0 !min-h-0" onClick={() => setOpen(true)}>
+          Change
+        </button>
+      </p>
+    );
+  }
 
   return (
     <div className="bg-surface rounded-xl px-3.5 py-3 mb-3">
@@ -1038,6 +1055,11 @@ function SquareRetailPicker() {
             </button>
           ))}
         </div>
+      )}
+      {chosen && !dirty && (
+        <button type="button" className="btn btn-text btn-sm" onClick={() => setOpen(false)}>
+          Done
+        </button>
       )}
       {dirty && categories.length > 0 && (
         <button
@@ -1188,16 +1210,15 @@ function Integrations({
                     )}
                   </p>
                 ) : null}
-                {s.provider === "square" && s.salesCleanup && s.salesCleanup.removed > 0 && (
-                  <div className="bg-good-tint rounded-xl px-3.5 py-2.5 text-sm mb-3">
-                    <b>Fixed double-counted Square sales.</b> {s.salesCleanup.removed} extra sale
-                    {s.salesCleanup.removed === 1 ? "" : "s"} on {s.salesCleanup.ordersFixed} order
-                    {s.salesCleanup.ordersFixed === 1 ? "" : "s"} taken back out ({s.salesCleanup.units} unit
-                    {s.salesCleanup.units === 1 ? "" : "s"}
-                    {s.salesCleanup.valueCents > 0 ? `, ${money(s.salesCleanup.valueCents)} at retail` : ""}) and put back on the shelf ·{" "}
-                    {timeAgo(s.salesCleanup.at)}. Checked against Square’s own orders; real sales were left alone.
-                  </div>
-                )}
+                {s.provider === "square" &&
+                  s.salesCleanup &&
+                  s.salesCleanup.removed > 0 &&
+                  Date.now() - new Date(s.salesCleanup.at).getTime() < 3 * 86_400_000 && (
+                    <p className="text-[13px] text-good m-0 mb-3">
+                      ✓ Fixed {s.salesCleanup.removed} double-counted sale{s.salesCleanup.removed === 1 ? "" : "s"}
+                      {s.salesCleanup.valueCents > 0 ? ` (${money(s.salesCleanup.valueCents)})` : ""} · {timeAgo(s.salesCleanup.at)}
+                    </p>
+                  )}
                 {s.provider === "square" && !s.inventory?.needsReconnect && (
                   <SquareRetailPicker />
                 )}
@@ -1205,6 +1226,32 @@ function Integrations({
                   {s.provider === "square" ? (
                     <>
                       <button
+                        className="btn btn-tonal btn-sm"
+                        disabled={!!busy}
+                        onClick={() =>
+                          run(
+                            "sales",
+                            () => squareSyncSales(),
+                            (r) =>
+                              `${r.sales} new sale${r.sales === 1 ? "" : "s"}, ${r.units} unit${r.units === 1 ? "" : "s"} counted out${
+                                r.alreadyLogged ? ` · ${r.alreadyLogged} already logged, skipped` : ""
+                              }${
+                                r.skipped
+                                  ? ` (${r.skipped} unmatched line${r.skipped === 1 ? "" : "s"})`
+                                  : ""
+                              }`,
+                          )
+                        }
+                      >
+                        <RefreshCw size={15} />
+                        {busy === "sales" ? "Syncing…" : "Sync sales now"}
+                      </button>
+                      <details className="w-full group">
+                        <summary className="btn btn-text btn-sm !px-1 cursor-pointer list-none select-none">
+                          More <ChevronDown size={14} className="transition-transform group-open:rotate-180" />
+                        </summary>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <button
                         className="btn btn-tonal btn-sm"
                         disabled={!!busy}
                         onClick={() =>
@@ -1228,28 +1275,7 @@ function Integrations({
                           ? "Importing…"
                           : "Import item library"}
                       </button>
-                      <button
-                        className="btn btn-tonal btn-sm"
-                        disabled={!!busy}
-                        onClick={() =>
-                          run(
-                            "sales",
-                            () => squareSyncSales(),
-                            (r) =>
-                              `${r.sales} new sale${r.sales === 1 ? "" : "s"}, ${r.units} unit${r.units === 1 ? "" : "s"} counted out${
-                                r.alreadyLogged ? ` · ${r.alreadyLogged} already logged, skipped` : ""
-                              }${
-                                r.skipped
-                                  ? ` (${r.skipped} unmatched line${r.skipped === 1 ? "" : "s"})`
-                                  : ""
-                              }`,
-                          )
-                        }
-                      >
-                        <RefreshCw size={15} />
-                        {busy === "sales" ? "Syncing…" : "Sync sales now"}
-                      </button>
-                      <button
+                          <button
                         className="btn btn-tonal btn-sm"
                         disabled={!!busy}
                         onClick={() =>
@@ -1268,7 +1294,7 @@ function Integrations({
                         <ShieldCheck size={15} />
                         {busy === "dupes" ? "Checking…" : "Fix double-counted sales"}
                       </button>
-                      <button
+                          <button
                         className="btn btn-tonal btn-sm"
                         disabled={!!busy || !!s.inventory?.needsReconnect}
                         onClick={() => {
@@ -1293,18 +1319,28 @@ function Integrations({
                           ? "Sending…"
                           : "Send counts to Square"}
                       </button>
+                          <button
+                            className="btn btn-text btn-sm !text-bad ml-auto"
+                            onClick={() => onDisconnect(s.provider)}
+                          >
+                            Disconnect
+                          </button>
+                        </div>
+                      </details>
                     </>
                   ) : (
                     <p className="text-sm text-ink-2 m-0 self-center">
                       Send a month from the Budget tab.
                     </p>
                   )}
-                  <button
-                    className="btn btn-text btn-sm !text-bad ml-auto"
-                    onClick={() => onDisconnect(s.provider)}
-                  >
-                    Disconnect
-                  </button>
+                  {s.provider !== "square" && (
+                    <button
+                      className="btn btn-text btn-sm !text-bad ml-auto"
+                      onClick={() => onDisconnect(s.provider)}
+                    >
+                      Disconnect
+                    </button>
+                  )}
                 </div>
               </>
             ) : s.configured ? (
