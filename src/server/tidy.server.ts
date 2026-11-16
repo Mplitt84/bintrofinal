@@ -1,4 +1,6 @@
 import { groupVendors } from "../lib/tidy.js";
+import { formattingFixes, suggestCategories } from "../lib/categorize.js";
+import { categorySuggestionsFor as categorySuggestionsFor_, guessTaxGroup, type ProductCategory } from "../lib/tax-categories.js";
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { mine, owned } from "./tenant.js";
@@ -418,4 +420,90 @@ export async function vendorList() {
     .map((r) => ({ name: r.vendor ?? "", products: Number(r.products) }))
     .filter((r) => r.name.trim())
     .sort((a, b) => b.products - a.products || a.name.localeCompare(b.name));
+}
+
+/**
+ * Delete a supplier: every product carrying it moves to `moveTo`, or to no supplier
+ * when blank. Past purchase orders keep the name they were sent under.
+ */
+export async function deleteVendor(name: string, moveTo: string) {
+  const target = moveTo.trim();
+  if (target && target !== name) return renameVendor(name, target);
+  const moved = await db
+    .update(products)
+    .set({ vendor: "", updatedAt: new Date() })
+    .where(and(mine(products), eq(products.vendor, name)))
+    .returning({ id: products.id });
+  return moved.length;
+}
+
+/** Category guesses (and name / size tidying) for Settings → Suppliers and Categories. */
+export async function categorySuggestionsFor(recheck: boolean) {
+  const [all, profile, saved] = await Promise.all([
+    findAllProducts(),
+    findBusinessProfile(),
+    db.select({ name: productCategories.name }).from(productCategories).where(mine(productCategories)),
+  ]);
+  const starter = [...saved.map((s) => s.name), ...categorySuggestionsFor_(profile.businessType).map((s) => s.name)];
+  const input = all.map((p) => ({ id: p.id, name: p.name, brand: p.brand, size: p.size, category: p.category }));
+  return {
+    suggestions: suggestCategories(input, { recheck, starter }),
+    formatting: formattingFixes(input.filter((p) => p.category.trim())),
+    categories: [...new Set([...all.map((p) => p.category.trim()).filter(Boolean), ...starter])].sort((a, b) => a.localeCompare(b)),
+  };
+}
+
+export type ProductTidyItem = { productId: number; category?: string; name?: string; size?: string };
+
+/**
+ * Applies ticked category / name / size fixes. Returns what each product had before,
+ * so the screen can offer Undo. A category that isn't saved yet is saved with the
+ * tax group Bintro would guess for it, so it shows up as a chip everywhere.
+ */
+export async function applyProductTidy(items: ProductTidyItem[]) {
+  const ids = items.map((i) => i.productId);
+  if (ids.length === 0) return { changed: 0, before: [] as ProductTidyItem[] };
+  const rows = await db.select().from(products).where(and(mine(products), inArray(products.id, ids)));
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const before: ProductTidyItem[] = [];
+  let changed = 0;
+  for (const item of items) {
+    const row = byId.get(item.productId);
+    if (!row) continue;
+    const data: { category?: string; name?: string; size?: string } = {};
+    const prev: ProductTidyItem = { productId: row.id };
+    if (item.category !== undefined && item.category.trim() !== row.category) {
+      data.category = item.category.trim();
+      prev.category = row.category;
+    }
+    if (item.name?.trim() && item.name.trim() !== row.name) {
+      data.name = item.name.trim();
+      prev.name = row.name;
+    }
+    if (item.size !== undefined && item.size.trim() !== row.size) {
+      data.size = item.size.trim();
+      prev.size = row.size;
+    }
+    if (Object.keys(data).length === 0) continue;
+    await updateProductFields(row.id, data);
+    before.push(prev);
+    changed++;
+  }
+  const newNames = [...new Set(items.map((i) => i.category?.trim() ?? "").filter(Boolean))];
+  if (newNames.length) {
+    const [saved, profile] = await Promise.all([
+      db.select().from(productCategories).where(mine(productCategories)),
+      findBusinessProfile(),
+    ]);
+    const suggestions = categorySuggestionsFor_(profile.businessType);
+    const have = new Set(saved.map((s) => s.name.trim().toLowerCase()));
+    for (const name of newNames) {
+      if (have.has(name.toLowerCase())) continue;
+      await db
+        .insert(productCategories)
+        .values({ ...owned(), name, taxGroup: guessTaxGroup(name, suggestions, saved as ProductCategory[]) })
+        .onConflictDoNothing();
+    }
+  }
+  return { changed, before };
 }

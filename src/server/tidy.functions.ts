@@ -4,7 +4,7 @@ import { z } from "zod";
 import { applyCounts, applyPars, categoryGroups, duplicateGroups, mergeCategoryNames, smartPars, undoParChange, categoryList, deleteCategoryName, vendorGroups,
   vendorList,
   mergeVendorNames,
-  renameVendor } from "./tidy.server.js";
+  renameVendor, deleteVendor, categorySuggestionsFor, applyProductTidy } from "./tidy.server.js";
 
 export const getSmartPars = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => smartPars());
 
@@ -71,3 +71,28 @@ export const renameVendorFn = createServerFn({ method: "POST" })
   .middleware([requireUser])
   .inputValidator(z.object({ from: z.string().min(1).max(120), to: z.string().trim().min(1).max(120) }))
   .handler(async ({ data }) => ({ moved: await renameVendor(data.from, data.to) }));
+
+/** Delete a supplier; its products move to `moveTo` (blank = no supplier). */
+export const deleteVendorFn = createServerFn({ method: "POST" })
+  .middleware([requireUser])
+  .inputValidator(z.object({ name: z.string().min(1).max(120), moveTo: z.string().max(120) }))
+  .handler(async ({ data }) => ({ moved: await deleteVendor(data.name, data.moveTo) }));
+
+/** Bintro's category guesses from each product's name and size, plus name / size tidying. */
+export const getCategorySuggestions = createServerFn({ method: "POST" })
+  .middleware([requireUser])
+  .inputValidator(z.object({ recheck: z.boolean().default(false) }))
+  .handler(async ({ data }) => categorySuggestionsFor(data.recheck));
+
+const tidyItem = z.object({
+  productId: z.number().int().positive(),
+  category: z.string().max(80).optional(),
+  name: z.string().max(200).optional(),
+  size: z.string().max(60).optional(),
+});
+
+/** Applies the ticked fixes; returns the old values so the screen can undo. */
+export const applyProductTidyFn = createServerFn({ method: "POST" })
+  .middleware([requireUser])
+  .inputValidator(z.object({ items: z.array(tidyItem).min(1).max(2000) }))
+  .handler(async ({ data }) => applyProductTidy(data.items));
