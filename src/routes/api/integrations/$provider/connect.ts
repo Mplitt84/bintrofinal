@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { routeUser } from '@/server/auth.server'
-import { PROVIDERS, buildAuthorizeUrl, isConfigured, type Provider } from '@/server/integrations.server'
+import { PROVIDERS, buildAuthorizeUrl, isConfigured, logIntegrationError, type Provider } from '@/server/integrations.server'
 import { hasFeature } from '@/server/account.server'
 import { businessForRoute } from '@/server/auth.server'
 import { runForBusiness } from '@/server/tenant'
@@ -23,7 +23,15 @@ export const Route = createFileRoute('/api/integrations/$provider/connect')({
         if (!isConfigured(provider)) {
           return Response.redirect(`${origin}/?settings=integrations&error=${provider}-not-configured`, 302)
         }
-        return Response.redirect(await buildAuthorizeUrl(provider, origin), 302)
+        try {
+          return Response.redirect(await buildAuthorizeUrl(provider, origin), 302)
+        } catch (error) {
+          // Never a raw 500: log it (Settings → Download error log) and come back with a message.
+          const message = error instanceof Error ? error.message : String(error)
+          console.error(`${provider} connect failed`, error)
+          await logIntegrationError({ provider, action: 'connect-start', message })
+          return Response.redirect(`${origin}/?settings=integrations&error=${provider}-connect-failed`, 302)
+        }
         })
       },
     },

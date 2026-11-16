@@ -416,6 +416,11 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
           tone: "bad",
           text: `That ${label(error)} link expired or didn’t come from this page. Tap Connect to start again.`,
         });
+      else if (error?.endsWith("connect-failed"))
+        setNotice({
+          tone: "bad",
+          text: `${label(error)} couldn't start connecting. Wait a minute and tap Connect again; if it keeps happening, download the error log below and send it to support.`,
+        });
       else if (error?.endsWith("declined"))
         setNotice({
           tone: "bad",
