@@ -4,8 +4,8 @@
  */
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { colorWasteLogs, sustainabilityPartners } from "../../db/schema.js";
-import type { Partner, PartnerKind, WasteLog } from "../lib/sustainability.js";
+import { colorMixes, colorWasteLogs, sustainabilityPartners } from "../../db/schema.js";
+import type { ColorMix, Partner, PartnerKind, WasteLog } from "../lib/sustainability.js";
 import { mine, owned } from "./tenant.js";
 
 export async function listPartners(): Promise<Partner[]> {
@@ -66,4 +66,50 @@ export async function saveWasteLog(input: { month: string; grams: number; costCe
 export async function deleteWasteLog(id: number) {
   await db.delete(colorWasteLogs).where(and(mine(colorWasteLogs), eq(colorWasteLogs.id, id)));
   return listWasteLogs();
+}
+
+const x100 = (n: number) => Math.round(n * 100);
+
+/** The shop's color lines, in the order they were added. */
+export async function listMixes(): Promise<ColorMix[]> {
+  const rows = await db.select().from(colorMixes).where(mine(colorMixes)).orderBy(asc(colorMixes.createdAt), asc(colorMixes.id));
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    colorCents: r.colorCents,
+    colorOz: r.colorOzX100 / 100,
+    developerCents: r.developerCents,
+    developerOz: r.developerOzX100 / 100,
+    colorParts: r.colorPartsX100 / 100,
+    developerParts: r.developerPartsX100 / 100,
+  }));
+}
+
+/** Adds a color line, or saves changes when an id is given. Names are unique per shop. */
+export async function saveMix(input: Omit<ColorMix, "id"> & { id?: number }) {
+  const name = input.name.trim();
+  if (!name) throw new Error("Give the color line a name.");
+  if (!(input.colorParts > 0)) throw new Error("The color side of the ratio has to be more than 0.");
+  const existing = await listMixes();
+  if (existing.some((m) => m.id !== input.id && m.name.toLowerCase() === name.toLowerCase())) throw new Error("There's already a color line with that name.");
+  const values = {
+    name,
+    colorCents: input.colorCents,
+    colorOzX100: x100(input.colorOz),
+    developerCents: input.developerCents,
+    developerOzX100: x100(input.developerOz),
+    colorPartsX100: x100(input.colorParts),
+    developerPartsX100: x100(input.developerParts),
+  };
+  if (input.id) {
+    await db.update(colorMixes).set(values).where(and(mine(colorMixes), eq(colorMixes.id, input.id)));
+  } else {
+    await db.insert(colorMixes).values({ ...owned(), ...values });
+  }
+  return listMixes();
+}
+
+export async function deleteMix(id: number) {
+  await db.delete(colorMixes).where(and(mine(colorMixes), eq(colorMixes.id, id)));
+  return listMixes();
 }

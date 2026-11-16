@@ -62,9 +62,9 @@ maybe("housekeeping", () => {
       expect(await hk.checkTask({ taskId: organize.id, staffName: "Kanesha", dayKey: day })).toBe(true);
       expect(await hk.checkTask({ taskId: lock.id, staffName: "Kanesha", dayKey: day })).toBe(true);
       expect(await hk.checkTask({ taskId: lock.id, staffName: "Beth", dayKey: day })).toBe(false);
-      const board = await hk.loadBoard(day, [day]);
-      expect(board.checks.filter((c) => c.taskId === station.id)).toHaveLength(2);
-      expect(board.checks.filter((c) => c.taskId === lock.id)).toHaveLength(1);
+      const board = await hk.loadBoard(day);
+      expect(board.history.filter((c) => c.taskId === station.id)).toHaveLength(2);
+      expect(board.history.filter((c) => c.taskId === lock.id)).toHaveLength(1);
     });
   });
 
@@ -91,8 +91,22 @@ maybe("housekeeping", () => {
       expect(after.assignees.map((n) => n.toLowerCase()).sort()).toEqual(["beth", "kanesha"]);
       await hk.setAssignees(plants.id, []);
       await hk.updateTask(plants.id, { assign: "rotate" });
-      const board = await hk.loadBoard(day, [day]);
+      const board = await hk.loadBoard(day);
       expect(board.working.some((w) => w.toLowerCase() === "beth")).toBe(true);
+    });
+  });
+
+  it("saves how often a duty comes up and counts flexible weeks once", async () => {
+    await runForBusiness(a, async () => {
+      const tasks = await hk.listTasks();
+      const recount = tasks.find((t) => t.key === "inv-recount")!;
+      expect(recount.repeat).toMatchObject({ kind: "weeks", flex: true });
+      expect(await hk.checkTask({ taskId: recount.id, staffName: "Minnie", dayKey: "2026-11-15" })).toBe(true);
+      expect(await hk.checkTask({ taskId: recount.id, staffName: "Minnie", dayKey: day })).toBe(false);
+      const plants = tasks.find((t) => t.key === "water-plants")!;
+      const saved = (await hk.updateTask(plants.id, { repeat: { kind: "days", days: [4, 1, 9], every: 1, anchor: "", monthDay: 1, flex: false } })).find((t) => t.id === plants.id)!;
+      expect(saved.repeat).toMatchObject({ kind: "days", days: [1, 4] });
+      expect((await hk.loadBoard(day)).history.some((c) => c.taskId === recount.id)).toBe(true);
     });
   });
 
@@ -128,8 +142,8 @@ maybe("housekeeping", () => {
   });
 
   it("keeps each business's housekeeping to itself", async () => {
-    const other = await runForBusiness(b, () => hk.loadBoard(day, [day]));
-    expect(other.checks).toHaveLength(0);
+    const other = await runForBusiness(b, () => hk.loadBoard(day));
+    expect(other.history).toHaveLength(0);
     expect(other.reminders).toHaveLength(0);
     expect(other.tasks.some((t) => t.name === "Wipe mirrors")).toBe(false);
     const aTask = (await runForBusiness(a, () => hk.listTasks()))[0];

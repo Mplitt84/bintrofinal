@@ -5,17 +5,46 @@
  *
  * Every job happens at one of three moments in a stylist's day:
  * - Arrive (`open`), Client done (`client`, every client, counts up), Close out
- *   (`close`, plus the day's `daily` jobs and any `weekly` job that's due).
+ *   (`close`, plus the day's `daily` jobs).
+ * How often a job comes up is its `repeat` (every day, certain weekdays, every few
+ * weeks, every few days, monthly; `flex` = any day in that week/month/stretch).
+ * Turns advance once per time the job comes up, so a Mon/Thu job alternates fairly.
  * Every job says who does it (`assign`), so nothing depends on volunteers:
  * - `everyone`: on every list in its section (their own station, or a shop job the
  *   first person covers);
- * - `rotate`: one person's turn each day, rotating through who's working;
+ * - `rotate`: one person's turn each time it comes up, rotating through who's working;
  * - `assigned`: the specific people a manager picked.
  * Sections (`role`): Technician (everyone who works on clients) and Inventory
  * Management (team members marked "Manages inventory").
  */
 
-export type HkCadence = 'client' | 'open' | 'daily' | 'close' | 'weekly'
+export type HkCadence = 'client' | 'open' | 'daily' | 'close'
+
+/** How often a job comes up. */
+export type HkRepeatKind = 'daily' | 'days' | 'weeks' | 'interval' | 'monthly'
+export type HkRepeat = {
+  kind: HkRepeatKind
+  /** Weekdays (0 = Sunday) for `days` and `weeks`. */
+  days: number[]
+  /** Every N weeks (`weeks`) or every N days (`interval`). */
+  every: number
+  /** YYYY-MM-DD the count starts from (`weeks`, `interval`); '' = a fixed Sunday. */
+  anchor: string
+  /** Day of the month for `monthly` (31 = the last day). */
+  monthDay: number
+  /** Any day in that week / month / stretch, done once, instead of a set day. */
+  flex: boolean
+}
+export const DEFAULT_REPEAT: HkRepeat = { kind: 'daily', days: [], every: 1, anchor: '', monthDay: 1, flex: false }
+export const HK_REPEATS: { id: HkRepeatKind; label: string }[] = [
+  { id: 'daily', label: 'Every day' },
+  { id: 'days', label: 'Certain days' },
+  { id: 'weeks', label: 'Every few weeks' },
+  { id: 'interval', label: 'Every few days' },
+  { id: 'monthly', label: 'Monthly' },
+]
+const ANCHOR_SUNDAY = '2026-01-04'
+export const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 /** Which section: technicians (everyone who works on clients) or inventory management (Team → Manages inventory). */
 export type HkRole = 'artist' | 'inventory'
 /** Who does it: everyone in the section, one person's turn each day, or specific people. */
@@ -62,9 +91,8 @@ export type HkIcon = (typeof HK_ICONS)[number]
 export const HK_CADENCES: { id: HkCadence; label: string; hint: string }[] = [
   { id: 'open', label: 'When you arrive', hint: 'Once, at the start of your day' },
   { id: 'client', label: 'After each client', hint: 'Every client' },
-  { id: 'daily', label: 'Once a day', hint: 'Any time before you leave' },
+  { id: 'daily', label: 'During the day', hint: 'Any time before you leave' },
   { id: 'close', label: 'When you close out', hint: 'After your last client' },
-  { id: 'weekly', label: 'Once a week', hint: 'Once in any 7 days' },
 ]
 
 export const HK_ROLES: { id: HkRole; label: string; hint: string }[] = [
@@ -74,7 +102,7 @@ export const HK_ROLES: { id: HkRole; label: string; hint: string }[] = [
 
 export const HK_ASSIGNS: { id: HkAssign; label: string; hint: string }[] = [
   { id: 'everyone', label: 'Everyone', hint: 'On every list in its section' },
-  { id: 'rotate', label: 'Takes turns', hint: 'One person each day, rotating through who’s working' },
+  { id: 'rotate', label: 'Takes turns', hint: 'One person each time it comes up, rotating through who’s working' },
   { id: 'assigned', label: 'Assigned', hint: 'The people you pick' },
 ]
 
@@ -84,7 +112,7 @@ export const HK_MOMENTS: { id: HkMoment; label: string; verb: string }[] = [
   { id: 'close', label: 'Close out', verb: 'Finish your day' },
 ]
 
-/** Which moment a job is done at. Daily and weekly jobs are checked at close-out so nothing slips. */
+/** Which moment a job is done at. During-the-day jobs are checked at close-out so nothing slips. */
 export function momentOf(cadence: HkCadence): HkMoment {
   return cadence === 'open' ? 'arrive' : cadence === 'client' ? 'client' : 'close'
 }
@@ -102,6 +130,7 @@ export type HkTaskSpec = {
   role: HkRole
   /** Filled in from `required` and `scope` by housekeepingDefaultsFor. */
   assign?: HkAssign
+  repeat?: Partial<HkRepeat>
   why: string
 }
 
@@ -249,7 +278,8 @@ const INVENTORY: Spec[] = [
     name: 'Recount stock',
     icon: 'clipboard',
     tone: 'garnet',
-    cadence: 'weekly',
+    cadence: 'daily',
+    repeat: { kind: 'weeks', every: 1, flex: true },
     scope: 'shop',
     required: true,
     why: 'Accurate counts mean smarter orders and no surprises.',
@@ -260,7 +290,8 @@ const INVENTORY: Spec[] = [
     name: 'Send recycling to our partner',
     icon: 'recycle',
     tone: 'teal',
-    cadence: 'weekly',
+    cadence: 'daily',
+    repeat: { kind: 'weeks', every: 1, flex: true },
     scope: 'shop',
     required: true,
     why: 'Every box that goes out keeps salon waste out of the landfill.',
@@ -584,8 +615,9 @@ const GENERAL: Spec[] = [
 const BY_TYPE: Record<string, Spec[]> = { salon: SALON, barber: BARBER, nails: NAILS, brows: BROWS, tattoo: TATTOO, spa: SPA }
 
 /** What a new shop starts with, by trade. Owners can switch any job between required and optional, hide it, or add their own. */
-export function housekeepingDefaultsFor(businessType: string): HkTaskSpec[] {
-  return (BY_TYPE[businessType] ?? GENERAL).map((t) => ({ ...t, assign: defaultAssign(t) }))
+export type HkTaskDefault = Omit<HkTaskSpec, 'assign' | 'repeat'> & { assign: HkAssign; repeat: HkRepeat }
+export function housekeepingDefaultsFor(businessType: string): HkTaskDefault[] {
+  return (BY_TYPE[businessType] ?? GENERAL).map((t) => ({ ...t, assign: defaultAssign(t), repeat: { ...DEFAULT_REPEAT, ...t.repeat } }))
 }
 
 /**
@@ -618,11 +650,12 @@ export type HkTask = {
   assign: HkAssign
   /** For `assigned` jobs: who it's assigned to (as the team list spells them). */
   assignees: string[]
+  repeat: HkRepeat
   why: string
   active: boolean
 }
 
-export type HkCheck = { id: number; taskId: number; staffName: string; at: string }
+export type HkCheck = { id: number; taskId: number; staffName: string; at: string; dayKey: string }
 
 export type HkReminder = { id: number; staffName: string; detail: string; at: string }
 
@@ -637,8 +670,99 @@ export type HkDay = {
   working: string[]
   /** Team members marked "Manages inventory". */
   inventoryManagers: string[]
-  /** Days since the epoch (local), so turns move on once a day. */
-  dayNumber: number
+  /** The shop's local date, YYYY-MM-DD. */
+  dayKey: string
+}
+
+const weekdayOf = (dayKey: string) => new Date(Date.UTC(...(dayKey.split('-').map(Number) as [number, number, number]).map((v, i) => (i === 1 ? v - 1 : v)) as [number, number, number])).getUTCDay()
+const mod = (a: number, n: number) => ((a % n) + n) % n
+export function shiftDay(dayKey: string, days: number) {
+  return new Date((dayNumberOf(dayKey) + days) * 86_400_000).toISOString().slice(0, 10)
+}
+
+export type HkPeriod = {
+  /** The job comes up today. */
+  due: boolean
+  /** First day of the stretch it can be done in (today unless flexible). */
+  start: string
+  /** How many times it has come up: turns rotate on this. */
+  index: number
+  /** Spans several days (flexible week / month / stretch). */
+  long: boolean
+}
+
+/** Whether a job comes up on a day, the stretch it can be done in, and which time this is. */
+export function periodOf(repeat: HkRepeat, dayKey: string): HkPeriod {
+  const n = dayNumberOf(dayKey)
+  const wd = weekdayOf(dayKey)
+  const every = Math.max(1, Math.round(repeat.every || 1))
+  const days = [...new Set(repeat.days)].filter((d) => d >= 0 && d <= 6).sort()
+  const today: Omit<HkPeriod, 'index' | 'due'> = { start: dayKey, long: false }
+  switch (repeat.kind) {
+    case 'days': {
+      if (days.length === 0) return { ...today, due: true, index: n }
+      const week = Math.floor((n - dayNumberOf(ANCHOR_SUNDAY)) / 7)
+      return { ...today, due: days.includes(wd), index: week * days.length + Math.max(0, days.indexOf(wd)) }
+    }
+    case 'weeks': {
+      const anchor = dayNumberOf(repeat.anchor || ANCHOR_SUNDAY)
+      const anchorSunday = anchor - weekdayOf(repeat.anchor || ANCHOR_SUNDAY)
+      const weekStart = n - wd
+      const week = Math.floor((weekStart - anchorSunday) / 7)
+      const on = mod(week, every) === 0
+      const turn = Math.floor(week / every)
+      if (repeat.flex || days.length === 0) {
+        return { due: on, start: shiftDay(dayKey, -wd), index: turn, long: true }
+      }
+      return { ...today, due: on && days.includes(wd), index: turn * days.length + Math.max(0, days.indexOf(wd)) }
+    }
+    case 'interval': {
+      const diff = n - dayNumberOf(repeat.anchor || ANCHOR_SUNDAY)
+      const turn = Math.floor(diff / every)
+      if (repeat.flex && every > 1) return { due: true, start: shiftDay(dayKey, -mod(diff, every)), index: turn, long: true }
+      return { ...today, due: mod(diff, every) === 0, index: turn }
+    }
+    case 'monthly': {
+      const [y, m, d] = dayKey.split('-').map(Number)
+      const turn = y * 12 + (m - 1)
+      if (repeat.flex) return { due: true, start: `${dayKey.slice(0, 8)}01`, index: turn, long: true }
+      const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
+      return { ...today, due: d === Math.min(Math.max(1, repeat.monthDay || 1), last), index: turn }
+    }
+    default:
+      return { ...today, due: true, index: n }
+  }
+}
+
+const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'}`
+const dayList = (days: number[]) => [...days].sort().map((d) => WEEKDAY_SHORT[d]).join(', ')
+
+/** "Every day", "Mon, Thu", "Every 2 weeks · any day", "Every 3 days", "Monthly on the 1st". */
+export function repeatLabel(r: HkRepeat) {
+  const every = Math.max(1, r.every || 1)
+  switch (r.kind) {
+    case 'days':
+      return r.days.length ? dayList(r.days) : 'Every day'
+    case 'weeks': {
+      const base = every === 1 ? 'Weekly' : `Every ${every} weeks`
+      return r.flex || r.days.length === 0 ? `${base} · any day` : `${base} · ${dayList(r.days)}`
+    }
+    case 'interval':
+      return every === 1 ? 'Every day' : `Every ${every} days${r.flex ? ' · any of them' : ''}`
+    case 'monthly':
+      return r.flex ? 'Monthly · any day' : r.monthDay >= 31 ? 'Monthly · last day' : `Monthly · the ${ordinal(r.monthDay || 1)}`
+    default:
+      return 'Every day'
+  }
+}
+
+/** When it comes up next (today included), within ~two months: for "Next: Thu". */
+export function nextDue(repeat: HkRepeat, dayKey: string): string | null {
+  for (let i = 0; i < 62; i++) {
+    const d = shiftDay(dayKey, i)
+    if (periodOf(repeat, d).due) return d
+  }
+  return null
 }
 
 function sortedPool(names: string[]) {
@@ -648,21 +772,23 @@ function sortedPool(names: string[]) {
 }
 
 /** The people a job could fall to: inventory managers for Inventory Management, otherwise who's working (or the team). */
-export function poolFor(task: Pick<HkTask, 'role'>, day: HkDay) {
+export function poolFor(task: Pick<HkTask, 'role' | 'repeat'>, day: HkDay) {
   if (task.role === 'inventory') return sortedPool(day.inventoryManagers)
+  // A job open for a whole week or month belongs to the same person all stretch.
+  if (periodOf(task.repeat, day.dayKey).long) return sortedPool(day.team)
   return sortedPool(day.working.length ? day.working : day.team)
 }
 
-/** Whose turn a rotating job is today: a fair, predictable rotation through the pool. */
-export function turnFor(task: Pick<HkTask, 'id' | 'role'>, day: HkDay): string | null {
+/** Whose turn a rotating job is: moves on one person each time the job comes up. */
+export function turnFor(task: Pick<HkTask, 'id' | 'role' | 'repeat'>, day: HkDay): string | null {
   const pool = poolFor(task, day)
   if (pool.length === 0) return null
-  return pool[(day.dayNumber + task.id) % pool.length]
+  return pool[mod(periodOf(task.repeat, day.dayKey).index + task.id, pool.length)]
 }
 
 /** Who a job belongs to today. */
 export function ownersOf(task: HkTask, day: HkDay): string[] {
-  if (!task.active) return []
+  if (!task.active || !periodOf(task.repeat, day.dayKey).due) return []
   if (task.assign === 'assigned') return sortedPool(task.assignees)
   if (task.assign === 'rotate') {
     const t = turnFor(task, day)
@@ -681,10 +807,14 @@ export type HkButton = {
   task: HkTask
   /** Times this person tapped it today (after-client jobs count up). */
   mine: number
-  /** Who did it (first, today or this week for weekly jobs); null = nobody yet. */
-  doneBy: { staffName: string; at: string; checkId: number } | null
+  /** Who did it (first, in this stretch); null = nobody yet. */
+  doneBy: { staffName: string; at: string; checkId: number; dayKey: string } | null
   /** Nothing left to do on it for this person. */
   done: boolean
+  /** The job comes up today. */
+  due: boolean
+  /** Open for a whole week / month / stretch (done once, any day). */
+  long: boolean
   /** On this person's list today. */
   onList: boolean
   /** Who it belongs to today (for "Beth's turn"). */
@@ -692,32 +822,32 @@ export type HkButton = {
 }
 
 /**
- * Every active job's state for this person. Own-station jobs (`each`) are done when
- * they did them; shop jobs when anyone covered them. Weekly jobs look at the last 7 days.
+ * Every active job's state for this person on `day`. `history` holds recent taps (each
+ * with its dayKey); a job counts in its own stretch: today, or the whole week / month
+ * for flexible jobs. Own-station jobs (`each`) are done when they did them; shop jobs
+ * when anyone covered them.
  */
-export function buildButtons(
-  tasks: HkTask[],
-  checks: HkCheck[],
-  staffName: string,
-  day: HkDay,
-  weekChecks: HkCheck[] = checks,
-): HkButton[] {
+export function buildButtons(tasks: HkTask[], history: HkCheck[], staffName: string, day: HkDay): HkButton[] {
   const me = nameKey(staffName)
   return tasks
     .filter((t) => t.active)
     .map((task) => {
-      const pool = task.cadence === 'weekly' ? weekChecks : checks
-      const forTask = pool.filter((c) => c.taskId === task.id).sort((a, b) => a.at.localeCompare(b.at))
+      const period = task.cadence === 'client' ? { due: true, start: day.dayKey, long: false, index: 0 } : periodOf(task.repeat, day.dayKey)
+      const forTask = history
+        .filter((c) => c.taskId === task.id && c.dayKey >= period.start && c.dayKey <= day.dayKey)
+        .sort((a, b) => a.at.localeCompare(b.at))
       const mineChecks = forTask.filter((c) => nameKey(c.staffName) === me)
       const relevant = task.scope === 'shop' ? forTask : mineChecks
       const first = relevant[0]
       const owners = ownersOf(task, day)
       return {
         task,
-        mine: mineChecks.length,
-        doneBy: first ? { staffName: first.staffName, at: first.at, checkId: first.id } : null,
+        mine: task.cadence === 'client' ? mineChecks.filter((c) => c.dayKey === day.dayKey).length : mineChecks.length,
+        doneBy: first ? { staffName: first.staffName, at: first.at, checkId: first.id, dayKey: first.dayKey } : null,
         done: task.cadence === 'client' ? false : Boolean(first),
-        onList: owners.some((n) => nameKey(n) === me),
+        due: period.due,
+        long: period.long,
+        onList: period.due && owners.some((n) => nameKey(n) === me),
         owners,
       }
     })
@@ -725,32 +855,36 @@ export function buildButtons(
 
 export type HkPersonSummary = { staffName: string; done: number; total: number; clients: number }
 
-/**
- * How far along each person is today against their own list (after-client jobs are
- * counted as resets instead; weekly jobs only count on the day they're due to them).
- */
-export function summarizePeople(tasks: HkTask[], checks: HkCheck[], people: string[], day: HkDay, weekChecks: HkCheck[] = checks): HkPersonSummary[] {
+/** How far along each person is on `day` against their own list (after-client jobs are counted as resets instead). */
+export function summarizePeople(tasks: HkTask[], history: HkCheck[], people: string[], day: HkDay): HkPersonSummary[] {
   const clientIds = new Set(tasks.filter((t) => t.active && t.cadence === 'client').map((t) => t.id))
   return people.map((staffName) => {
-    const list = buildButtons(tasks, checks, staffName, day, weekChecks).filter((b) => b.onList && b.task.cadence !== 'client')
+    const list = buildButtons(tasks, history, staffName, day).filter((b) => b.onList && b.task.cadence !== 'client')
     const me = nameKey(staffName)
     return {
       staffName,
       done: list.filter((b) => b.done).length,
       total: list.length,
-      clients: checks.filter((c) => clientIds.has(c.taskId) && nameKey(c.staffName) === me).length,
+      clients: history.filter((c) => c.dayKey === day.dayKey && clientIds.has(c.taskId) && nameKey(c.staffName) === me).length,
     }
   })
 }
 
-/** Jobs nobody has finished yet today, with whose they are: the manager's "still open" list. */
-export function openJobs(tasks: HkTask[], checks: HkCheck[], day: HkDay, weekChecks: HkCheck[] = checks) {
-  const today = new Set(checks.map((c) => c.taskId))
-  const week = new Set(weekChecks.map((c) => c.taskId))
+/** Shop jobs that come up today and nobody has covered yet in their stretch, with whose they are. */
+export function openJobs(tasks: HkTask[], history: HkCheck[], day: HkDay) {
+  return buildButtons(tasks, history, '', day)
+    .filter((b) => b.due && !b.done && b.task.cadence !== 'client' && b.task.scope === 'shop')
+    .map((b) => ({ task: b.task, owners: b.owners, long: b.long }))
+}
+
+/** Jobs that don't come up today, soonest first: "Coming up". */
+export function comingUp(tasks: HkTask[], day: HkDay, limit = 6) {
   return tasks
-    .filter((t) => t.active && t.cadence !== 'client' && t.scope === 'shop')
-    .filter((t) => !(t.cadence === 'weekly' ? week : today).has(t.id))
-    .map((t) => ({ task: t, owners: ownersOf(t, day) }))
+    .filter((t) => t.active && t.cadence !== 'client' && !periodOf(t.repeat, day.dayKey).due)
+    .map((t) => ({ task: t, next: nextDue(t.repeat, shiftDay(day.dayKey, 1)) }))
+    .filter((x): x is { task: HkTask; next: string } => Boolean(x.next))
+    .sort((a, b) => a.next.localeCompare(b.next))
+    .slice(0, limit)
 }
 
 const OPENERS = ['Thank you', 'Appreciate you', 'Nicely done', 'That’s care', 'Love to see it', 'Thanks for that']

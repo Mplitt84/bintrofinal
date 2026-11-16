@@ -21,19 +21,29 @@ const TaskFields = z.object({
   name: z.string().trim().min(1).max(40),
   icon: z.enum(HK_ICONS),
   tone: z.enum(HK_TONES),
-  cadence: z.enum(["client", "open", "daily", "close", "weekly"]),
+  cadence: z.enum(["client", "open", "daily", "close"]),
   scope: z.enum(["each", "shop"]),
   role: z.enum(["artist", "inventory"]),
   assign: z.enum(["everyone", "rotate", "assigned"]),
   assignees: z.array(z.string().trim().min(1).max(60)).max(40).optional(),
   why: z.string().max(140),
+  repeat: z
+    .object({
+      kind: z.enum(["daily", "days", "weeks", "interval", "monthly"]),
+      days: z.array(z.number().int().min(0).max(6)).max(7),
+      every: z.number().int().min(1).max(52),
+      anchor: z.union([Day, z.literal("")]),
+      monthDay: z.number().int().min(1).max(31),
+      flex: z.boolean(),
+    })
+    .optional(),
 });
 
-/** The day's board: jobs, today's taps, the week's taps, open checkout reminders and the team. */
+/** The day's board: jobs, recent taps, open checkout reminders and the team. */
 export const getHousekeeping = createServerFn({ method: "POST" })
   .middleware([requireUser])
-  .inputValidator(z.object({ dayKey: Day, weekKeys: z.array(Day).max(7), weekday: z.number().int().min(0).max(6) }))
-  .handler(async ({ data }) => loadBoard(data.dayKey, data.weekKeys, data.weekday));
+  .inputValidator(z.object({ dayKey: Day, weekday: z.number().int().min(0).max(6) }))
+  .handler(async ({ data }) => loadBoard(data.dayKey, data.weekday));
 
 export const checkHousekeeping = createServerFn({ method: "POST" })
   .middleware([requireUser])
@@ -42,7 +52,6 @@ export const checkHousekeeping = createServerFn({ method: "POST" })
       taskId: z.number().int(),
       staffName: Name,
       dayKey: Day,
-      weekKeys: z.array(Day).max(7).optional(),
       reminderId: z.number().int().optional(),
     }),
   )

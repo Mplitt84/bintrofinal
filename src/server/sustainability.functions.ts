@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireUser } from "./auth.middleware";
-import { deletePartner, deleteWasteLog, listPartners, listWasteLogs, savePartner, saveWasteLog } from "./sustainability.server.js";
+import { deleteMix, deletePartner, deleteWasteLog, listMixes, listPartners, listWasteLogs, saveMix, savePartner, saveWasteLog } from "./sustainability.server.js";
 
 const Month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const fail = (error: unknown, fallback: string) => ({
@@ -12,8 +12,8 @@ const fail = (error: unknown, fallback: string) => ({
 export const getSustainability = createServerFn({ method: "GET" })
   .middleware([requireUser])
   .handler(async () => {
-    const [partners, logs] = await Promise.all([listPartners(), listWasteLogs()]);
-    return { partners, logs };
+    const [partners, logs, mixes] = await Promise.all([listPartners(), listWasteLogs(), listMixes()]);
+    return { partners, logs, mixes };
   });
 
 export const savePartnerFn = createServerFn({ method: "POST" })
@@ -68,3 +68,33 @@ export const deleteWasteLogFn = createServerFn({ method: "POST" })
   .middleware([requireUser])
   .inputValidator(z.object({ id: z.number().int() }))
   .handler(async ({ data }) => ({ ok: true as const, logs: await deleteWasteLog(data.id) }));
+
+const Oz = z.number().min(0).max(10_000);
+const Parts = z.number().min(0).max(100);
+
+export const saveMixFn = createServerFn({ method: "POST" })
+  .middleware([requireUser])
+  .inputValidator(
+    z.object({
+      id: z.number().int().optional(),
+      name: z.string().trim().min(1).max(60),
+      colorCents: z.number().int().min(0).max(1_000_000),
+      colorOz: Oz,
+      developerCents: z.number().int().min(0).max(1_000_000),
+      developerOz: Oz,
+      colorParts: Parts,
+      developerParts: Parts,
+    }),
+  )
+  .handler(async ({ data }) => {
+    try {
+      return { ok: true as const, mixes: await saveMix(data) };
+    } catch (error) {
+      return fail(error, "Couldn’t save that color line.");
+    }
+  });
+
+export const deleteMixFn = createServerFn({ method: "POST" })
+  .middleware([requireUser])
+  .inputValidator(z.object({ id: z.number().int() }))
+  .handler(async ({ data }) => ({ ok: true as const, mixes: await deleteMix(data.id) }));

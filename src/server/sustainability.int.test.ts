@@ -27,7 +27,7 @@ maybe("sustainability", () => {
 
   afterAll(async () => {
     for (const id of [a, b]) {
-      for (const t of [schema.sustainabilityPartners, schema.colorWasteLogs, schema.appUsers, schema.businessProfile]) {
+      for (const t of [schema.sustainabilityPartners, schema.colorWasteLogs, schema.colorMixes, schema.appUsers, schema.businessProfile]) {
         await db.delete(t).where(eq(t.businessId, id));
       }
       await db.delete(schema.businesses).where(eq(schema.businesses.id, id));
@@ -41,6 +41,17 @@ maybe("sustainability", () => {
       await expect(sus.savePartner({ name: "green circle salons", kind: "other", contact: "", website: "", since: "", notes: "" }, "x")).rejects.toThrow();
     });
     expect(await runForBusiness(b, () => sus.listPartners())).toHaveLength(0);
+  });
+
+  it("saves each shop's color lines with exact sizes and ratios, unique by name", async () => {
+    await runForBusiness(a, async () => {
+      const list = await sus.saveMix({ name: "Permanent color", colorCents: 1080, colorOz: 2.06, developerCents: 0, developerOz: 0, colorParts: 1, developerParts: 1.5 });
+      expect(list[0]).toMatchObject({ colorOz: 2.06, colorParts: 1, developerParts: 1.5 });
+      await expect(sus.saveMix({ name: "permanent color", colorCents: 0, colorOz: 0, developerCents: 0, developerOz: 0, colorParts: 1, developerParts: 2 })).rejects.toThrow();
+      const edited = await sus.saveMix({ ...list[0], developerCents: 1600, developerOz: 33.8 });
+      expect(edited[0].developerOz).toBe(33.8);
+    });
+    expect(await runForBusiness(b, () => sus.listMixes())).toHaveLength(0);
   });
 
   it("stores one weight per month and replaces it when logged again", async () => {
