@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check } from 'lucide-react'
+import { Check, ChevronDown, Copy, Sparkles, Type } from 'lucide-react'
+import { ToolButton, ToolRow } from '@/components/ui/ToolButton'
+import { AutoSortSheet } from './AutoSortSheet'
 import type { Product } from './types'
 import { Field, Sheet, SheetActions } from '@/components/ui/Sheet'
 import { centsToDollars } from '@/components/ui/bits'
@@ -19,6 +21,8 @@ import {
   getVendorList,
   mergeVendors,
   renameVendorFn,
+  deleteVendorFn,
+  getCategorySuggestions,
 } from '@/server/tidy.functions'
 import type { CategoryGroup, DuplicateGroup, SmartParResult, VendorGroup } from '@/lib/tidy'
 import { useBusiness } from '@/components/business/BusinessContext'
@@ -704,6 +708,21 @@ export function SupplierTidy({ onChanged }: { onChanged?: () => void | Promise<v
   const [busy, setBusy] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<{ name: string; products: number } | null>(null)
   const [nextName, setNextName] = useState('')
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [moveTo, setMoveTo] = useState('')
+  const [tool, setTool] = useState<'sort' | 'format' | 'duplicates' | null>(null)
+  const [badges, setBadges] = useState({ sort: 0, format: 0, duplicates: 0 })
+
+  const loadBadges = () =>
+    Promise.all([getCategorySuggestions({ data: { recheck: false } }), getDuplicateGroups()])
+      .then(([s, d]) =>
+        setBadges({
+          sort: (s as { suggestions: unknown[] }).suggestions.length,
+          format: (s as { formatting: unknown[] }).formatting.length,
+          duplicates: (d as unknown[]).length,
+        }),
+      )
+      .catch(() => {})
 
   const load = () =>
     Promise.all([getVendorGroups(), getVendorList()])
@@ -717,8 +736,33 @@ export function SupplierTidy({ onChanged }: { onChanged?: () => void | Promise<v
         setList([])
       })
 
+  async function afterTool() {
+    await Promise.all([load(), loadBadges()])
+    await onChanged?.()
+  }
+
+  async function removeVendor(name: string) {
+    setBusy('delete')
+    try {
+      const res = (await deleteVendorFn({ data: { name, moveTo } })) as { moved: number }
+      setDeleting(null)
+      await load()
+      toast(
+        res.moved
+          ? `Deleted “${name}”. ${res.moved} product${res.moved === 1 ? '' : 's'} moved to ${moveTo ? `“${moveTo}”` : 'no supplier'}.`
+          : `Deleted “${name}”.`,
+      )
+      await onChanged?.()
+    } catch {
+      toast("Couldn't delete that supplier. Try again.")
+    } finally {
+      setBusy(null)
+    }
+  }
+
   useEffect(() => {
     load()
+    loadBadges()
   }, [])
 
   async function merge(i: number, g: VendorGroup) {
@@ -756,6 +800,19 @@ export function SupplierTidy({ onChanged }: { onChanged?: () => void | Promise<v
 
   return (
     <>
+      <section className="bg-white border border-line rounded-2xl p-4 mb-5">
+        <h3 className="m-0 mb-1 text-base font-bold">Clean up your products</h3>
+        <p className="m-0 mb-3 text-sm text-ink-2">
+          Bintro sorts products into categories from their name and size, finds doubles and tidies messy names. You check
+          before anything changes.
+        </p>
+        <ToolRow label="Clean-up tools">
+          <ToolButton icon={<Sparkles size={24} />} tone="garnet" label="Sort categories" badge={badges.sort} onClick={() => setTool('sort')} />
+          <ToolButton icon={<Copy size={24} />} tone="purple" label="Duplicates" badge={badges.duplicates} onClick={() => setTool('duplicates')} />
+          <ToolButton icon={<Type size={24} />} tone="charcoal" label="Names & sizes" badge={badges.format} onClick={() => setTool('format')} />
+        </ToolRow>
+      </section>
+
       {groups && groups.length > 0 && (
         <section className="bg-warn-tint rounded-2xl p-4 mb-5">
           <h3 className="m-0 mb-1 text-base font-bold">Tidy up suppliers</h3>
@@ -807,28 +864,80 @@ export function SupplierTidy({ onChanged }: { onChanged?: () => void | Promise<v
         ) : (
           <ul className="list-none m-0 p-0 bg-white rounded-xl px-3">
             {list.map((v) => (
-              <li key={v.name} className="flex items-center gap-3 py-2.5 border-b border-line last:border-b-0">
+              <li key={v.name} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5 border-b border-line last:border-b-0">
                 <span className="min-w-0 flex-1">
                   <span className="block text-[14px] font-semibold break-words">{v.name}</span>
                   <span className="block text-[12px] text-ink-2">
                     {v.products} {v.products === 1 ? 'product' : 'products'}
                   </span>
                 </span>
-                <button
-                  type="button"
-                  className="btn btn-text btn-sm shrink-0"
-                  onClick={() => {
-                    setRenaming(v)
-                    setNextName(v.name)
-                  }}
-                >
-                  Rename
-                </button>
+                {deleting !== v.name && (
+                  <span className="flex shrink-0">
+                    <button
+                      type="button"
+                      className="btn btn-text btn-sm"
+                      onClick={() => {
+                        setRenaming(v)
+                        setNextName(v.name)
+                      }}
+                    >
+                      Rename
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-text btn-sm !text-bad"
+                      onClick={() => {
+                        setDeleting(v.name)
+                        setMoveTo('')
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </span>
+                )}
+                {deleting === v.name && (
+                  <div className="basis-full rounded-xl bg-bad-tint p-3 text-sm">
+                    <label className="block mb-2">
+                      Move its {v.products} product{v.products === 1 ? '' : 's'} to
+                      <select className="field-input !py-2 mt-1" value={moveTo} onChange={(e) => setMoveTo(e.target.value)}>
+                        <option value="">No supplier</option>
+                        {list
+                          .filter((o) => o.name !== v.name)
+                          .map((o) => (
+                            <option key={o.name} value={o.name}>
+                              {o.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <div className="flex gap-2">
+                      <button type="button" className="btn btn-danger btn-sm" disabled={busy === 'delete'} onClick={() => removeVendor(v.name)}>
+                        {busy === 'delete' ? 'Deleting…' : `Delete “${v.name}”`}
+                      </button>
+                      <button type="button" className="btn btn-tonal btn-sm" onClick={() => setDeleting(null)}>
+                        Keep it
+                      </button>
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
         )}
       </section>
+
+      <details className="group bg-surface rounded-2xl p-4 mt-5">
+        <summary className="flex items-center justify-between cursor-pointer list-none font-bold">
+          Categories
+          <ChevronDown size={18} className="transition-transform group-open:rotate-180" />
+        </summary>
+        <p className="mt-1 mb-3 text-sm text-ink-2">Merge spellings of one category, or delete one you don't need.</p>
+        <CategoryCleanup onChanged={afterTool} />
+        <CategoryList onChanged={afterTool} />
+      </details>
+
+      <AutoSortSheet open={tool === 'sort' || tool === 'format'} startWith={tool === 'format' ? 'format' : 'sort'} onClose={() => setTool(null)} onDone={afterTool} />
+      <DuplicatesSheet open={tool === 'duplicates'} onClose={() => setTool(null)} onDone={afterTool} />
 
       {renaming && (
         <Sheet open onClose={() => setRenaming(null)} title={`Rename ${renaming.name}`}>
