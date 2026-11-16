@@ -162,6 +162,15 @@ export async function userForGoogle(profile: GoogleProfile) {
   }
   // Once linked, the email must keep belonging to the same Google account.
   if (user.googleSub && user.googleSub !== profile.sub) throw new Error("not-allowed");
+  // The owner email (BINTRO_OWNER_EMAIL) is always an owner of the main business, even
+  // if it was added as staff first; changing the variable is how ownership is handed over.
+  if (profile.email === ownerEmail() && user.businessId === DEFAULT_BUSINESS_ID && user.role !== "owner") {
+    await db
+      .update(appUsers)
+      .set({ role: "owner" })
+      .where(and(eq(appUsers.businessId, user.businessId), eq(appUsers.id, user.id)));
+    user = { ...user, role: "owner" };
+  }
   await db
     .update(appUsers)
     .set({ googleSub: profile.sub, name: user.name || profile.name, lastSignInAt: new Date() })
