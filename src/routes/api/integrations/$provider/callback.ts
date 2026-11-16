@@ -1,3 +1,4 @@
+import { redirectTo } from '@/lib/security-headers'
 import { createFileRoute } from '@tanstack/react-router'
 import { businessForRoute, routeUser } from '@/server/auth.server'
 import { runForBusiness } from '@/server/tenant'
@@ -10,14 +11,14 @@ export const Route = createFileRoute('/api/integrations/$provider/callback')({
       GET: async ({ request, params }) => {
         // Signed-in only (owners for connections); sign-in happens on the home page.
         const who = await routeUser(request)
-        if (!who || (who !== 'open' && who.role !== 'owner')) return Response.redirect(`${new URL(request.url).origin}/?auth=${who ? 'owner-only' : 'signed-out'}`, 302)
+        if (!who || (who !== 'open' && who.role !== 'owner')) return redirectTo(`${new URL(request.url).origin}/?auth=${who ? 'owner-only' : 'signed-out'}`, 302)
         return runForBusiness(businessForRoute(who), async () => {
         const url = new URL(request.url)
         const provider = params.provider as Provider
         if (!PROVIDERS.includes(provider)) return new Response('Unknown integration', { status: 404 })
 
         const back = (query: Record<string, string>) =>
-          Response.redirect(`${url.origin}/?${new URLSearchParams({ settings: 'integrations', ...query })}`, 302)
+          redirectTo(`${url.origin}/?${new URLSearchParams({ settings: 'integrations', ...query })}`, 302)
 
         const code = url.searchParams.get('code')
         // Declined, or the provider sent an error (e.g. access_denied) instead of a code.
