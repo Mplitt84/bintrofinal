@@ -38,10 +38,13 @@ import { deriveInitials } from '@/lib/inventory-defaults'
 import {
   HK_CADENCES,
   HK_ICONS,
+  HK_ROLES,
   HK_TONES,
   STATION_TASK_KEY,
   appreciation,
   buildButtons,
+  commitmentsOf,
+  onMyList,
   localDayKey,
   nameKey,
   openShopJobs,
@@ -49,8 +52,10 @@ import {
   type HkButton,
   type HkCadence,
   type HkCheck,
+  type HkCommitments,
   type HkIcon,
   type HkReminder,
+  type HkRole,
   type HkScope,
   type HkTask,
   type HkTone,
@@ -61,6 +66,7 @@ import {
   deleteHousekeepingTask,
   dismissHousekeepingReminder,
   getHousekeeping,
+  setHousekeepingCommitment,
   undoHousekeeping,
   updateHousekeepingTask,
 } from '@/server/housekeeping.functions'
@@ -167,9 +173,14 @@ export function HousekeepingView({
     return me && !list.some((p) => nameKey(p) === nameKey(me)) ? [me, ...list] : list
   }, [board?.people, me])
 
-  const buttons = useMemo(() => (board && me ? buildButtons(board.tasks, board.checks, me) : []), [board, me])
+  const buttons = useMemo(() => (board && me ? buildButtons(board.tasks, board.checks, me, board.week) : []), [board, me])
+  const committed = useMemo(() => (board && me ? commitmentsOf(board.commitments, me) : new Set<number>()), [board, me])
+  const managers = board?.inventoryManagers ?? []
+  const iManage = Boolean(me) && managers.some((m) => nameKey(m) === nameKey(me))
+  const myButtons = useMemo(() => buttons.filter((b) => onMyList(b.task, committed, iManage)), [buttons, committed, iManage])
+  const extras = useMemo(() => buttons.filter((b) => !b.task.required), [buttons])
   const mySummary = useMemo(
-    () => (board && me ? summarizePeople(board.tasks, board.checks, [me])[0] : null),
+    () => (board && me ? summarizePeople(board.tasks, board.checks, [me], board.commitments, board.inventoryManagers)[0] : null),
     [board, me],
   )
   const myReminders = useMemo(
@@ -194,7 +205,7 @@ export function HousekeepingView({
     }
     setBusyId(task.id)
     const before = mySummary
-    const r = await checkHousekeeping({ data: { taskId: task.id, staffName: me, dayKey: today, reminderId: reminder?.id } })
+    const r = await checkHousekeeping({ data: { taskId: task.id, staffName: me, dayKey: today, weekKeys: weekKeys(), reminderId: reminder?.id } })
     setBusyId(null)
     if (!r.ok) return toast(r.message)
     navigator.vibrate?.(25)
@@ -204,6 +215,23 @@ export function HousekeepingView({
       Boolean(before) && task.scope === 'each' && task.cadence !== 'client' && before!.done + 1 === before!.total && before!.total > 1
     setSeed((s) => s + 1)
     setThanks({ ...appreciation({ staffName: me, task, seed, count, allDone: finishing }), tone: task.tone, key: Date.now() })
+  }
+
+  async function choose(task: HkTask, on: boolean) {
+    if (!me) return toast('Pick who you are first.')
+    const r = await setHousekeepingCommitment({ data: { staffName: me, taskId: task.id, on } })
+    if (!r.ok) return toast(r.message)
+    setBoard((b) => (b ? { ...b, commitments: r.commitments } : b))
+    if (on) {
+      setThanks({
+        title: `Thank you for taking on ${task.name.toLowerCase()}, ${me.split(/\s+/)[0]}.`,
+        body: 'It’s on your list every day now. The team can count on you.',
+        tone: task.tone,
+        key: Date.now(),
+      })
+    } else {
+      toast(`${task.name} is off your list.`)
+    }
   }
 
   async function takeBack(check: HkCheck) {
@@ -233,11 +261,17 @@ export function HousekeepingView({
     )
   }
 
-  const grouped = HK_CADENCES.map((c) => ({ ...c, items: buttons.filter((b) => b.task.cadence === c.id) })).filter(
-    (g) => g.items.length,
+  const groupsFor = (list: HkButton[]) =>
+    HK_CADENCES.map((c) => ({ ...c, items: list.filter((b) => b.task.cadence === c.id) })).filter((g) => g.items.length)
+  // Artist list: their own. Inventory list: the four Rs, shown to everyone so the team sees they're handled;
+  // on a manager's list (and in their progress) when they manage inventory.
+  const artistGroups = groupsFor(myButtons.filter((b) => b.task.role === 'artist'))
+  const inventoryButtons = buttons.filter(
+    (b) => b.task.role === 'inventory' && (b.task.required || committed.has(b.task.id)),
   )
-  const stillOpen = openShopJobs(board.tasks, board.checks)
-  const everyone = summarizePeople(board.tasks, board.checks, people)
+  const inventoryGroups = groupsFor(inventoryButtons)
+  const stillOpen = openShopJobs(board.tasks, board.checks, board.commitments, board.week)
+  const everyone = summarizePeople(board.tasks, board.checks, people, board.commitments, board.inventoryManagers)
 
   return (
     <div className="grid grid-cols-1 gap-5 [&>*]:min-w-0">
@@ -281,6 +315,7 @@ export function HousekeepingView({
                     {p.staffName.split(/\s+/)[0]}
                   </span>
                   <span className="text-[11px] text-ink-2 leading-none">
+                    {managers.some((m) => nameKey(m) === nameKey(p.staffName)) ? '📦 ' : ''}
                     {p.done}/{p.total}
                     {p.clients ? ` · ${p.clients} ✦` : ''}
                   </span>
@@ -357,20 +392,68 @@ export function HousekeepingView({
               </div>
             </div>
           )}
-          <div className="grid gap-5">
-            {grouped.map((g) => (
-              <div key={g.id}>
-                <div className="flex items-baseline gap-2 mb-2.5">
-                  <h3 className="m-0 text-[15px] font-bold">{g.label}</h3>
-                  <span className="text-[12px] text-ink-2">{g.hint}</span>
-                </div>
-                <div className="grid grid-cols-3 min-[480px]:grid-cols-4 min-[760px]:grid-cols-6 gap-x-2 gap-y-4">
-                  {g.items.map((b) => (
-                    <JobButton key={b.task.id} button={b} me={me} busy={busyId === b.task.id} onTap={() => void tap(b)} />
-                  ))}
-                </div>
-              </div>
-            ))}
+          <RoleSection role="artist" groups={artistGroups} me={me} busyId={busyId} onTap={(b) => void tap(b)} />
+        </section>
+      )}
+
+      {me && inventoryGroups.length > 0 && (
+        <section aria-label="Inventory manager obligations" className="bg-white border border-line rounded-2xl p-4">
+          <p className="text-[13px] text-ink-2 mt-0 mb-3">
+            {managers.length === 0
+              ? 'Nobody is marked “Manages inventory” yet. Turn it on for them on the Team page.'
+              : iManage
+                ? 'You manage inventory, so these are on your list.'
+                : `Handled by ${managers.join(', ')}. Anyone can pitch in.`}
+          </p>
+          <RoleSection role="inventory" groups={inventoryGroups} me={me} busyId={busyId} onTap={(b) => void tap(b)} />
+        </section>
+      )}
+
+      {/* Optional jobs: each person signs up for the extras they'll be responsible for. */}
+      {me && extras.length > 0 && (
+        <section aria-labelledby="hk-extras" className="bg-white border border-line rounded-2xl p-4">
+          <h2 id="hk-extras" className="m-0 text-[17px] font-bold">
+            Sign up for extra jobs
+          </h2>
+          <p className="text-ink-2 text-[13px] mt-1 mb-3">
+            The required jobs are on everyone’s list. Pick the extras you’ll be responsible for. They stay on your list every day until you take them off.
+          </p>
+          <div className="grid grid-cols-3 min-[480px]:grid-cols-4 min-[760px]:grid-cols-6 gap-x-2 gap-y-4">
+            {extras.map((b) => {
+              const on = committed.has(b.task.id)
+              const t = tone(b.task.tone)
+              const Icon = GLYPHS[b.task.icon] ?? Sparkles
+              const others = Object.entries(board.commitments)
+                .filter(([name, ids]) => ids.includes(b.task.id) && nameKey(name) !== nameKey(me))
+                .map(([name]) => name.split(/\s+/)[0])
+              return (
+                <button
+                  key={b.task.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => void choose(b.task, !on)}
+                  className="group flex flex-col items-center gap-1.5 bg-transparent border-0 p-0 cursor-pointer text-center"
+                >
+                  <span
+                    className="relative grid place-items-center w-[52px] h-[52px] rounded-full transition-transform duration-150 group-active:scale-90"
+                    style={on ? { background: t.bg, color: t.fg } : { background: 'var(--color-surface)', color: t.bg, boxShadow: `inset 0 0 0 2px ${t.bg}` }}
+                  >
+                    <Icon size={23} strokeWidth={2.2} />
+                    <span
+                      className="absolute -top-1 -right-1 grid place-items-center w-5 h-5 rounded-full ring-2 ring-white"
+                      style={{ background: on ? TOOL_TONES.green.bg : TOOL_TONES.royal.bg, color: '#fff' }}
+                      aria-hidden="true"
+                    >
+                      {on ? <Check size={12} strokeWidth={3} /> : <Plus size={12} strokeWidth={3} />}
+                    </span>
+                  </span>
+                  <span className="text-[12px] font-semibold leading-tight text-ink px-0.5">{b.task.name}</span>
+                  <span className="text-[11px] leading-tight text-ink-2">
+                    {on ? 'On your list' : others.length ? `${others.join(', ')} has it` : 'Tap to take it on'}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </section>
       )}
@@ -394,7 +477,13 @@ export function HousekeepingView({
         ) : (
           <p className="text-sm m-0 mb-3 text-good font-semibold">Every shop job is covered today. Thank you, team.</p>
         )}
-        <WeekTable tasks={board.tasks} week={board.week} people={people} />
+        <WeekTable
+          tasks={board.tasks}
+          week={board.week}
+          people={people}
+          commitments={board.commitments}
+          inventoryManagers={board.inventoryManagers}
+        />
       </section>
 
       {thanks && <ThanksCard thanks={thanks} onClose={() => setThanks(null)} />}
@@ -411,6 +500,46 @@ export function HousekeepingView({
   )
 }
 
+/** One obligations block: its heading, then the jobs grouped by when they happen. */
+function RoleSection({
+  role,
+  groups,
+  me,
+  busyId,
+  onTap,
+}: {
+  role: HkRole
+  groups: Array<{ id: string; label: string; hint: string; items: HkButton[] }>
+  me: string
+  busyId: number | null
+  onTap: (b: HkButton) => void
+}) {
+  const head = HK_ROLES.find((r) => r.id === role)!
+  return (
+    <div>
+      <div className="flex items-baseline gap-2 flex-wrap mb-3 pb-2 border-b border-line">
+        <h2 className="m-0 text-[17px] font-bold text-royal">{head.label}</h2>
+        <span className="text-[12px] text-ink-2">{head.hint}</span>
+      </div>
+      <div className="grid gap-5">
+        {groups.map((g) => (
+          <div key={g.id}>
+            <div className="flex items-baseline gap-2 mb-2.5">
+              <h3 className="m-0 text-[15px] font-bold">{g.label}</h3>
+              <span className="text-[12px] text-ink-2">{g.hint}</span>
+            </div>
+            <div className="grid grid-cols-3 min-[480px]:grid-cols-4 min-[760px]:grid-cols-6 gap-x-2 gap-y-4">
+              {g.items.map((b) => (
+                <JobButton key={b.task.id} button={b} me={me} busy={busyId === b.task.id} onTap={() => onTap(b)} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** One bold circle: the job's color and icon, a check once done, a count for after-client jobs. */
 function JobButton({ button, me, busy, onTap }: { button: HkButton; me: string; busy: boolean; onTap: () => void }) {
   const { task, done, mine, coveredBy } = button
@@ -423,12 +552,16 @@ function JobButton({ button, me, busy, onTap }: { button: HkButton; me: string; 
         ? `${mine} today`
         : 'Tap after each client'
       : coveredBy
-        ? `${byOther ? coveredBy.staffName.split(/\s+/)[0] : 'You'} · ${timeLabel(coveredBy.at)}`
+        ? `${byOther ? coveredBy.staffName.split(/\s+/)[0] : 'You'} · ${
+            task.cadence === 'weekly' ? new Date(coveredBy.at).toLocaleDateString([], { weekday: 'short' }) : timeLabel(coveredBy.at)
+          }`
         : done
           ? 'Done'
-          : task.scope === 'shop'
-            ? 'For the shop'
-            : 'Your station'
+          : !task.required
+            ? 'Your extra'
+            : task.scope === 'shop'
+              ? 'For the shop'
+              : 'Your station'
   return (
     <button
       type="button"
@@ -502,10 +635,14 @@ function WeekTable({
   tasks,
   week,
   people,
+  commitments,
+  inventoryManagers,
 }: {
   tasks: HkTask[]
   week: Array<HkCheck & { dayKey: string }>
   people: string[]
+  commitments: HkCommitments
+  inventoryManagers: string[]
 }) {
   const days = weekKeys().reverse()
   if (people.length === 0) return null
@@ -513,7 +650,7 @@ function WeekTable({
     <div className="overflow-x-auto -mx-1 px-1">
       <table className="w-full text-sm border-collapse min-w-[460px]">
         <caption className="text-left text-[12px] text-ink-2 pb-2">
-          Last 7 days · each person’s own jobs done (✦ = station resets after clients)
+          Last 7 days · each person’s list done: required jobs plus the extras they chose (✦ = station resets after clients)
         </caption>
         <thead>
           <tr className="text-[12px] text-ink-2">
@@ -534,6 +671,8 @@ function WeekTable({
                   tasks,
                   week.filter((c) => c.dayKey === d),
                   [p],
+                  commitments,
+                  inventoryManagers,
                 )[0]
                 const full = s.total > 0 && s.done === s.total
                 return (
@@ -553,8 +692,8 @@ function WeekTable({
   )
 }
 
-type Draft = { name: string; why: string; icon: HkIcon; tone: HkTone; cadence: HkCadence; scope: HkScope }
-const EMPTY_DRAFT: Draft = { name: '', why: '', icon: 'sparkles', tone: 'garnet', cadence: 'daily', scope: 'shop' }
+type Draft = { name: string; why: string; icon: HkIcon; tone: HkTone; cadence: HkCadence; scope: HkScope; required: boolean; role: HkRole }
+const EMPTY_DRAFT: Draft = { name: '', why: '', icon: 'sparkles', tone: 'garnet', cadence: 'daily', scope: 'shop', required: false, role: 'artist' }
 
 /** Owners shape the list: add a job (bold circle with an icon and color), restyle, hide or remove. */
 function ManageJobsSheet({
@@ -581,7 +720,7 @@ function ManageJobsSheet({
   }
   function startEdit(t: HkTask) {
     setEditing(t)
-    setDraft({ name: t.name, why: t.why, icon: t.icon, tone: t.tone, cadence: t.cadence, scope: t.scope })
+    setDraft({ name: t.name, why: t.why, icon: t.icon, tone: t.tone, cadence: t.cadence, scope: t.scope, required: t.required, role: t.role })
     setFormOpen(true)
   }
 
@@ -636,7 +775,9 @@ function ManageJobsSheet({
                   <span className="flex-1 min-w-0 text-sm">
                     <b className={t.active ? '' : 'text-ink-2'}>{t.name}</b>
                     <span className="block text-[12px] text-ink-2">
-                      {HK_CADENCES.find((x) => x.id === t.cadence)?.label} · {t.scope === 'shop' ? 'one person for the shop' : 'everyone’s own'}
+                      {t.role === 'inventory' ? 'Inventory · ' : ''}
+                      {t.required ? 'Required' : 'Optional'} · {HK_CADENCES.find((x) => x.id === t.cadence)?.label} ·{' '}
+                      {t.scope === 'shop' ? 'one person for the shop' : 'everyone’s own'}
                       {t.active ? '' : ' · hidden'}
                     </span>
                   </span>
@@ -682,6 +823,27 @@ function ManageJobsSheet({
               onChange={(e) => setDraft({ ...draft, why: e.target.value })}
             />
           </Field>
+          <div>
+            <span className="block text-sm font-semibold mb-1.5">Section</span>
+            <div className="flex gap-2 flex-wrap">
+              {HK_ROLES.map((r) => (
+                <button key={r.id} type="button" className="chip" aria-pressed={draft.role === r.id} onClick={() => setDraft({ ...draft, role: r.id })}>
+                  {r.id === 'artist' ? 'Artist & technician' : 'Inventory manager'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <span className="block text-sm font-semibold mb-1.5">On whose list</span>
+            <div className="flex gap-2 flex-wrap">
+              <button type="button" className="chip" aria-pressed={draft.required} onClick={() => setDraft({ ...draft, required: true })}>
+                {draft.role === 'inventory' ? 'Required for inventory managers' : 'Required for everyone'}
+              </button>
+              <button type="button" className="chip" aria-pressed={!draft.required} onClick={() => setDraft({ ...draft, required: false })}>
+                Optional: staff sign up
+              </button>
+            </div>
+          </div>
           <div>
             <span className="block text-sm font-semibold mb-1.5">When</span>
             <div className="flex gap-2 flex-wrap">

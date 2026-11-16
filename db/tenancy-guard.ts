@@ -41,6 +41,9 @@ export const TENANT_TABLES = [
   "housekeeping_tasks",
   "housekeeping_checks",
   "housekeeping_reminders",
+  "housekeeping_commitments",
+  "sustainability_partners",
+  "color_waste_logs",
 ] as const;
 
 /**

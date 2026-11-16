@@ -12,6 +12,7 @@ import {
   Store,
   Truck,
   Users,
+  Leaf,
   TriangleAlert,
   Wallet,
   Palette,
@@ -99,6 +100,7 @@ type Tab =
   | "activity"
   | "formulas"
   | "team"
+  | "sustainability"
   | "settings";
 
 const TABS: {
@@ -122,6 +124,7 @@ const TABS: {
   { id: "budget", label: "Budget", Icon: Wallet, feature: "budget" },
   { id: "activity", label: "Reports", Icon: Activity },
   { id: "team", label: "Team", Icon: Users, sideOnly: true },
+  { id: "sustainability", label: "Sustainability", Icon: Leaf, sideOnly: true },
 ];
 
 const TAB_IDS = new Set<string>([...TABS.map((t) => t.id), "settings"]);
@@ -173,6 +176,9 @@ const RestockView = lazy(() =>
 );
 const TeamView = lazy(() =>
   import("@/components/team/TeamView").then((m) => ({ default: m.TeamView })),
+);
+const SustainabilityView = lazy(() =>
+  import("@/components/sustainability/SustainabilityView").then((m) => ({ default: m.SustainabilityView })),
 );
 const SettingsView = lazy(() =>
   import("@/components/business/SettingsView").then((m) => ({ default: m.SettingsView })),
@@ -282,7 +288,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
   const [teamPage, setTeamPage] = useState<TeamPage>("team");
   const [checkoutShowing, setCheckoutShowing] = useState(false);
   const [activityView, setActivityView] = useState<
-    "reports" | "showstopper" | "profit" | "usage"
+    "reports" | "showstopper" | "profit" | "usage" | "green"
   >("reports");
   const [insights, setInsights] = useState<Insights | null>(null);
   const [insightsOpen, setInsightsOpen] = useState(false);
@@ -892,6 +898,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                       ["showstopper", "Showstopper"],
                       ["profit", "Profit"],
                       ["usage", "Usage"],
+                      ["green", "Sustainability"],
                     ] as const
                   ).map(([id, label]) => (
                     <button
@@ -917,6 +924,8 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                     staffName={staffName}
                     isOwner={auth.user?.role !== "staff"}
                   />
+                ) : activityView === "green" ? (
+                  <SustainabilityView staffName={staffName} />
                 ) : activityView === "profit" ? (
                   <ProfitView
                     products={products}
@@ -946,6 +955,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                 onChanged={refresh}
               />
             )}
+            {tab === "sustainability" && <SustainabilityView staffName={staffName} />}
             {tab === "team" && (
               <TeamView
                 page={teamPage}
