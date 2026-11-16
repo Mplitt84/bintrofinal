@@ -7,7 +7,7 @@
 import { businessTypeById } from "./business-types";
 import { categorySuggestionsFor } from "./tax-categories";
 import { directoryFor } from "./connection-directory";
-import { TIPS } from "./tips";
+import { TIPS, tipIsForTrade } from "./tips";
 
 /** How the client-records tab is worded and which fields it shows. null = no client records (bars). */
 export type TagGroup = { label: string; options: string[] }
@@ -291,11 +291,7 @@ export function industrySetup(id: string): SetupLine[] {
   const type = businessTypeById(id);
   const spec = recordSpecFor(id);
   const cats = categorySuggestionsFor(id).map((c) => c.name);
-  const tips = TIPS.filter(
-    (t) =>
-      t.audience === id ||
-      (t.audience === "hair" && (id === "salon" || id === "barber")),
-  );
+  const tips = TIPS.filter((t) => tipIsForTrade(t, id));
   const apps = directoryFor(id)
     .filter((e) => e.types.includes(id))
     .map((e) => e.name);
