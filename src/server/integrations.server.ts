@@ -15,7 +15,9 @@ import { db } from "../../db/index.js";
 import { mine, owned } from "./tenant.js";
 import { expenses, integrationLogs, integrations, products, squareOutbox } from "../../db/schema.js";
 import { SQUARE_STAFF_NAME, applyMovement, findProductByBarcode } from "./inventory.server.js";
-import { findExpenseReceipt, findExpensesForMonth, findInventorySpend, findProductCategories, upsertProductCategories, type MonthWindow } from "./business.server.js";
+import { addCheckoutReminder } from "./housekeeping.server.js";
+import { matchTeamName, reminderDetail } from "../lib/housekeeping.js";
+import { findExpenseReceipt, findTeamMembers, findExpensesForMonth, findInventorySpend, findProductCategories, upsertProductCategories, type MonthWindow } from "./business.server.js";
 
 export type Provider = "square" | "quickbooks";
 export const PROVIDERS: Provider[] = ["square", "quickbooks"];
@@ -24,7 +26,12 @@ type Integration = typeof integrations.$inferSelect;
 
 const SQUARE_VERSION = "2025-01-23";
 /** INVENTORY_* lets Bintro keep Square's stock counts in step; older connections lack it and must reconnect. */
-const SQUARE_SCOPES = "ITEMS_READ ORDERS_READ MERCHANT_PROFILE_READ INVENTORY_READ INVENTORY_WRITE";
+/**
+ * PAYMENTS_READ + EMPLOYEES_READ let a checkout say which team member rang it up, so
+ * Housekeeping's "reset your station" reminder goes to the right person. Connections
+ * made before they were added still work; reminders then go to whoever is working.
+ */
+const SQUARE_SCOPES = "ITEMS_READ ORDERS_READ MERCHANT_PROFILE_READ INVENTORY_READ INVENTORY_WRITE PAYMENTS_READ EMPLOYEES_READ";
 const QB_MINOR_VERSION = "75";
 
 /** Alternate env var names accepted for backward compatibility with existing Netlify settings. */
@@ -574,7 +581,43 @@ type SquareOrder = {
   id: string;
   closed_at?: string;
   line_items?: Array<{ catalog_object_id?: string; quantity?: string; name?: string }>;
+  tenders?: Array<{ payment_id?: string }>;
 };
+
+/**
+ * Who rang up a checkout, as the Bintro team list spells it ("" when Square doesn't
+ * say, the scopes aren't granted, or the name matches nobody on the team). Never throws:
+ * a missing name must not stop a sale from syncing.
+ */
+async function checkoutStaffName(
+  token: string,
+  order: SquareOrder,
+  team: string[],
+  canRead: boolean,
+  cache: Map<string, string>,
+) {
+  const paymentId = order.tenders?.find((t) => t.payment_id)?.payment_id;
+  if (!canRead || !paymentId) return "";
+  try {
+    const { payment } = await squareFetch<{ payment?: { team_member_id?: string; employee_id?: string } }>(
+      token,
+      `/v2/payments/${encodeURIComponent(paymentId)}`,
+    );
+    const memberId = payment?.team_member_id || payment?.employee_id || "";
+    if (!memberId) return "";
+    if (!cache.has(memberId)) {
+      const { team_member } = await squareFetch<{ team_member?: { given_name?: string; family_name?: string } }>(
+        token,
+        `/v2/team-members/${encodeURIComponent(memberId)}`,
+      );
+      const squareName = [team_member?.given_name, team_member?.family_name].filter(Boolean).join(" ");
+      cache.set(memberId, matchTeamName(squareName, team));
+    }
+    return cache.get(memberId) ?? "";
+  } catch {
+    return "";
+  }
+}
 
 /**
  * Logs every Square sale completed since the last sync as an "out" movement.
@@ -592,6 +635,13 @@ export async function syncSquareSales() {
   const since = row.lastSyncAt ?? row.connectedAt ?? new Date(Date.now() - 86_400_000);
   const mapped = await db.select({ id: products.id, variation: products.squareVariationId }).from(products).where(mine(products));
   const productByVariation = new Map(mapped.filter((p) => p.variation).map((p) => [p.variation, p.id]));
+
+  // Housekeeping: each checkout reminds the stylist who rang it up to reset their station.
+  const scopes = String((row.meta as { scopes?: string } | undefined)?.scopes ?? "");
+  const canReadStaff = scopes.includes("PAYMENTS_READ") && scopes.includes("EMPLOYEES_READ");
+  const team = (await findTeamMembers()).map((t) => t.name);
+  const staffCache = new Map<string, string>();
+  const remindAfter = new Date(Date.now() - 6 * 3_600_000);
 
   let cursor = "";
   let latest = since;
@@ -620,6 +670,18 @@ export async function syncSquareSales() {
       if (!closed || closed <= since) continue;
       if (closed > latest) latest = closed;
       sales++;
+      if (closed > remindAfter) {
+        try {
+          await addCheckoutReminder({
+            ref: `square:${order.id}`,
+            staffName: await checkoutStaffName(row.accessToken, order, team, canReadStaff, staffCache),
+            detail: reminderDetail((order.line_items ?? []).map((l) => l.name ?? "")),
+            at: closed,
+          });
+        } catch (error) {
+          console.error("Couldn't add a housekeeping reminder", error);
+        }
+      }
       for (const line of order.line_items ?? []) {
         const qty = Math.round(Number(line.quantity ?? 0));
         const productId = line.catalog_object_id ? productByVariation.get(line.catalog_object_id) : undefined;

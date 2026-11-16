@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { TeamPage } from "@/components/team/TeamView";
+import { CheckoutNudge } from "@/components/team/CheckoutNudge";
 import {
   Activity,
   Boxes,
@@ -96,6 +98,7 @@ type Tab =
   | "budget"
   | "activity"
   | "formulas"
+  | "team"
   | "settings";
 
 const TABS: {
@@ -103,6 +106,8 @@ const TABS: {
   label: string;
   Icon: typeof ScanBarcode;
   feature?: Feature;
+  /** Left sidebar only: the phone tab bar is full, so phones reach it from the header. */
+  sideOnly?: boolean;
 }[] = [
   { id: "scan", label: "Scan", Icon: ScanBarcode },
   { id: "products", label: "Products", Icon: Boxes },
@@ -116,13 +121,15 @@ const TABS: {
   },
   { id: "budget", label: "Budget", Icon: Wallet, feature: "budget" },
   { id: "activity", label: "Reports", Icon: Activity },
+  { id: "team", label: "Team", Icon: Users, sideOnly: true },
 ];
 
 const TAB_IDS = new Set<string>([...TABS.map((t) => t.id), "settings"]);
 
 /** Reads the tab from the URL hash so refreshes and shared links land in the same place. */
-function tabFromHash(hash: string): { tab: Tab; restock?: RestockMode } | null {
+function tabFromHash(hash: string): { tab: Tab; restock?: RestockMode; teamPage?: TeamPage } | null {
   const id = hash.replace(/^#/, "");
+  if (id === "housekeeping") return { tab: "team", teamPage: "housekeeping" };
   // Old bookmarks from before Below Par and Reorder were merged.
   if (id === "below-par") return { tab: "restock", restock: "below-par" };
   if (id === "reorder") return { tab: "restock", restock: "order" };
@@ -163,6 +170,9 @@ const BudgetView = lazy(() =>
 );
 const RestockView = lazy(() =>
   import("@/components/inventory/RestockView").then((m) => ({ default: m.RestockView })),
+);
+const TeamView = lazy(() =>
+  import("@/components/team/TeamView").then((m) => ({ default: m.TeamView })),
 );
 const SettingsView = lazy(() =>
   import("@/components/business/SettingsView").then((m) => ({ default: m.SettingsView })),
@@ -269,6 +279,8 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
     text: string;
   } | null>(null);
   const [tipsOpen, setTipsOpen] = useState(false);
+  const [teamPage, setTeamPage] = useState<TeamPage>("team");
+  const [checkoutShowing, setCheckoutShowing] = useState(false);
   const [activityView, setActivityView] = useState<
     "reports" | "showstopper" | "profit" | "usage"
   >("reports");
@@ -326,10 +338,12 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
     if (fromHash) {
       setTab(fromHash.tab);
       if (fromHash.restock) setRestockMode(fromHash.restock);
+      if (fromHash.teamPage) setTeamPage(fromHash.teamPage);
     }
     const onHash = () => {
       const next = tabFromHash(window.location.hash);
       if (next) setTab(next.tab);
+      if (next?.teamPage) setTeamPage(next.teamPage);
     };
     window.addEventListener("hashchange", onHash);
     reconnectSavedBluetoothScanner().catch(() => {});
@@ -564,7 +578,14 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
     openSettings("account");
   }
 
+  function openTeam(page: TeamPage = "team") {
+    setTeamPage(page);
+    closeStaff(null);
+    selectTab("team");
+  }
+
   function openSettings(section: SettingsSection = "profile") {
+    if (section === "team") return openTeam("team");
     setSettingsSection(section);
     closeStaff(null);
     selectTab("settings");
@@ -594,7 +615,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
   // The Formulas tab (client records + color theory) is for color work; bars don't get it.
   const showColor = recordSpecFor(profile.businessType) !== null;
   const tabButtons = (layout: "bar" | "side") =>
-    TABS.filter((t) => t.id !== "formulas" || showColor).map(
+    TABS.filter((t) => (t.id !== "formulas" || showColor) && !(layout === "bar" && t.sideOnly)).map(
       ({ id, label: tabLabel, Icon, feature }) => {
         const label =
           id === "formulas" ? formulaTabLabel(profile.businessType) : tabLabel;
@@ -706,14 +727,6 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
               {tabButtons("side")}
             </nav>
             <div className="mt-auto pt-4 border-t border-line flex flex-col gap-1">
-              {/* Team sits beside Settings rather than in the tab bar: it is looked
-                  at weekly, not daily, and the bottom bar is full on a phone. */}
-              <button
-                onClick={() => openSettings("team")}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-0 cursor-pointer text-[15px] font-semibold text-left bg-transparent text-ink-2 hover:bg-surface hover:text-ink"
-              >
-                <Users size={18} /> Team
-              </button>
               <button
                 onClick={() => openSettings("profile")}
                 aria-current={tab === "settings" ? "page" : undefined}
@@ -756,6 +769,17 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
               </div>
               <span className="hidden min-[1060px]:block mr-auto" />
 
+              <button
+                type="button"
+                onClick={() => openTeam(tab === "team" ? teamPage : "team")}
+                aria-label="Team and housekeeping"
+                aria-current={tab === "team" ? "page" : undefined}
+                className={`min-[1060px]:hidden w-10 h-10 rounded-full border-0 grid place-items-center cursor-pointer ${
+                  tab === "team" ? "bg-action-tint text-action" : "bg-transparent text-ink-2"
+                }`}
+              >
+                <Users size={20} />
+              </button>
               <TipBulb onClick={openTips} fresh={freshTip} />
 
               <button
@@ -922,6 +946,20 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                 onChanged={refresh}
               />
             )}
+            {tab === "team" && (
+              <TeamView
+                page={teamPage}
+                onPage={(p) => {
+                  setTeamPage(p);
+                  window.history.replaceState(null, "", `${window.location.pathname}#${p === "housekeeping" ? "housekeeping" : "team"}`);
+                }}
+                team={team}
+                onTeam={setTeam}
+                staffName={staffName}
+                onStaffName={setStaffName}
+                isOwner={auth.user?.role !== "staff"}
+              />
+            )}
             {tab === "budget" && (
               <PlanGate feature="budget">
                 <BudgetView
@@ -982,9 +1020,15 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
             {tabButtons("bar")}
           </nav>
 
+          <CheckoutNudge
+            staffName={staffName}
+            enabled={!(tab === "team" && teamPage === "housekeeping")}
+            onOpenHousekeeping={() => openTeam("housekeeping")}
+            onVisible={setCheckoutShowing}
+          />
           <TipNudge
             tab={tab}
-            enabled={!insightPopupShowing}
+            enabled={!insightPopupShowing && !checkoutShowing && tab !== "team"}
             onSeen={markTipSeen}
             onOpenAll={() => setTipsOpen(true)}
             onNavigate={navigateFromTip}

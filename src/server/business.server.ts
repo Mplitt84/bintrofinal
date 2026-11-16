@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gt, gte, inArray, like, lt, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { businessId, mine, owned } from "./tenant.js";
+import { renameInHousekeeping } from "./housekeeping.server.js";
 import { budgets, businessProfile, clientFormulas, expenseReceipts, expenses, movements, productCategories, products, retailGoals, teamMembers } from "../../db/schema.js";
 import { EMPTY_PROFILE, businessTypeById, type BusinessProfile, type BusinessType } from "../lib/business-types.js";
 import { DEFAULT_TAX_GROUP, isTaxGroupId, type ProductCategory, type TaxGroupId } from "../lib/tax-categories.js";
@@ -164,6 +165,7 @@ export async function renameTeamMember(id: number, nextName: string) {
     .set({ staffName: next })
     .where(and(mine(retailGoals), eq(retailGoals.staffName, from)))
     .returning({ id: retailGoals.id });
+  await renameInHousekeeping(from, next);
   await db.update(teamMembers).set({ name: next }).where(and(mine(teamMembers), eq(teamMembers.id, id)));
 
   return { team: await findTeamMembers(), moved: scans.length + visits.length + goals.length };

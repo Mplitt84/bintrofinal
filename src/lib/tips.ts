@@ -8,7 +8,7 @@
 export type TipCategory = 'save' | 'value' | 'plan' | 'green' | 'stock' | 'stylist'
 
 /** Tabs a tip can be tied to; mirrors the tab ids in `routes/index.tsx`. */
-export type TipTab = 'scan' | 'products' | 'restock' | 'calendar' | 'budget' | 'activity' | 'formulas' | 'settings'
+export type TipTab = 'scan' | 'products' | 'restock' | 'calendar' | 'budget' | 'activity' | 'formulas' | 'team' | 'settings'
 
 /** Which kinds of business a tip is written for. Omitted = everyone. */
 /** Groups (beauty, hair = salons + barbers) or a single business type id. */
