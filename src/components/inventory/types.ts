@@ -85,6 +85,8 @@ export type IntegrationStatus = {
   accountName: string;
   lastSyncAt: string | null;
   connectedAt: string | null;
+  /** Double-counted Square sales Bintro found and took back out (running total). */
+  salesCleanup?: { at: string; ordersChecked: number; ordersFixed: number; removed: number; units: number; valueCents: number } | null;
 };
 
 export type MovementRow = {

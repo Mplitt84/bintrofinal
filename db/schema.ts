@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, serial, text, integer, timestamp, jsonb, boolean, unique, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, jsonb, boolean, unique, index, primaryKey } from "drizzle-orm/pg-core";
 
 /**
  * One business using Bintro. Every other table below carries a `businessId`, and every
@@ -68,6 +68,23 @@ export const movements = pgTable("movements", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("movements_business").on(t.businessId),
+]);
+
+/**
+ * Every Square order whose sale Bintro has logged: one row per order per business, so
+ * an order is turned into "out" movements once, even when two syncs run at the same time.
+ */
+export const squareSyncedOrders = pgTable("square_synced_orders", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
+  id: serial().primaryKey(),
+  orderId: text("order_id").notNull(),
+  closedAt: timestamp("closed_at"),
+  syncedAt: timestamp("synced_at").defaultNow().notNull(),
+  /** How many movements the order had when the double-count check last compared it with Square (0 = never); a different number means check again. */
+  checkedMovements: integer("checked_movements").notNull().default(0),
+}, (t) => [
+  unique("square_synced_orders_business_order").on(t.businessId, t.orderId),
 ]);
 
 /** Single-row table (id = 1) holding the business name and contact details shown across the app. */
@@ -174,15 +191,18 @@ export const expenseReceipts = pgTable("expense_receipts", {
 export const budgets = pgTable("budgets", {
   /** Which business this belongs to. Every query filters on it. */
   businessId: integer("business_id").notNull().default(1),
-  month: text().primaryKey(), // YYYY-MM
+  month: text().notNull(), // YYYY-MM
   amountCents: integer("amount_cents").notNull(),
-});
+}, (t) => [
+  // One row per business per month (a month-only key let one business overwrite another's).
+  primaryKey({ name: "budgets_business_month", columns: [t.businessId, t.month] }),
+]);
 
 /** OAuth connections to outside systems (Square, QuickBooks). Tokens never leave the server. */
 export const integrations = pgTable("integrations", {
   /** Which business this belongs to. Every query filters on it. */
   businessId: integer("business_id").notNull().default(1),
-  provider: text().primaryKey(), // 'square' | 'quickbooks'
+  provider: text().notNull(), // 'square' | 'quickbooks'
   accessToken: text("access_token").notNull().default(""),
   refreshToken: text("refresh_token").notNull().default(""),
   expiresAt: timestamp("expires_at"),
@@ -194,7 +214,11 @@ export const integrations = pgTable("integrations", {
   lastSyncAt: timestamp("last_sync_at"),
   meta: jsonb().$type<Record<string, unknown>>().notNull().default({}),
   connectedAt: timestamp("connected_at"),
-});
+}, (t) => [
+  // One connection per business per provider. The old provider-only key made every
+  // save (sync progress, tokens, reconnect) fail once saves named the business too.
+  primaryKey({ name: "integrations_business_provider", columns: [t.businessId, t.provider] }),
+]);
 
 /**
  * Stock changes waiting to be sent to Square so Square's inventory follows Bintro.

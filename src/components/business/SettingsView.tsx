@@ -19,6 +19,7 @@ import {
   Trash2,
   UserPlus,
   X,
+  ShieldCheck,
 } from "lucide-react";
 import type {
   IntegrationStatus,
@@ -53,7 +54,7 @@ import {
   CategoryList,
   SupplierTidy,
 } from "@/components/inventory/TidyTools";
-import { useBusiness } from "@/components/business/BusinessContext";
+import { useBusiness, useMoney } from "@/components/business/BusinessContext";
 import { deriveInitials } from "@/lib/inventory-defaults";
 import { Field, SheetActions } from "@/components/ui/Sheet";
 import { CURRENCIES, currencySymbol } from "@/lib/money";
@@ -72,6 +73,7 @@ import {
   getSquareRetailCategories,
   setSquareRetailCategories,
   squareSyncSales,
+  squareFixDoubleCounts,
   updateBusinessProfile,
 } from "@/server/business.functions";
 import { sendInsightReportNow } from "@/server/insights.functions";
@@ -1061,6 +1063,7 @@ function Integrations({
 }) {
   const toast = useToast();
   const { can } = useBusiness();
+  const { money } = useMoney();
   const [status, setStatus] = useState<IntegrationStatus[] | null>(null);
   const [busy, setBusy] = useState("");
   const [origin, setOrigin] = useState("");
@@ -1185,6 +1188,16 @@ function Integrations({
                     )}
                   </p>
                 ) : null}
+                {s.provider === "square" && s.salesCleanup && s.salesCleanup.removed > 0 && (
+                  <div className="bg-good-tint rounded-xl px-3.5 py-2.5 text-sm mb-3">
+                    <b>Fixed double-counted Square sales.</b> {s.salesCleanup.removed} extra sale
+                    {s.salesCleanup.removed === 1 ? "" : "s"} on {s.salesCleanup.ordersFixed} order
+                    {s.salesCleanup.ordersFixed === 1 ? "" : "s"} taken back out ({s.salesCleanup.units} unit
+                    {s.salesCleanup.units === 1 ? "" : "s"}
+                    {s.salesCleanup.valueCents > 0 ? `, ${money(s.salesCleanup.valueCents)} at retail` : ""}) and put back on the shelf ·{" "}
+                    {timeAgo(s.salesCleanup.at)}. Checked against Square’s own orders; real sales were left alone.
+                  </div>
+                )}
                 {s.provider === "square" && !s.inventory?.needsReconnect && (
                   <SquareRetailPicker />
                 )}
@@ -1223,7 +1236,9 @@ function Integrations({
                             "sales",
                             () => squareSyncSales(),
                             (r) =>
-                              `${r.sales} sale${r.sales === 1 ? "" : "s"}, ${r.units} unit${r.units === 1 ? "" : "s"} counted out${
+                              `${r.sales} new sale${r.sales === 1 ? "" : "s"}, ${r.units} unit${r.units === 1 ? "" : "s"} counted out${
+                                r.alreadyLogged ? ` · ${r.alreadyLogged} already logged, skipped` : ""
+                              }${
                                 r.skipped
                                   ? ` (${r.skipped} unmatched line${r.skipped === 1 ? "" : "s"})`
                                   : ""
@@ -1233,6 +1248,25 @@ function Integrations({
                       >
                         <RefreshCw size={15} />
                         {busy === "sales" ? "Syncing…" : "Sync sales now"}
+                      </button>
+                      <button
+                        className="btn btn-tonal btn-sm"
+                        disabled={!!busy}
+                        onClick={() =>
+                          run(
+                            "dupes",
+                            () => squareFixDoubleCounts(),
+                            (r) =>
+                              r.removed > 0
+                                ? `Took out ${r.removed} double-counted sale${r.removed === 1 ? "" : "s"} (${r.units} unit${r.units === 1 ? "" : "s"}) and put them back on the shelf.`
+                                : r.ordersChecked > 0
+                                  ? `Checked ${r.ordersChecked} order${r.ordersChecked === 1 ? "" : "s"} with Square: nothing counted twice.`
+                                  : "No double-counted Square sales.",
+                          )
+                        }
+                      >
+                        <ShieldCheck size={15} />
+                        {busy === "dupes" ? "Checking…" : "Fix double-counted sales"}
                       </button>
                       <button
                         className="btn btn-tonal btn-sm"
