@@ -1,3 +1,4 @@
+import { redirectTo } from '@/lib/security-headers'
 import { createFileRoute } from '@tanstack/react-router'
 import { OAUTH_COOKIE, authEnabled, serializeCookie, startGoogleSignIn } from '@/server/auth.server'
 
@@ -7,7 +8,7 @@ export const Route = createFileRoute('/api/auth/google/start')({
     handlers: {
       GET: async ({ request }) => {
         const origin = new URL(request.url).origin
-        if (!authEnabled()) return Response.redirect(`${origin}/`, 302)
+        if (!authEnabled()) return redirectTo(`${origin}/`, 302)
         const { url, cookie } = startGoogleSignIn(origin)
         return new Response(null, {
           status: 302,

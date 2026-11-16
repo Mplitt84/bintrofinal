@@ -21,3 +21,14 @@ export function withSecurityHeaders(response: Response): Response {
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
   }
 }
+
+/**
+ * A redirect whose headers can still be changed. `Response.redirect()` makes immutable
+ * headers, and the server adds headers (security headers, the sign-in session cookie)
+ * to every response afterwards, which threw "TypeError: immutable" → a 500 on every
+ * Connect Square / QuickBooks, callback, Stripe return and Google sign-in redirect.
+ * Use this instead of Response.redirect everywhere.
+ */
+export function redirectTo(url: string | URL, status: 301 | 302 | 303 | 307 | 308 = 302): Response {
+  return new Response(null, { status, headers: { Location: String(url) } })
+}
