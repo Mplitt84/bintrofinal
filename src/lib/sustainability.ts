@@ -36,8 +36,14 @@ export type Partner = {
 export const pickupEventTitle = (name: string) => `Book recycling pickup · ${name}`
 
 /** A one-tap start for beauty businesses. Everything else is written in by the shop. */
-export const PARTNER_SUGGESTIONS: Array<Pick<Partner, 'name' | 'kind' | 'website'>> = [
-  { name: 'Green Circle Salons', kind: 'recycling', website: 'https://greencirclesalons.com' },
+export const PARTNER_SUGGESTIONS: Array<Pick<Partner, 'name' | 'kind' | 'website' | 'pickupUrl'>> = [
+  {
+    name: 'Green Circle Salons',
+    kind: 'recycling',
+    website: 'https://greencirclesalons.com',
+    /** Members book pickups on Green Circle's Hair Mail Hub (signed in to their own account). */
+    pickupUrl: 'https://hairmailhub.greencirclesalons.com/my-account/schedule-pickup/',
+  },
 ]
 
 export type WasteUnit = 'lb' | 'oz' | 'kg' | 'g'
