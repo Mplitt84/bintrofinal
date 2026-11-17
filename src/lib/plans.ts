@@ -1,6 +1,6 @@
 /**
  * Bintro account tiers. Free covers day-to-day scanning; Plus adds ordering,
- * planning, AI and Square; Premium adds money management, QuickBooks and CRM.
+ * planning, AI and Square; Premium adds money management and QuickBooks.
  * Prices are in cents. Change them here (and in Stripe) — nothing else hardcodes them.
  */
 
@@ -92,7 +92,6 @@ export const PLANS: Plan[] = [
       'Unlimited team members',
       'Budget, expenses and AI receipt reading',
       'QuickBooks Online sync',
-      'Client CRM connections (coming soon)',
       'Priority support',
     ],
   },

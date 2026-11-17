@@ -50,6 +50,7 @@ import {
 } from "@/lib/industry";
 import type { Product } from "@/components/inventory/types";
 import { ClientProfilePanel, todayKey } from "@/components/formulas/ClientProfilePanel";
+import { ColorBarView, ServicesView } from "@/components/formulas/ColorBarView";
 import { getClientProfiles } from "@/server/client-profiles.functions";
 import { AlertTriangle, Cake } from "lucide-react";
 import {
@@ -178,43 +179,55 @@ export function FormulasView({
   team,
   products,
   onChanged,
+  isOwner = true,
 }: {
   staffName: string;
   /** Saved team member names, for "whose client is this". */
   team: string[];
   products: Product[];
   onChanged: () => void;
+  isOwner?: boolean;
 }) {
   const { profile } = useBusiness();
   const kind = formulaKindFor(profile.businessType);
-  const [section, setSection] = useState<"records" | "theory">("records");
+  const [section, setSection] = useState<"records" | "bar" | "services" | "theory">("records");
   // Salons and tattoo shops see Color theory here; everyone else finds it in Settings.
   const theory = showsColorTheoryTab(profile.businessType);
+  // Color bar for trades that mix color; Services for everyone with client records.
+  const colorBar = ["salon", "barber", "brows", "other"].includes(profile.businessType);
+  const [clientNames, setClientNames] = useState<string[]>([]);
+  useEffect(() => {
+    if (section !== "bar") return;
+    getFormulas({ data: { search: "" } })
+      .then((r) => setClientNames([...new Set(r.formulas.map((f) => f.clientName))].sort()))
+      .catch(() => {});
+  }, [section]);
+  const sections = [
+    ["records", "Client records"],
+    ...(colorBar ? [["bar", "Color bar"] as const] : []),
+    ["services", "Services"],
+    ...(theory ? [["theory", "Color theory"] as const] : []),
+  ] as const;
   return (
     <>
       <PageHead
         title={formulaTabLabel(profile.businessType)}
         lead={recordSpecFor(profile.businessType)?.lead ?? ""}
       />
-      {theory && (
+      {(
         <div
-          className="inline-flex bg-surface rounded-full p-1 mb-4"
+          className="flex max-w-full overflow-x-auto w-fit bg-surface rounded-full p-1 mb-4"
           role="tablist"
           aria-label="Sections"
         >
-          {(
-            [
-              ["records", "Client records"],
-              ["theory", "Color theory"],
-            ] as const
-          ).map(([id, label]) => (
+          {sections.map(([id, label]) => (
             <button
               key={id}
               type="button"
               role="tab"
               aria-selected={section === id}
               onClick={() => setSection(id)}
-              className={`px-4 py-2 rounded-full border-0 cursor-pointer text-sm font-semibold ${
+              className={`px-4 py-2 rounded-full border-0 cursor-pointer text-sm font-semibold shrink-0 whitespace-nowrap ${
                 section === id
                   ? "bg-white text-ink shadow-sm"
                   : "bg-transparent text-ink-2"
@@ -225,7 +238,18 @@ export function FormulasView({
           ))}
         </div>
       )}
-      {section === "records" || !theory ? (
+      {section === "bar" && colorBar ? (
+        <ColorBarView
+          products={products}
+          staffName={staffName}
+          team={team}
+          kind={kind}
+          clientNames={clientNames}
+          isOwner={isOwner}
+        />
+      ) : section === "services" ? (
+        <ServicesView isOwner={isOwner} />
+      ) : section === "records" || !theory ? (
         <ClientRecords
           kind={kind}
           staffName={staffName}

@@ -35,6 +35,8 @@ export const TENANT_TABLES = [
   "inbound_emails",
   "client_formulas",
   "client_profiles",
+  "services",
+  "color_bowls",
   "formula_photos",
   "profit_exclusions",
   "error_reports",

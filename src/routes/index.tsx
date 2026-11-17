@@ -959,6 +959,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                     : staffName
                 }
                 team={team.filter((t) => t.isProvider).map((t) => t.name)}
+                isOwner={auth.user?.role !== "staff"}
                 products={products}
                 onChanged={refresh}
               />
