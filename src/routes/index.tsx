@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TeamPage } from "@/components/team/TeamView";
-import { CheckoutNudge } from "@/components/team/CheckoutNudge";
 import {
   Activity,
   Boxes,
@@ -286,7 +285,6 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
   } | null>(null);
   const [tipsOpen, setTipsOpen] = useState(false);
   const [teamPage, setTeamPage] = useState<TeamPage>("team");
-  const [checkoutShowing, setCheckoutShowing] = useState(false);
   const [activityView, setActivityView] = useState<
     "reports" | "showstopper" | "profit" | "usage" | "green"
   >("reports");
@@ -1040,15 +1038,9 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
             {tabButtons("bar")}
           </nav>
 
-          <CheckoutNudge
-            staffName={staffName}
-            enabled={!(tab === "team" && teamPage === "housekeeping")}
-            onOpenHousekeeping={() => openTeam("housekeeping")}
-            onVisible={setCheckoutShowing}
-          />
           <TipNudge
             tab={tab}
-            enabled={!insightPopupShowing && !checkoutShowing && tab !== "team"}
+            enabled={!insightPopupShowing && tab !== "team"}
             onSeen={markTipSeen}
             onOpenAll={() => setTipsOpen(true)}
             onNavigate={navigateFromTip}
