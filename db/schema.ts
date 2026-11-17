@@ -48,6 +48,8 @@ export const products = pgTable("products", {
   extraBarcodes: text("extra_barcodes").array().notNull().default(sql`'{}'::text[]`),
   /** When cost or retail price last changed or was confirmed. Null = never (falls back to createdAt for reminders). */
   priceUpdatedAt: timestamp("price_updated_at"),
+  /** Last time the weekly Better prices scan looked for cheaper sellers of this product. */
+  sellerScanAt: timestamp("seller_scan_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
@@ -120,6 +122,8 @@ export const businessProfile = pgTable("business_profile", {
   orderEveryDays: integer("order_every_days").notNull().default(7),
   /** Two-letter US state the business files taxes in (Calendar → state tax dates); "" = not chosen. */
   taxState: text("tax_state").notNull().default(""),
+  /** Where Better prices may look: pro (distributors + brands) · local (+ local independents, never big-box) · marketplace (+ Amazon/Walmart/Target for supplies). */
+  buyingPreference: text("buying_preference").notNull().default("pro"),
   /**
    * What share of retail a team member earns, as a whole percent. 0 = not set, and
    * Showstopper then shows no earnings line rather than guessing at anybody's pay.
@@ -317,6 +321,32 @@ export const priceChecks = pgTable("price_checks", {
   sourceType: text("source_type").notNull().default("estimate"),
   note: text().notNull().default(""),
   checkedAt: timestamp("checked_at").defaultNow().notNull(),
+});
+
+/**
+ * Better prices: cheaper places to buy a product, found by the weekly scan. One row per
+ * offer; a new scan replaces a product's open offers. `status`: new · switched · dismissed.
+ */
+export const priceAlternatives = pgTable("price_alternatives", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
+  id: serial().primaryKey(),
+  productId: integer("product_id")
+    .notNull()
+    .references(() => products.id, { onDelete: "cascade" }),
+  sellerName: text("seller_name").notNull(),
+  sellerUrl: text("seller_url").notNull().default(""),
+  /** distributor · brand · local · marketplace */
+  sellerType: text("seller_type").notNull().default("distributor"),
+  unitCostCents: integer("unit_cost_cents").notNull(),
+  /** What the product cost when this was found, so savings stay honest if the cost changes. */
+  currentCostCents: integer("current_cost_cents").notNull().default(0),
+  currentVendor: text("current_vendor").notNull().default(""),
+  note: text().notNull().default(""),
+  status: text().notNull().default("new"),
+  foundAt: timestamp("found_at").defaultNow().notNull(),
+  decidedAt: timestamp("decided_at"),
+  decidedBy: text("decided_by").notNull().default(""),
 });
 
 /**

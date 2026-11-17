@@ -174,6 +174,8 @@ export type BusinessProfile = {
   orderEveryDays: number
   /** Two-letter US state for tax dates; '' = not chosen. */
   taxState: string
+  /** Where Better prices may look: pro · local · marketplace (see src/lib/better-prices.ts). */
+  buyingPreference: string
   /** What share of retail a team member earns, as a whole percent. 0 = not set. */
   retailCommissionPct: number
   /** ISO 4217 code every amount on screen is shown in (see src/lib/money.ts). */
@@ -195,6 +197,7 @@ export const EMPTY_PROFILE: BusinessProfile = {
   palette: 'bintro',
   orderEveryDays: 7,
   taxState: '',
+  buyingPreference: 'pro',
   retailCommissionPct: 0,
   currency: 'USD',
 }

@@ -62,6 +62,7 @@ const ProfileSchema = z.object({
   palette: z.string().max(40).optional(),
   orderEveryDays: z.number().int().min(1).max(90).optional(),
   taxState: z.string().max(2).optional(),
+  buyingPreference: z.enum(["pro", "local", "marketplace"]).optional(),
   currency: z.string().length(3).optional(),
 });
 
