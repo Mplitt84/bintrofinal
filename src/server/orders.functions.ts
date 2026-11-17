@@ -1,4 +1,5 @@
 import { requireUser } from "./auth.middleware";
+import { rowsOf, saveSnapshot } from "./trash.server.js";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { cancelOrder, ordersOverview, receiveDelivery, saveOrders } from "./orders.server.js";
@@ -32,8 +33,12 @@ export const cancelSavedOrder = createServerFn({ method: "POST" }).middleware([r
   .inputValidator(z.object({ orderId: z.number().int().positive() }))
   .handler(async ({ data }) => {
     await assertFeature("orders");
+    const [before] = await rowsOf("purchaseOrders", [data.orderId]);
     await cancelOrder(data.orderId);
-    return ordersOverview();
+    const undoId = before
+      ? await saveSnapshot("order", `Canceled the ${String(before.vendor)} order`, { updates: [{ table: "purchaseOrders", id: data.orderId, set: { status: before.status } }] })
+      : null;
+    return Object.assign(await ordersOverview(), { undoId });
   });
 
 const DeliveryLine = z.object({

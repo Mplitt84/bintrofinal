@@ -147,6 +147,8 @@ export const updateProduct = createServerFn({ method: "POST" }).middleware([requ
   .inputValidator(UpdateProductSchema)
   .handler(async ({ data }) => {
     const { productId, qty, staffName, extraBarcodes, alsoLine, ...rest } = data;
+    const { EDITABLE_PRODUCT_FIELDS, productFieldsSnapshot, saveSnapshot } = await import("./trash.server.js");
+    const editSnap = await productFieldsSnapshot([productId], EDITABLE_PRODUCT_FIELDS);
     const before = alsoLine && rest.unitCostCents !== undefined ? await findProductById(productId) : null;
     let extras: string[] | undefined;
     if (extraBarcodes !== undefined) {
@@ -168,33 +170,47 @@ export const updateProduct = createServerFn({ method: "POST" }).middleware([requ
         }
       }
       if (current && qty !== current.qty) {
-        await applyMovement({
+        const { movement } = await applyMovement({
           productId,
           type: "adjust",
           delta: qty - current.qty,
           staffName: staffName ?? "",
           note: "Manual on-hand edit",
         });
+        if (movement) editSnap.reverseMovements = [movement.id];
       }
     }
     const saved = await updateProductFields(productId, extras === undefined ? rest : { ...rest, extraBarcodes: extras });
     if (saved && before && rest.unitCostCents !== undefined && rest.unitCostCents !== before.unitCostCents) {
-      await followLineCost(saved, before.unitCostCents, rest.unitCostCents, { source: "manual" });
+      const followers = await followLineCost(saved, before.unitCostCents, rest.unitCostCents, { source: "manual" });
+      for (const f of followers) editSnap.updates?.push({ table: "products", id: f.id, set: { unitCostCents: f.oldCents } });
     }
-    return saved;
+    const undoId = saved ? await saveSnapshot("edit", `Edited ${saved.name}`, editSnap, { listed: false }) : null;
+    return saved ? { ...saved, undoId } : saved;
   });
 
 export const deleteProduct = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ productId: z.number().int().positive() }))
   .handler(async ({ data }) => {
-    return deleteProductById(data.productId);
+    const { productSnapshot, saveSnapshot } = await import("./trash.server.js");
+    const snap = await productSnapshot([data.productId]);
+    const name = String(snap.inserts?.[0]?.rows[0]?.name ?? "a product");
+    const row = await deleteProductById(data.productId);
+    const undoId = row ? await saveSnapshot("product", `Deleted ${name}`, snap) : null;
+    return row ? { ...row, undoId } : null;
   });
 
 /** Folds a duplicate into the real product (barcode, Square link, history) and removes the duplicate. */
 export const mergeProducts = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ sourceId: z.number().int().positive(), targetId: z.number().int().positive() }))
   .handler(async ({ data }) => {
-    return mergeProductsInto(data.sourceId, data.targetId);
+    const { mergeSnapshot, saveSnapshot } = await import("./trash.server.js");
+    const { snap, targetQty } = await mergeSnapshot(data.sourceId, data.targetId);
+    const name = String(snap.inserts?.[0]?.rows[0]?.name ?? "a product");
+    const result = await mergeProductsInto(data.sourceId, data.targetId);
+    snap.qty = [{ productId: data.targetId, delta: targetQty - (result.product?.qty ?? targetQty) }];
+    const undoId = await saveSnapshot("merge", `Merged ${name} into ${result.product?.name ?? "another product"}`, snap);
+    return { ...result, undoId };
   });
 
 const ScanSchema = z.object({
@@ -394,21 +410,31 @@ export const bulkUpdateProducts = createServerFn({ method: "POST" }).middleware(
   .inputValidator(z.object({ productIds: z.array(z.number().int().positive()).min(1).max(2000), changes: BulkChangesSchema }))
   .handler(async ({ data }) => {
     const changes = Object.fromEntries(Object.entries(data.changes).filter(([, v]) => v !== undefined));
-    if (Object.keys(changes).length === 0) return { updated: 0 };
+    if (Object.keys(changes).length === 0) return { updated: 0, undoId: null };
+    const { productFieldsSnapshot, saveSnapshot } = await import("./trash.server.js");
+    const undoId = await saveSnapshot(
+      "edit",
+      `Bulk edit of ${data.productIds.length} products`,
+      await productFieldsSnapshot(data.productIds, [...Object.keys(changes), "priceUpdatedAt"]),
+      { listed: false },
+    );
     let updated = 0;
     for (let i = 0; i < data.productIds.length; i += 10) {
       const chunk = data.productIds.slice(i, i + 10);
       const rows = await Promise.all(chunk.map((id) => updateProductFields(id, changes)));
       updated += rows.filter(Boolean).length;
     }
-    return { updated };
+    return { updated, undoId };
   });
 
 /** Bulk delete: removes the selected products and their history (same as deleting one at a time). */
 export const bulkDeleteProducts = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ productIds: z.array(z.number().int().positive()).min(1).max(2000) }))
   .handler(async ({ data }) => {
+    const { productSnapshot, saveSnapshot } = await import("./trash.server.js");
+    const snap = await productSnapshot(data.productIds);
     let deleted = 0;
     for (const id of data.productIds) if (await deleteProductById(id)) deleted++;
-    return { deleted };
+    const undoId = deleted ? await saveSnapshot("product", `Deleted ${deleted} product${deleted === 1 ? "" : "s"}`, snap) : null;
+    return { deleted, undoId };
   });

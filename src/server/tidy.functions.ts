@@ -1,4 +1,5 @@
 import { requireUser } from "./auth.middleware";
+import { categorySnapshot, saveSnapshot, vendorSnapshot } from "./trash.server.js";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { applyCounts, applyPars, categoryGroups, duplicateGroups, mergeCategoryNames, smartPars, undoParChange, categoryList, deleteCategoryName, vendorGroups,
@@ -27,8 +28,10 @@ export const getCategoryGroups = createServerFn({ method: "GET" }).middleware([r
 export const mergeCategories = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ from: z.array(z.string().max(80)).min(2).max(30), to: z.string().trim().min(1).max(80) }))
   .handler(async ({ data }) => {
+    const snap = await categorySnapshot(data.from.filter((f) => f !== data.to));
     await mergeCategoryNames(data.from, data.to);
-    return categoryGroups();
+    const undoId = await saveSnapshot("category", `Merged categories into ${data.to}`, snap);
+    return { groups: await categoryGroups(), undoId };
   });
 
 export const getDuplicateGroups = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => duplicateGroups());
@@ -48,7 +51,12 @@ export const getCategoryList = createServerFn({ method: "GET" }).middleware([req
 /** Deletes a category; its products move to `moveTo` (blank = no category). */
 export const deleteCategory = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ name: z.string().min(1).max(80), moveTo: z.string().max(80) }))
-  .handler(async ({ data }) => ({ moved: await deleteCategoryName(data.name, data.moveTo), list: await categoryList() }));
+  .handler(async ({ data }) => {
+    const snap = await categorySnapshot([data.name]);
+    const moved = await deleteCategoryName(data.name, data.moveTo);
+    const undoId = await saveSnapshot("category", `Deleted category ${data.name}`, snap);
+    return { moved, list: await categoryList(), undoId };
+  });
 
 /** Suppliers typed several ways, for Settings → Suppliers. */
 export const getVendorGroups = createServerFn({ method: "POST" })
@@ -64,19 +72,31 @@ export const getVendorList = createServerFn({ method: "POST" })
 export const mergeVendors = createServerFn({ method: "POST" })
   .middleware([requireUser])
   .inputValidator(z.object({ from: z.array(z.string().max(120)).min(1).max(20), to: z.string().trim().min(1).max(120) }))
-  .handler(async ({ data }) => ({ moved: await mergeVendorNames(data.from, data.to) }));
+  .handler(async ({ data }) => {
+    const snap = await vendorSnapshot(data.from.filter((f) => f !== data.to));
+    const moved = await mergeVendorNames(data.from, data.to);
+    return { moved, undoId: await saveSnapshot("supplier", `Merged suppliers into ${data.to}`, snap, { listed: false }) };
+  });
 
 /** Rename one supplier on every product that carries it. */
 export const renameVendorFn = createServerFn({ method: "POST" })
   .middleware([requireUser])
   .inputValidator(z.object({ from: z.string().min(1).max(120), to: z.string().trim().min(1).max(120) }))
-  .handler(async ({ data }) => ({ moved: await renameVendor(data.from, data.to) }));
+  .handler(async ({ data }) => {
+    const snap = await vendorSnapshot([data.from]);
+    const moved = await renameVendor(data.from, data.to);
+    return { moved, undoId: await saveSnapshot("supplier", `Renamed ${data.from} to ${data.to}`, snap, { listed: false }) };
+  });
 
 /** Delete a supplier; its products move to `moveTo` (blank = no supplier). */
 export const deleteVendorFn = createServerFn({ method: "POST" })
   .middleware([requireUser])
   .inputValidator(z.object({ name: z.string().min(1).max(120), moveTo: z.string().max(120) }))
-  .handler(async ({ data }) => ({ moved: await deleteVendor(data.name, data.moveTo) }));
+  .handler(async ({ data }) => {
+    const snap = await vendorSnapshot([data.name]);
+    const moved = await deleteVendor(data.name, data.moveTo);
+    return { moved, undoId: await saveSnapshot("supplier", `Deleted supplier ${data.name}`, snap) };
+  });
 
 /** Bintro's category guesses from each product's name and size, plus name / size tidying. */
 export const getCategorySuggestions = createServerFn({ method: "POST" })

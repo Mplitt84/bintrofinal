@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { undoChange } from '@/server/trash.functions'
+import { toastUndo } from '@/components/ui/undo'
 import { Check, ChevronDown, Copy, Sparkles, Type } from 'lucide-react'
 import { ToolButton, ToolRow } from '@/components/ui/ToolButton'
 import { AutoSortSheet } from './AutoSortSheet'
@@ -99,9 +101,9 @@ export function CountSheet({
     if (counts.length === 0) return
     setSaving(true)
     try {
-      await saveCounts({ data: { staffName, counts } })
+      const r = (await saveCounts({ data: { staffName, counts } })) as { undoId?: number | null }
       await onDone()
-      toast(`Saved counts for ${counts.length} product${counts.length === 1 ? '' : 's'}`)
+      toastUndo(toast, `Saved counts for ${counts.length} product${counts.length === 1 ? '' : 's'}`, r.undoId, onDone)
       onClose()
     } catch (error) {
       toast(error instanceof Error && error.message ? `Couldn't save: ${error.message}` : "Couldn't save the count. Check your connection and try again.")
@@ -253,10 +255,20 @@ export function DuplicatesSheet({ open, onClose, onDone }: { open: boolean; onCl
     const target = keep[index] ?? group.products[0].id
     setBusy(index)
     try {
+      const undoIds: number[] = []
       for (const p of group.products) {
-        if (p.id !== target) await mergeProducts({ data: { sourceId: p.id, targetId: target } })
+        if (p.id !== target) {
+          const r = (await mergeProducts({ data: { sourceId: p.id, targetId: target } })) as { undoId?: number }
+          if (r?.undoId) undoIds.push(r.undoId)
+        }
       }
-      toast(`Merged into ${group.products.find((p) => p.id === target)?.name}`)
+      toast(`Merged into ${group.products.find((p) => p.id === target)?.name}`, undoIds.length
+        ? async () => {
+            for (const id of undoIds.reverse()) await undoChange({ data: { id } })
+            await onDone()
+            await load()
+          }
+        : undefined)
       await onDone()
       await load()
     } catch (error) {
@@ -546,10 +558,14 @@ export function CategoryCleanup({ onChanged }: { onChanged?: () => void | Promis
     const to = pick[i] ?? g.names[0].name
     setBusy(i)
     try {
-      const next = await mergeCategories({ data: { from: g.names.map((n) => n.name), to } })
+      const res = (await mergeCategories({ data: { from: g.names.map((n) => n.name), to } })) as { groups: CategoryGroup[]; undoId?: number }
+      const next = res.groups
       setGroups(next)
       setPick(Object.fromEntries(next.map((grp, j) => [j, grp.names[0].name])))
-      toast(`Merged into “${to.trim()}”`)
+      toastUndo(toast, `Merged into “${to.trim()}”`, res.undoId, async () => {
+        setGroups((await getCategoryGroups()) as CategoryGroup[])
+        await onChanged?.()
+      })
       await onChanged?.()
     } catch {
       toast("Couldn't merge those categories. Try again.")
@@ -614,10 +630,16 @@ export function CategoryList({ onChanged }: { onChanged?: () => void | Promise<v
       const r = await deleteCategory({ data: { name, moveTo } })
       setList(r.list)
       setDeleting(null)
-      toast(
+      toastUndo(
+        toast,
         r.moved
           ? `Deleted “${name}”. ${r.moved} product${r.moved === 1 ? '' : 's'} moved to ${moveTo ? `“${moveTo}”` : 'no category'}.`
           : `Deleted “${name}”.`,
+        r.undoId,
+        async () => {
+          setList((await getCategoryList()) as typeof r.list)
+          await onChanged?.()
+        },
       )
       await onChanged?.()
     } catch {
@@ -744,13 +766,16 @@ export function SupplierTidy({ onChanged }: { onChanged?: () => void | Promise<v
   async function removeVendor(name: string) {
     setBusy('delete')
     try {
-      const res = (await deleteVendorFn({ data: { name, moveTo } })) as { moved: number }
+      const res = (await deleteVendorFn({ data: { name, moveTo } })) as { moved: number; undoId?: number }
       setDeleting(null)
       await load()
-      toast(
+      toastUndo(
+        toast,
         res.moved
           ? `Deleted “${name}”. ${res.moved} product${res.moved === 1 ? '' : 's'} moved to ${moveTo ? `“${moveTo}”` : 'no supplier'}.`
           : `Deleted “${name}”.`,
+        res.undoId,
+        afterTool,
       )
       await onChanged?.()
     } catch {
@@ -769,9 +794,9 @@ export function SupplierTidy({ onChanged }: { onChanged?: () => void | Promise<v
     const to = pick[i] ?? g.names[0].name
     setBusy(`merge-${i}`)
     try {
-      await mergeVendors({ data: { from: g.names.map((n) => n.name), to } })
+      const r = (await mergeVendors({ data: { from: g.names.map((n) => n.name), to } })) as { undoId?: number }
       await load()
-      toast(`Now all “${to.trim()}”`)
+      toastUndo(toast, `Now all “${to.trim()}”`, r.undoId, afterTool)
       await onChanged?.()
     } catch {
       toast("Couldn't merge those suppliers. Try again.")
@@ -786,10 +811,10 @@ export function SupplierTidy({ onChanged }: { onChanged?: () => void | Promise<v
     if (!to || to === renaming.name) return setRenaming(null)
     setBusy('rename')
     try {
-      const res = (await renameVendorFn({ data: { from: renaming.name, to } })) as { moved: number }
+      const res = (await renameVendorFn({ data: { from: renaming.name, to } })) as { moved: number; undoId?: number }
       await load()
       setRenaming(null)
-      toast(`${res.moved} ${res.moved === 1 ? 'product now says' : 'products now say'} “${to}”`)
+      toastUndo(toast, `${res.moved} ${res.moved === 1 ? 'product now says' : 'products now say'} “${to}”`, res.undoId, afterTool)
       await onChanged?.()
     } catch {
       toast("Couldn't rename that supplier. Try again.")

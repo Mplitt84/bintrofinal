@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { toastUndo } from '@/components/ui/undo'
 import { BadgeCheck, Minus, Plus } from 'lucide-react'
 import type { Product } from '@/components/inventory/types'
 import { Sheet, SheetActions } from '@/components/ui/Sheet'
@@ -110,13 +111,20 @@ export function CheckProductSheet({
           unitCostCents: cents(details.cost),
           retailPriceCents: cents(details.retail),
         },
-      })) as Product | null
+      })) as (Product & { undoId?: number | null }) | null
       if (updated) {
         setCurrent(updated)
         setDetails(toDetails(updated))
         onUpdated(updated)
       }
-      toast('Product details saved')
+      const before = current
+      toastUndo(toast, 'Product details saved', updated?.undoId, () => {
+        if (before) {
+          setCurrent(before)
+          setDetails(toDetails(before))
+          onUpdated(before)
+        }
+      })
     } catch {
       toast('Couldn’t save the details. Try again.')
     } finally {

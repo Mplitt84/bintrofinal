@@ -1,4 +1,6 @@
 import { Sheet } from "@/components/ui/Sheet";
+import { RecentlyDeletedCard } from "./RecentlyDeleted";
+import { toastUndo } from "@/components/ui/undo";
 import { providerNounFor } from "@/lib/industry";
 import { dismissAppError, getAppErrors } from "@/server/errors.functions";
 import { exportEverything } from "@/server/export.functions";
@@ -67,6 +69,7 @@ import {
   getIntegrations,
   getIntegrationErrorLog,
   removeTeamMember,
+  listTeamMembers,
   renameTeamMemberFn,
   updateTeamMemberRoles,
   squareImportCatalog,
@@ -256,6 +259,7 @@ export function SettingsView({
       )}
       <AccessPanel auth={auth} />
       <PilotInvitesPanel auth={auth} />
+      <RecentlyDeletedCard onRestored={onChanged} />
       <YourDataCard />
       <ProblemsCard />
       <HelpSupport />
@@ -455,9 +459,25 @@ function ProfileForm({
       });
       const typeChanged =
         (saved as BusinessProfile).businessType !== profile.businessType;
+      const previous = profile;
       onProfile(saved as BusinessProfile);
       setDraft(saved as BusinessProfile);
-      toast("Business profile saved");
+      toast("Business profile saved", async () => {
+        const back = await updateBusinessProfile({
+          data: {
+            name: previous.name,
+            email: previous.email,
+            phone: previous.phone,
+            address: previous.address,
+            website: previous.website,
+            orderEmail: previous.orderEmail,
+            monthlyBudgetCents: previous.monthlyBudgetCents,
+            currency: previous.currency || "USD",
+          },
+        });
+        onProfile(back as BusinessProfile);
+        setDraft(back as BusinessProfile);
+      });
       // A new business type is the moment to pick categories that fit it.
       if (typeChanged || categories.length === 0)
         setTimeout(() => setSetupOpen(true), 300);
@@ -676,23 +696,11 @@ export function TeamManager({
 
   async function remove(member: TeamMember) {
     try {
-      onTeam(
-        (await removeTeamMember({ data: { id: member.id } })) as TeamMember[],
-      );
+      const r = await removeTeamMember({ data: { id: member.id } });
+      onTeam(r.team as unknown as TeamMember[]);
       if (member.name === staffName) onStaffName("");
-      toast(`${member.name} removed`, async () => {
-        onTeam(
-          (await addTeamMember({
-            data: {
-              name: member.name,
-              isProvider: member.isProvider,
-              isAdmin: member.isAdmin,
-              sellsRetail: member.sellsRetail,
-              managesInventory: member.managesInventory,
-              doesQa: member.doesQa,
-            },
-          })) as TeamMember[],
-        );
+      toastUndo(toast, `${member.name} removed`, r.undoId, async () => {
+        onTeam((await listTeamMembers()) as unknown as TeamMember[]);
       });
     } catch {
       toast("Could not remove. Try again.");

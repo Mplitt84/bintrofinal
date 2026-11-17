@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { toastUndo } from '@/components/ui/undo'
 import {
   CalendarDays,
   CalendarPlus,
@@ -402,11 +403,11 @@ export function CalendarView({ belowPar, staffName }: { belowPar: Product[]; sta
             onDelete={async () => {
               const gone = viewing.event
               try {
-                setEvents((await removeCalendarEvent({ data: { id: gone.id } })) as CalendarEvent[])
+                const r = await removeCalendarEvent({ data: { id: gone.id } })
+                setEvents(r.events as CalendarEvent[])
                 setViewing(null)
-                toast(`Deleted ${gone.title}`, async () => {
-                  const { id: _id, ...rest } = gone
-                  setEvents((await addCalendarEvents({ data: { items: [rest] } })) as CalendarEvent[])
+                toastUndo(toast, `Deleted ${gone.title}`, r.undoId, async () => {
+                  setEvents((await listCalendarEvents()) as CalendarEvent[])
                 })
               } catch {
                 toast('Could not delete. Try again.')

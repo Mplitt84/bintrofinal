@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BadgeDollarSign, FileText, Wand2, CheckSquare, Plus, CircleMinus, ClipboardCheck, Copy, Gauge, Pencil, Search, Tag, Trash2, X } from 'lucide-react'
 import { BetterPricesSheet } from './BetterPricesSheet'
+import { toastUndo } from '@/components/ui/undo'
 import { InvoicePricesSheet } from './InvoicePricesSheet'
 import { FixPricesSheet } from './FixPricesSheet'
 import { getPriceFixes } from '@/server/price-watch.functions'
@@ -108,7 +109,7 @@ export function InventoryView({
     setBulkBusy(true)
     try {
       const r = await bulkDeleteProducts({ data: { productIds: [...selected] } })
-      toast(`Deleted ${r.deleted} product${r.deleted === 1 ? '' : 's'}`)
+      toastUndo(toast, `Deleted ${r.deleted} product${r.deleted === 1 ? '' : 's'}`, r.undoId, onChanged)
       stopSelecting()
       await onChanged()
     } catch {
@@ -353,7 +354,8 @@ export function InventoryView({
             saveLabel="Save"
             onCancel={() => setEditing(null)}
             onSave={async ({ barcode, ...values }) => {
-              let saved = (await updateProduct({ data: { productId: editing.id, ...values, staffName } })) as Product
+              let saved = (await updateProduct({ data: { productId: editing.id, ...values, staffName } })) as Product & { undoId?: number | null }
+              const undoId = saved?.undoId
               // The barcode has its own update path so a relink never touches stock.
               if (barcode !== editing.barcode) {
                 saved = (await setProductBarcode({ data: { productId: editing.id, barcode } })) as Product
@@ -361,20 +363,20 @@ export function InventoryView({
               if (saved) onProduct?.(saved)
               setEditing(null)
               await onChanged()
-              toast(`Saved ${values.name}`)
+              toastUndo(toast, `Saved ${values.name}`, undoId, onChanged)
             }}
             onDelete={async () => {
-              await deleteProduct({ data: { productId: editing.id } })
+              const r = await deleteProduct({ data: { productId: editing.id } })
               setEditing(null)
               await onChanged()
-              toast(`Deleted ${editing.name}`)
+              toastUndo(toast, `Deleted ${editing.name}`, r?.undoId, onChanged)
             }}
             onMerge={async (target) => {
-              const r = (await mergeProducts({ data: { sourceId: editing.id, targetId: target.id } })) as { product: Product }
+              const r = (await mergeProducts({ data: { sourceId: editing.id, targetId: target.id } })) as { product: Product; undoId?: number }
               if (r?.product) onProduct?.(r.product)
               setEditing(null)
               await onChanged()
-              toast(`Merged ${editing.name} into ${target.name}`)
+              toastUndo(toast, `Merged ${editing.name} into ${target.name}`, r?.undoId, onChanged)
             }}
           />
         )}
@@ -408,7 +410,15 @@ export function InventoryView({
               if (created) onProduct?.(created)
               setAdding(false)
               await onChanged()
-              toast(`Added ${values.name}`)
+              toast(
+                `Added ${values.name}`,
+                created
+                  ? async () => {
+                      await deleteProduct({ data: { productId: created.id } })
+                      await onChanged()
+                    }
+                  : undefined,
+              )
             }}
           />
         )}

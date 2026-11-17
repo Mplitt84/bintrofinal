@@ -1,4 +1,5 @@
 import { requireOwner, requireUser } from "./auth.middleware";
+import { rowsSnapshot, saveSnapshot } from "./trash.server.js";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import {
@@ -114,7 +115,11 @@ export const renameTeamMemberFn = createServerFn({ method: "POST" }).middleware(
 export const removeTeamMember = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ id: z.number().int() }))
   .handler(async ({ data }) => {
-    return deleteTeamMember(data.id);
+    const snap = await rowsSnapshot("teamMembers", [data.id]);
+    const who = snap.inserts?.[0]?.rows[0];
+    const team = await deleteTeamMember(data.id);
+    const undoId = who ? await saveSnapshot("team", `Removed ${String(who.name ?? "a team member")} from the team`, snap) : null;
+    return { team, undoId };
   });
 
 // --- Product categories ------------------------------------------------------
@@ -205,8 +210,11 @@ export const getExpenseReceipt = createServerFn({ method: "GET" }).middleware([r
 export const removeExpense = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ id: z.number().int() }))
   .handler(async ({ data }) => {
+    const snap = await rowsSnapshot("expenses", [data.id], [{ table: "expenseReceipts", column: "expenseId" }]);
+    const ex = snap.inserts?.[0]?.rows[0];
     await deleteExpense(data.id);
-    return { ok: true };
+    const undoId = ex ? await saveSnapshot("expense", `Deleted expense ${String(ex.vendor || ex.category || "")}`.trim(), snap) : null;
+    return { ok: true, undoId };
   });
 
 export const saveMonthBudget = createServerFn({ method: "POST" }).middleware([requireUser])
