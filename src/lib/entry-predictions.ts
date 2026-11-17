@@ -227,3 +227,12 @@ export function lineSiblings<T extends Pick<Product, 'id' | 'brand' | 'name' | '
     (p) => p.id !== product.id && !skip.has(p.id) && (p.unitCostCents === oldCents || p.unitCostCents <= 0) && sameLine(product, p),
   )
 }
+
+/** A short name for a product's line, for headings: "Alfaparf Milano · EVO", "Pravana · Pravana Chromasilk Vivids Direct Dye". */
+export function lineLabel(p: Pick<Product, 'brand' | 'name'>) {
+  const k = lineKey(p.name)
+  const count = k.coded ? (k.prefix ? k.prefix.split(' ').length : 0) : Math.max(1, k.words.length - 1)
+  // Same words, as the shop typed them.
+  const original = p.name.split(/[\s\-/,()+&]+/).filter(Boolean).slice(0, count).join(' ')
+  return [p.brand.trim(), original].filter(Boolean).join(' · ') || p.name
+}
