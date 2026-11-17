@@ -1,4 +1,5 @@
 import { requireUser } from "./auth.middleware";
+import { rowsSnapshot, saveSnapshot } from "./trash.server.js";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import {
@@ -42,7 +43,11 @@ export const editCalendarEvent = createServerFn({ method: "POST" }).middleware([
 export const removeCalendarEvent = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(z.object({ id: z.number().int() }))
   .handler(async ({ data }) => {
-    return deleteCalendarEvent(data.id);
+    const snap = await rowsSnapshot("calendarEvents", [data.id]);
+    const ev = snap.inserts?.[0]?.rows[0];
+    const events = await deleteCalendarEvent(data.id);
+    const undoId = ev ? await saveSnapshot("event", `Deleted ${String(ev.title ?? "an event")}`, snap) : null;
+    return { events, undoId };
   });
 
 /** Path of the live iCal feed. `reset` issues a new link and retires the old one. */

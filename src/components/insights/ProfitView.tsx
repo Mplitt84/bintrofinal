@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toastUndo } from "@/components/ui/undo";
 import {
   AlertTriangle,
   ChevronRight,
@@ -122,7 +123,7 @@ export function ProfitView({
       });
       setPicked(null);
       setReload((n) => n + 1);
-      toast(`Removed ${row.name} from this report`);
+      toast(`Removed ${row.name} from this report`, () => putBack({ ...row, productId: row.productId, key: row.key, name: row.name } as ProductRef & { key: ProfitListKey }));
     } catch {
       toast("Couldn’t remove that. Check your connection and try again.");
     } finally {
@@ -616,7 +617,8 @@ export function ProfitView({
             onSave={async ({ barcode, ...values }) => {
               let saved = (await updateProduct({
                 data: { productId: editing.id, ...values, staffName },
-              })) as Product;
+              })) as Product & { undoId?: number | null };
+              const undoId = saved?.undoId;
               if (barcode !== editing.barcode) {
                 saved = (await setProductBarcode({
                   data: { productId: editing.id, barcode },
@@ -626,24 +628,33 @@ export function ProfitView({
               setEditing(null);
               await onChanged();
               setReload((n) => n + 1);
-              toast(`Saved ${values.name}`);
+              toastUndo(toast, `Saved ${values.name}`, undoId, async () => {
+                await onChanged();
+                setReload((n) => n + 1);
+              });
             }}
             onDelete={async () => {
-              await deleteProduct({ data: { productId: editing.id } });
+              const r = await deleteProduct({ data: { productId: editing.id } });
               setEditing(null);
               await onChanged();
               setReload((n) => n + 1);
-              toast(`Deleted ${editing.name}`);
+              toastUndo(toast, `Deleted ${editing.name}`, r?.undoId, async () => {
+                await onChanged();
+                setReload((n) => n + 1);
+              });
             }}
             onMerge={async (target) => {
               const r = (await mergeProducts({
                 data: { sourceId: editing.id, targetId: target.id },
-              })) as { product: Product };
+              })) as { product: Product; undoId?: number };
               if (r?.product) onProduct?.(r.product);
               setEditing(null);
               await onChanged();
               setReload((n) => n + 1);
-              toast(`Merged ${editing.name} into ${target.name}`);
+              toastUndo(toast, `Merged ${editing.name} into ${target.name}`, r?.undoId, async () => {
+                await onChanged();
+                setReload((n) => n + 1);
+              });
             }}
           />
         )}

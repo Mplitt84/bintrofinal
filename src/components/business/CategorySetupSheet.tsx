@@ -299,7 +299,9 @@ export function CategoryManager({ productCategories }: { productCategories: stri
   async function refile(c: ProductCategory, taxGroup: TaxGroupId) {
     try {
       onCategories((await saveProductCategories({ data: { items: [{ name: c.name, taxGroup }] } })) as ProductCategory[])
-      toast(`${c.name} moved to ${taxGroupById(taxGroup).label}`)
+      toast(`${c.name} moved to ${taxGroupById(taxGroup).label}`, async () => {
+        onCategories((await saveProductCategories({ data: { items: [{ name: c.name, taxGroup: c.taxGroup }] } })) as ProductCategory[])
+      })
     } catch {
       toast('Could not update. Try again.')
     }

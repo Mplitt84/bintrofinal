@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toastUndo } from "@/components/ui/undo";
 import {
   AlertTriangle,
   Camera,
@@ -573,9 +574,9 @@ export function BudgetView({
             vendors={vendorSuggestions}
             staffName={staffName}
             onCancel={() => setEditing(null)}
-            onSaved={(message) => {
+            onSaved={(message, undoId) => {
               setEditing(null);
-              toast(message);
+              toastUndo(toast, message, undoId, reload);
               reload();
             }}
           />
@@ -797,7 +798,7 @@ function ExpenseForm({
   vendors: string[];
   staffName: string;
   onCancel: () => void;
-  onSaved: (message: string) => void;
+  onSaved: (message: string, undoId?: number | null) => void;
 }) {
   const [amount, setAmount] = useState(
     expense ? centsToDollars(expense.amountCents) : "",
@@ -931,8 +932,8 @@ function ExpenseForm({
     if (!expense || !window.confirm("Delete this expense?")) return;
     setSaving(true);
     try {
-      await removeExpense({ data: { id: expense.id } });
-      onSaved("Expense deleted");
+      const r = await removeExpense({ data: { id: expense.id } });
+      onSaved("Expense deleted", r.undoId);
     } catch {
       setError("Could not delete. Try again.");
       setSaving(false);

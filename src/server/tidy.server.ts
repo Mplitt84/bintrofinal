@@ -361,8 +361,19 @@ export async function applyCounts(params: { staffName: string; counts: { product
         retailPriceCents: 0,
       };
     });
-  if (lines.length === 0) return { created: 0, updated: 0, priced: 0, units: 0 };
-  return applyImportLines({ mode: "inventory", staffName: params.staffName, source: "Stock count", lines });
+  if (lines.length === 0) return { created: 0, updated: 0, priced: 0, units: 0, undoId: null };
+  const started = new Date(Date.now() - 1000);
+  const summary = await applyImportLines({ mode: "inventory", staffName: params.staffName, source: "Stock count", lines });
+  // The count's own adjustments, so Undo can reverse exactly those.
+  const made = await db
+    .select({ id: movements.id })
+    .from(movements)
+    .where(and(mine(movements), inArray(movements.productId, ids), eq(movements.type, "adjust"), gte(movements.createdAt, started)));
+  const { saveSnapshot } = await import("./trash.server.js");
+  const undoId = made.length
+    ? await saveSnapshot("count", `Count of ${lines.length} products`, { reverseMovements: made.map((m) => m.id) }, { listed: false })
+    : null;
+  return { ...summary, undoId };
 }
 
 /**

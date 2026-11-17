@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { rowsSnapshot, saveSnapshot } from "./trash.server.js";
 import { z } from "zod";
 import { requireUser } from "./auth.middleware";
 import { addPhoto, allFormulas, deleteFormula, getAftercareTemplate, listFormulas, listPhotos, removePhoto, saveFormula, setAftercareTemplate } from "./formulas.server.js";
@@ -43,7 +44,13 @@ export const saveClientFormula = createServerFn({ method: "POST" })
 export const deleteClientFormula = createServerFn({ method: "POST" })
   .middleware([requireUser])
   .inputValidator(z.object({ id: z.number().int() }))
-  .handler(async ({ data }) => deleteFormula(data.id));
+  .handler(async ({ data }) => {
+    const snap = await rowsSnapshot("clientFormulas", [data.id], [{ table: "formulaPhotos", column: "formulaId" }]);
+    const visit = snap.inserts?.[0]?.rows[0];
+    await deleteFormula(data.id);
+    const undoId = visit ? await saveSnapshot("visit", `Deleted ${String(visit.clientName ?? "a")}'s visit`, snap) : null;
+    return { undoId };
+  });
 
 export const saveAftercareTemplate = createServerFn({ method: "POST" })
   .middleware([requireUser])
@@ -63,4 +70,9 @@ export const addFormulaPhoto = createServerFn({ method: "POST" })
 export const deleteFormulaPhoto = createServerFn({ method: "POST" })
   .middleware([requireUser])
   .inputValidator(z.object({ id: z.number().int() }))
-  .handler(async ({ data }) => removePhoto(data.id));
+  .handler(async ({ data }) => {
+    const snap = await rowsSnapshot("formulaPhotos", [data.id]);
+    const photos = await removePhoto(data.id);
+    const undoId = snap.inserts?.[0]?.rows.length ? await saveSnapshot("photo", "Deleted a client photo", snap) : null;
+    return { photos, undoId };
+  });

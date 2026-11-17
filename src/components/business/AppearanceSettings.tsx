@@ -26,7 +26,9 @@ export function AppearanceSettings({
     setSaving(true)
     try {
       onProfile((await updateBusinessProfile({ data: { palette: p.id } })) as BusinessProfile)
-      toast(`${p.label} palette applied`)
+      toast(`${p.label} palette applied`, async () => {
+        onProfile((await updateBusinessProfile({ data: { palette: before.palette } })) as BusinessProfile)
+      })
     } catch {
       onProfile(before)
       toast("Couldn't save the palette. Try again.")

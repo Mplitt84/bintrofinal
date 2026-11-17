@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toastUndo } from "@/components/ui/undo";
 import {
   Camera,
   ChevronRight,
@@ -547,8 +548,8 @@ function VisitCard({
   async function remove() {
     if (!confirm) return setConfirm(true);
     try {
-      await deleteClientFormula({ data: { id: v.id } });
-      toast("Visit deleted");
+      const r = await deleteClientFormula({ data: { id: v.id } });
+      toastUndo(toast, "Visit deleted", r.undoId, onDeleted);
       onDeleted();
     } catch {
       toast("Couldn’t delete. Try again.");
@@ -585,9 +586,14 @@ function VisitCard({
 
   async function removePhoto(id: number) {
     try {
-      const list = await deleteFormulaPhoto({ data: { id } });
-      setPhotos(list);
-      setPhotoCount(list.length);
+      const r = await deleteFormulaPhoto({ data: { id } });
+      setPhotos(r.photos);
+      setPhotoCount(r.photos.length);
+      toastUndo(toast, "Photo deleted", r.undoId, async () => {
+        const list = await getFormulaPhotos({ data: { formulaId: v.id } });
+        setPhotos(list);
+        setPhotoCount(list.length);
+      });
     } catch {
       toast("Couldn’t remove the photo.");
     }

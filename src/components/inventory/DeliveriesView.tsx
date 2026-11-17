@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { toastUndo } from '@/components/ui/undo'
 import { PackagePlus, Truck } from 'lucide-react'
 import { ToolButton } from '@/components/ui/ToolButton'
 import type { Product } from './types'
@@ -68,8 +69,9 @@ export function DeliveriesView({
       return
     }
     setArmedCancel(null)
-    setData(await cancelSavedOrder({ data: { orderId: order.id } }))
-    toast(`Canceled the ${order.vendor} order`)
+    const r = await cancelSavedOrder({ data: { orderId: order.id } })
+    setData(r)
+    toastUndo(toast, `Canceled the ${order.vendor} order`, r.undoId, load)
   }
 
   const open = data?.open ?? []

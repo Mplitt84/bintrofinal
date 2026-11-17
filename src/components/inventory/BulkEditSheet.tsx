@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { toastUndo } from '@/components/ui/undo'
 import type { Product } from './types'
 import { Sheet, SheetActions } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
@@ -77,7 +78,7 @@ export function BulkEditSheet({
     try {
       const r = await bulkUpdateProducts({ data: { productIds: products.map((p) => p.id), changes } })
       await onDone()
-      toast(`Updated ${r.updated} product${r.updated === 1 ? '' : 's'}`)
+      toastUndo(toast, `Updated ${r.updated} product${r.updated === 1 ? '' : 's'}`, r.undoId, onDone)
       onClose()
     } catch {
       toast("Couldn't save the changes. Check your connection and try again.")

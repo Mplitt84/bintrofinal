@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { toastUndo } from '@/components/ui/undo'
+import { applyPriceFixesFn } from '@/server/price-watch.functions'
 import { ChevronDown, Copy, ExternalLink, Pencil, Search, Sparkles, Trash2 } from 'lucide-react'
 import { deleteProduct } from '@/server/inventory.functions'
 import { linePrice } from '@/lib/entry-predictions'
@@ -73,10 +75,10 @@ export function MissingCostsSheet({
     setConfirmDelete(null)
     patch(p.id, { saving: true })
     try {
-      await deleteProduct({ data: { productId: p.id } })
+      const r = await deleteProduct({ data: { productId: p.id } })
       setSaved((s) => new Set(s).add(p.id))
       setOpenId(null)
-      toast(`Deleted ${p.name}`)
+      toastUndo(toast, `Deleted ${p.name}`, r?.undoId, onDone)
       await onDone()
     } catch {
       patch(p.id, { saving: false })
@@ -135,11 +137,22 @@ export function MissingCostsSheet({
       await saveCost(p.id, cost, st.found && cost === st.found.unitCostCents ? st.found.checkId : undefined)
       setSaved((s) => new Set(s).add(p.id))
       setOpenId(null)
-      toast(`${p.name}: cost $${centsToDollars(cost)} saved`)
+      toast(`${p.name}: cost $${centsToDollars(cost)} saved`, () => clearCosts([p.id]))
     } catch {
       patch(p.id, { saving: false })
       toast('Couldn’t save that cost. Try again.')
     }
+  }
+
+  /** Undo for saved costs: back to no cost, and back on the list. */
+  async function clearCosts(ids: number[]) {
+    await applyPriceFixesFn({ data: { items: ids.map((productId) => ({ productId, cents: 0 })), undo: true } })
+    setSaved((s) => {
+      const n = new Set(s)
+      ids.forEach((id) => n.delete(id))
+      return n
+    })
+    await onDone()
   }
 
   /** Cost only; retail is never touched here. Keeps the AI source on record when its number is what's saved. */
@@ -173,18 +186,20 @@ export function MissingCostsSheet({
 
   async function saveFound() {
     let n = 0
+    const done: number[] = []
     for (const p of foundRows) {
       const st = rows[p.id]!
       const cost = toCents(st.cost)
       try {
         await saveCost(p.id, cost, st.found && cost === st.found.unitCostCents ? st.found.checkId : undefined)
         setSaved((s) => new Set(s).add(p.id))
+        done.push(p.id)
         n++
       } catch {
         patch(p.id, { note: 'Couldn’t save this one. Try again.' })
       }
     }
-    if (n) toast(`${n} cost${n === 1 ? '' : 's'} saved`)
+    if (n) toast(`${n} cost${n === 1 ? '' : 's'} saved`, () => clearCosts(done))
     await onDone()
   }
 

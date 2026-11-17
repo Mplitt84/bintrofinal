@@ -128,7 +128,7 @@ function Summary({ text }: { text: string }) {
 function PriceCheck({
   productId,
   unitCostCents,
-  retailPriceCents: _retail,
+  retailPriceCents: retailBefore,
   onChanged,
   compact = false,
 }: {
@@ -158,7 +158,10 @@ function PriceCheck({
     setBusy('apply')
     try {
       await applyWebPrice({ data: { productId, checkId: result.checkId || undefined, unitCostCents: result.unitCostCents || undefined, retailPriceCents: result.retailPriceCents || undefined } })
-      toast('Prices updated')
+      toast('Prices updated', async () => {
+        await applyWebPrice({ data: { productId, unitCostCents: unitCostCents || undefined, retailPriceCents: retailBefore || undefined } })
+        onChanged()
+      })
       setResult(null)
       onChanged()
     } catch {

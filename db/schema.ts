@@ -324,6 +324,27 @@ export const priceChecks = pgTable("price_checks", {
 });
 
 /**
+ * Undo and Recently deleted. Each row is a snapshot taken just before a delete, merge
+ * or bulk change: rows to put back and old values to restore (see trash.server.ts).
+ * Kept 30 days; `restoredAt` marks one that was undone.
+ */
+export const trash = pgTable("trash", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
+  id: serial().primaryKey(),
+  /** product · merge · edit · visit · photo · event · expense · team · category · supplier · order */
+  kind: text().notNull(),
+  /** What a person reads: "Deleted EVO 7.31", "Merged 2 products". */
+  label: text().notNull(),
+  payload: jsonb().$type<Record<string, unknown>>().notNull(),
+  /** Shown in Recently deleted (true for deletes; false for edits, which only the toast undoes). */
+  listed: boolean().notNull().default(true),
+  by: text().notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  restoredAt: timestamp("restored_at"),
+}, (t) => [index("trash_business_created").on(t.businessId, t.createdAt)]);
+
+/**
  * Every cost a product has had, for watching prices rise and fall. A row is written
  * whenever a product's cost changes (invoice, delivery, import, edit, AI check,
  * Better prices switch); `recordedAt` is the invoice date when there was one.
