@@ -9,12 +9,12 @@ import { checkWebPrice, confirmPrices } from '@/server/insights.functions'
 import { PRICE_STALE_DAYS, WEB_PRICE_SOURCE_LABELS, daysBetween, type WebPriceResult } from '@/lib/insights'
 import { DEFAULT_REORDER_THRESHOLD } from '@/lib/inventory-defaults'
 import { shrinkImage } from '@/lib/images'
-import { bestSimilarEntry, predictPrices } from '@/lib/entry-predictions'
+import { bestSimilarEntry, linePrice, predictPrices } from '@/lib/entry-predictions'
 import { Field, SheetActions } from '@/components/ui/Sheet'
 import { AutoInput, QuickChips } from '@/components/ui/AutoInput'
 import { PriceInput } from '@/components/ui/PriceInput'
 import { Thumb, centsToDollars } from '@/components/ui/bits'
-import { useBusiness } from '@/components/business/BusinessContext'
+import { useBusiness, useMoney } from '@/components/business/BusinessContext'
 import { CategorySetupSheet } from '@/components/business/CategorySetupSheet'
 import { selectableTaxGroups, categorySuggestionsFor, findCategory, guessTaxGroup, taxGroupById, taxKind, type ProductCategory, type TaxGroupId } from '@/lib/tax-categories'
 import { COPY_PROMPT_OFF_KEY, CopyPreviousSheet } from './CopyPreviousSheet'
@@ -60,6 +60,11 @@ type Prefill = { kind: 'none' } | { kind: 'loading' } | { kind: 'found'; note: s
  * Prices drop down predictions from earlier entries, and new products offer to
  * copy a previous entry that looks alike so only the name and barcode are left.
  */
+const toCentsField = (v: string) => {
+  const n = Number(String(v).replace(/[^\d.]/g, ''))
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : 0
+}
+
 export function ProductForm({
   product,
   initialBarcode = '',
@@ -118,6 +123,7 @@ export function ProductForm({
   const priceStale = Boolean(product) && (priceDaysOld >= PRICE_STALE_DAYS || !product?.unitCostCents)
   const autoPriced = useRef(Boolean(product))
   const { type, categories: savedCategories, onCategories, can } = useBusiness()
+  const { money } = useMoney()
   // Label photos and price checks are AI features that come with Plus.
   const aiOn = can('ai')
   const [categoryOpen, setCategoryOpen] = useState(false)
@@ -170,6 +176,18 @@ export function ProductForm({
       }),
     [others, context, cost],
   )
+  /** A new shade / variant of a line already priced: one tap fills both prices. */
+  const line = useMemo(() => {
+    if (!brand.trim() || !name.trim()) return null
+    const target = { id: product?.id, brand, name, size }
+    const c = linePrice(others, 'unitCostCents', target)
+    const r = linePrice(others, 'retailPriceCents', target)
+    const costCents = c?.confident ? c.cents : 0
+    const retailCents = r?.confident ? r.cents : 0
+    if (!costCents && !retailCents) return null
+    const want = (costCents && toCentsField(cost) !== costCents) || (retailCents && toCentsField(retail) !== retailCents)
+    return want ? { costCents, retailCents, hint: (c?.confident ? c : r)!.hint } : null
+  }, [others, product?.id, brand, name, size, cost, retail])
   /** A previous entry that looks like this one, offered inline while details are still blank. */
   const similar = useMemo(() => {
     if (!canCopy || copiedFrom || similarDismissed || (category && cost)) return null
@@ -796,6 +814,22 @@ export function ProductForm({
             {webPrice.result.note && <span className="block text-ink-2 mt-0.5">{webPrice.result.note}</span>}
             <span className="block text-ink-2 mt-0.5">Filled in below — adjust to your invoice, then save.</span>
           </div>
+        )}
+        {line && (
+          <button
+            type="button"
+            className="w-full text-left flex items-center gap-2 rounded-xl bg-good-tint px-3 py-2 mb-2.5 text-sm border-0 cursor-pointer"
+            onClick={() => {
+              if (line.costCents) setCost(centsToDollars(line.costCents))
+              if (line.retailCents) setRetail(centsToDollars(line.retailCents))
+            }}
+          >
+            <span className="flex-1">
+              <b>Same line:</b> {[line.costCents ? `cost ${money(line.costCents)}` : '', line.retailCents ? `sells for ${money(line.retailCents)}` : ''].filter(Boolean).join(' · ')}
+              <span className="block text-[12px] text-ink-2">{line.hint} · same brand and size</span>
+            </span>
+            <span className="btn btn-primary btn-sm">Use</span>
+          </button>
         )}
         <div className="grid grid-cols-2 gap-2.5">
           <Field label="Your cost" htmlFor="pf-cost">
