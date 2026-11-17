@@ -123,11 +123,38 @@ maybe("price history", () => {
     expect(Object.fromEntries(costs)).toEqual({ "Lumishine 6N": 950, "Lumishine 7N": 950, "Lumishine 9V": 1100, "Lumishine 8N": 950 });
   });
 
+  it("fixes guessed prices from invoices across the line, with undo", async () => {
+    const ids = await runForBusiness(a, async () => {
+      const mk = (n: string, c: number, i: number) => inv.insertProduct({ barcode: `${mark}-F${i}`, name: n, brand: "Alfaparf Milano", category: "Color", unitCostCents: c });
+      return [(await mk("EVO 7.31 Medium Blonde Golden Ash", 1104, 1)).id, (await mk("EVO 8.1 Light Ash Blonde", 1500, 2)).id, (await mk("EVO 4 Medium Brown", 0, 3)).id];
+    });
+    // An invoice confirmed 7.31 at $11.04; the other two were guesses.
+    await runForBusiness(a, () =>
+      imp.applyImportLines({
+        mode: "prices",
+        staffName: "Minnie",
+        source: "Invoice · SSG",
+        priceDate: "2026-11-10",
+        priceSource: "invoice",
+        lines: [{ productId: ids[0], barcode: "", name: "EVO 7.31", brand: "Alfaparf Milano", size: "", category: "Color", vendor: "Salon Service Group", qty: null, unitCostCents: 1104, retailPriceCents: 0 }],
+      }),
+    );
+    const fixes = await runForBusiness(a, () => watch.priceFixes());
+    const evo = fixes.groups.find((g) => g.line === "Alfaparf Milano · EVO")!;
+    expect(evo.fixes.map((f) => [f.productId, f.cents]).sort()).toEqual([[ids[1], 1104], [ids[2], 1104]].sort());
+    const before = await runForBusiness(a, () => watch.applyPriceFixes(evo.fixes.map((f) => ({ productId: f.productId, cents: f.cents }))));
+    expect((await runForBusiness(a, () => watch.priceFixes())).groups.some((g) => g.line === "Alfaparf Milano · EVO")).toBe(false);
+    await runForBusiness(a, () => watch.applyPriceFixes(before, true));
+    const back = await runForBusiness(a, async () => (await db.select().from(schema.products).where(and(eq(schema.products.businessId, a), eq(schema.products.id, ids[1]))))[0]);
+    expect(back.unitCostCents).toBe(1500);
+  });
+
   it("feeds Price watch", async () => {
     const w = await runForBusiness(a, () => watch.computePriceWatch(12));
     // Aug $9.50 (old invoice) → Sep $10.00 → Oct $10.80: up 13.7% over the year.
     expect(w.risers.find((m) => m.name === "Evo 7N Natural")!.changePct).toBe(13.7);
-    expect(w.risers.filter((m) => m.name.startsWith("Lumishine")).map((m) => m.name).sort()).toEqual(["Lumishine 6N", "Lumishine 7N"]);
+    // One delivery price each, and copies across a line don't count: no trend yet.
+    expect(w.risers.some((m) => m.name.startsWith("Lumishine"))).toBe(false);
     const history = await runForBusiness(a, () => watch.costHistory(evo));
     expect(history[0].cents).toBe(1080);
   });

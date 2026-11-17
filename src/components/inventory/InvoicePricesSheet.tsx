@@ -437,8 +437,8 @@ function PriceWatchView({ open, money }: { open: boolean; money: (c: number) => 
         <div className="rounded-2xl bg-surface p-3 text-sm">
           <b>Not enough history yet.</b>
           <span className="block text-[12px] text-ink-2 mt-1">
-            Price watch needs two prices for a product. Each invoice you upload, each delivery you check in and each cost you change adds one. Bintro started with
-            today's costs, so your next invoices begin the story.
+            Price watch needs two invoice prices for a product. Each invoice you upload and each delivery you check in adds one. Typed-in costs don't count, so a
+            corrected guess never looks like a price rise.
           </span>
         </div>
       ) : (
@@ -502,7 +502,7 @@ function PriceWatchView({ open, money }: { open: boolean; money: (c: number) => 
         </>
       )}
       <p className="m-0 text-[12px] text-ink-2">
-        Only your own recorded prices — {watch.recorded} so far{watch.lastInvoiceAt ? `, last invoice ${shortDate(watch.lastInvoiceAt)}` : ''}. A rise can be the supplier,
+        Only prices your invoices and deliveries actually charged — {watch.recorded} recorded prices in all{watch.lastInvoiceAt ? `, last invoice ${shortDate(watch.lastInvoiceAt)}` : ''}. A rise can be the supplier,
         a size change or a lost discount; tap a product to see each price and where it came from.
       </p>
     </div>
@@ -522,7 +522,7 @@ function MoveList({
   openId: number | null
   setOpenId: (id: number | null) => void
 }) {
-  const SOURCE: Record<string, string> = { invoice: 'Invoice', delivery: 'Delivery', import: 'Import', manual: 'Edited', ai: 'AI check', switch: 'Switched seller', new: 'Added', baseline: 'On file' }
+  const SOURCE: Record<string, string> = { invoice: 'Invoice', delivery: 'Delivery', import: 'Import', manual: 'Edited', ai: 'AI check', switch: 'Switched seller', new: 'Added', baseline: 'On file', 'invoice-fix': 'Fixed from invoice' }
   return (
     <section>
       <h3 className="m-0 mb-1.5 text-sm font-bold">{title}</h3>

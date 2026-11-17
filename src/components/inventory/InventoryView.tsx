@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BadgeDollarSign, FileText, CheckSquare, Plus, CircleMinus, ClipboardCheck, Copy, Gauge, Pencil, Search, Tag, Trash2, X } from 'lucide-react'
+import { BadgeDollarSign, FileText, Wand2, CheckSquare, Plus, CircleMinus, ClipboardCheck, Copy, Gauge, Pencil, Search, Tag, Trash2, X } from 'lucide-react'
 import { BetterPricesSheet } from './BetterPricesSheet'
 import { InvoicePricesSheet } from './InvoicePricesSheet'
+import { FixPricesSheet } from './FixPricesSheet'
+import { getPriceFixes } from '@/server/price-watch.functions'
 import { getBetterPrices } from '@/server/better-prices.functions'
 import type { Product, Stats } from './types'
 import { bulkDeleteProducts, createProduct, deleteProduct, mergeProducts, setProductBarcode, updateProduct } from '@/server/inventory.functions'
@@ -40,11 +42,15 @@ export function InventoryView({
   const [editing, setEditing] = useState<Product | null>(null)
   const [adding, setAdding] = useState(false)
   // Clean-up tools: count a shelf, fix negatives, duplicates, missing costs.
-  const [tool, setTool] = useState<null | 'count' | 'negatives' | 'duplicates' | 'costs' | 'smartpar' | 'prices' | 'invoice'>(null)
+  const [tool, setTool] = useState<null | 'count' | 'negatives' | 'duplicates' | 'costs' | 'smartpar' | 'prices' | 'invoice' | 'fix'>(null)
+  const [fixCount, setFixCount] = useState(0)
   const [betterCount, setBetterCount] = useState(0)
   useEffect(() => {
     getBetterPrices()
       .then((s) => setBetterCount(new Set(s.offers.map((o) => o.productId)).size))
+      .catch(() => {})
+    getPriceFixes()
+      .then((d) => setFixCount(d.groups.reduce((n, g) => n + g.fixes.length, 0)))
       .catch(() => {})
   }, [tool])
   // Bulk edit: select products, then edit or delete them together.
@@ -151,6 +157,7 @@ export function InventoryView({
           <ToolButton icon={<Tag size={24} />} tone="orange" label="Missing costs" badge={missingCosts} onClick={() => setTool('costs')} />
         )}
         <ToolButton icon={<FileText size={24} />} tone="teal" label="Invoice prices" onClick={() => setTool('invoice')} />
+        <ToolButton icon={<Wand2 size={24} />} tone="orange" label="Fix prices" badge={fixCount} onClick={() => setTool('fix')} />
         <ToolButton icon={<BadgeDollarSign size={24} />} tone="green" label="Better prices" badge={betterCount} onClick={() => setTool('prices')} />
         <ToolButton icon={<Copy size={24} />} tone="purple" label="Duplicates" onClick={() => setTool('duplicates')} />
       </div>
@@ -165,6 +172,7 @@ export function InventoryView({
       />
       <SmartParSheet open={tool === 'smartpar'} onClose={() => setTool(null)} onDone={onChanged} />
       <DuplicatesSheet open={tool === 'duplicates'} onClose={() => setTool(null)} onDone={onChanged} />
+      <FixPricesSheet open={tool === 'fix'} onClose={() => setTool(null)} onDone={onChanged} onUploadInvoice={() => setTool('invoice')} />
       <InvoicePricesSheet open={tool === 'invoice'} onClose={() => setTool(null)} products={products} staffName={staffName} onDone={onChanged} />
       <BetterPricesSheet open={tool === 'prices'} onClose={() => setTool(null)} staffName={staffName} onChanged={onChanged} />
       <MissingCostsSheet open={tool === 'costs'} onClose={() => setTool(null)} products={products} onDone={onChanged} onEdit={setEditing} />
