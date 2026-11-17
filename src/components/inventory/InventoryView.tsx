@@ -164,7 +164,7 @@ export function InventoryView({
       <SmartParSheet open={tool === 'smartpar'} onClose={() => setTool(null)} onDone={onChanged} />
       <DuplicatesSheet open={tool === 'duplicates'} onClose={() => setTool(null)} onDone={onChanged} />
       <BetterPricesSheet open={tool === 'prices'} onClose={() => setTool(null)} staffName={staffName} onChanged={onChanged} />
-      <MissingCostsSheet open={tool === 'costs'} onClose={() => setTool(null)} products={products} onDone={onChanged} />
+      <MissingCostsSheet open={tool === 'costs'} onClose={() => setTool(null)} products={products} onDone={onChanged} onEdit={setEditing} />
 
       <label className="flex items-center gap-2.5 bg-surface rounded-full px-4 mb-3.5">
         <Search size={20} className="text-ink-2 shrink-0" />
