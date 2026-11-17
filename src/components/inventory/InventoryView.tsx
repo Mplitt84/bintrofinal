@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BadgeDollarSign, CheckSquare, Plus, CircleMinus, ClipboardCheck, Copy, Gauge, Pencil, Search, Tag, Trash2, X } from 'lucide-react'
+import { BadgeDollarSign, FileText, CheckSquare, Plus, CircleMinus, ClipboardCheck, Copy, Gauge, Pencil, Search, Tag, Trash2, X } from 'lucide-react'
 import { BetterPricesSheet } from './BetterPricesSheet'
+import { InvoicePricesSheet } from './InvoicePricesSheet'
 import { getBetterPrices } from '@/server/better-prices.functions'
 import type { Product, Stats } from './types'
 import { bulkDeleteProducts, createProduct, deleteProduct, mergeProducts, setProductBarcode, updateProduct } from '@/server/inventory.functions'
@@ -39,7 +40,7 @@ export function InventoryView({
   const [editing, setEditing] = useState<Product | null>(null)
   const [adding, setAdding] = useState(false)
   // Clean-up tools: count a shelf, fix negatives, duplicates, missing costs.
-  const [tool, setTool] = useState<null | 'count' | 'negatives' | 'duplicates' | 'costs' | 'smartpar' | 'prices'>(null)
+  const [tool, setTool] = useState<null | 'count' | 'negatives' | 'duplicates' | 'costs' | 'smartpar' | 'prices' | 'invoice'>(null)
   const [betterCount, setBetterCount] = useState(0)
   useEffect(() => {
     getBetterPrices()
@@ -149,6 +150,7 @@ export function InventoryView({
         {missingCosts > 0 && (
           <ToolButton icon={<Tag size={24} />} tone="orange" label="Missing costs" badge={missingCosts} onClick={() => setTool('costs')} />
         )}
+        <ToolButton icon={<FileText size={24} />} tone="teal" label="Invoice prices" onClick={() => setTool('invoice')} />
         <ToolButton icon={<BadgeDollarSign size={24} />} tone="green" label="Better prices" badge={betterCount} onClick={() => setTool('prices')} />
         <ToolButton icon={<Copy size={24} />} tone="purple" label="Duplicates" onClick={() => setTool('duplicates')} />
       </div>
@@ -163,6 +165,7 @@ export function InventoryView({
       />
       <SmartParSheet open={tool === 'smartpar'} onClose={() => setTool(null)} onDone={onChanged} />
       <DuplicatesSheet open={tool === 'duplicates'} onClose={() => setTool(null)} onDone={onChanged} />
+      <InvoicePricesSheet open={tool === 'invoice'} onClose={() => setTool(null)} products={products} staffName={staffName} onDone={onChanged} />
       <BetterPricesSheet open={tool === 'prices'} onClose={() => setTool(null)} staffName={staffName} onChanged={onChanged} />
       <MissingCostsSheet open={tool === 'costs'} onClose={() => setTool(null)} products={products} onDone={onChanged} onEdit={setEditing} />
 

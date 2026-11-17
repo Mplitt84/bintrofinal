@@ -191,7 +191,7 @@ export async function switchToOffer(id: number, staffName: string) {
   if (!offer) throw new Error("That offer is gone. Refresh and try again.");
   const [p] = await db.select().from(products).where(and(mine(products), eq(products.id, offer.productId)));
   if (!p) throw new Error("That product was deleted.");
-  await updateProductFields(p.id, { vendor: offer.sellerName, unitCostCents: offer.unitCostCents });
+  await updateProductFields(p.id, { vendor: offer.sellerName, unitCostCents: offer.unitCostCents }, { source: "switch", note: "Better prices" });
   await db
     .update(priceAlternatives)
     .set({ status: "switched", decidedAt: new Date(), decidedBy: staffName })
@@ -205,7 +205,7 @@ export async function switchToOffer(id: number, staffName: string) {
 }
 
 export async function undoSwitch(id: number, before: { productId: number; vendor: string; unitCostCents: number }) {
-  await updateProductFields(before.productId, { vendor: before.vendor, unitCostCents: before.unitCostCents });
+  await updateProductFields(before.productId, { vendor: before.vendor, unitCostCents: before.unitCostCents }, { source: "manual", note: "Undo switch" });
   await db
     .update(priceAlternatives)
     .set({ status: "new", decidedAt: null, decidedBy: "" })

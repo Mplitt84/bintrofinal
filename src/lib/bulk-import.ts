@@ -32,7 +32,14 @@ export type ParsedImport =
   | { ok: true; mode: ImportMode; vendor: string; date: string; lines: ImportLine[] }
   | { ok: false; message: string }
 
-export type ImportSummary = { created: number; updated: number; priced: number; units: number }
+export type ImportSummary = {
+  created: number
+  updated: number
+  priced: number
+  units: number
+  /** Prices from an invoice older than the cost on file: saved to price history only. */
+  historical?: number
+}
 
 /** Largest upload accepted. Server functions cap request bodies at about 6 MB once base64-encoded. */
 export const MAX_IMPORT_BYTES = 4 * 1024 * 1024
