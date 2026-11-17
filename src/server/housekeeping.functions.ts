@@ -57,8 +57,8 @@ export const checkHousekeeping = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     try {
-      const added = await checkTask(data);
-      return { ok: true as const, added };
+      const { added, checkId } = await checkTask(data);
+      return { ok: true as const, added, checkId };
     } catch (error) {
       return { ok: false as const, message: error instanceof Error ? error.message : "Couldn’t save that." };
     }

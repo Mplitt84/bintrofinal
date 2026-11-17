@@ -129,6 +129,10 @@ export const businessProfile = pgTable("business_profile", {
    * Showstopper then shows no earnings line rather than guessing at anybody's pay.
    */
   retailCommissionPct: integer("retail_commission_pct").notNull().default(0),
+  /** Service costs: what an hour of team time costs the shop (owner-set; 0 = leave labor out). */
+  laborCentsPerHour: integer("labor_cents_per_hour").notNull().default(0),
+  /** Color bar: markup on product cost for the client's product charge, whole percent. */
+  productMarkupPct: integer("product_markup_pct").notNull().default(0),
   /** ISO 4217 code the money on every screen is shown in (see src/lib/money.ts). */
   currency: text().notNull().default("USD"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -675,6 +679,76 @@ export const clientFormulas = pgTable("client_formulas", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+/**
+ * Client profiles (Formulas tab → a client): contact and care notes kept once per client, matched to
+ * visits by name (`nameKey` = lower-cased, trimmed). Everything here is optional; visits still work without one.
+ */
+export const clientProfiles = pgTable(
+  "client_profiles",
+  {
+    /** Which business this belongs to. Every query filters on it. */
+    businessId: integer("business_id").notNull().default(1),
+    id: serial().primaryKey(),
+    name: text().notNull(),
+    nameKey: text("name_key").notNull(),
+    phone: text().notNull().default(""),
+    email: text().notNull().default(""),
+    /** MM-DD or "". */
+    birthday: text().notNull().default(""),
+    /** Allergies, patch tests, sensitivities: shown in red on every visit. */
+    sensitivities: text().notNull().default(""),
+    /** How they like things: chair, products, conversation… */
+    preferences: text().notNull().default(""),
+    notes: text().notNull().default(""),
+    /** Rebook every N days (0 = work it out from their visits). */
+    rebookDays: integer("rebook_days").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [unique("client_profiles_business_name_key").on(t.businessId, t.nameKey)],
+);
+
+/** Service menu (Formulas tab → Services): price, time and expected product cost per service. */
+export const services = pgTable(
+  "services",
+  {
+    /** Which business this belongs to. Every query filters on it. */
+    businessId: integer("business_id").notNull().default(1),
+    id: serial().primaryKey(),
+    name: text().notNull(),
+    priceCents: integer("price_cents").notNull().default(0),
+    minutes: integer().notNull().default(60),
+    /** Expected product cost per visit, used until color-bar bowls give a real average. */
+    productCents: integer("product_cents").notNull().default(0),
+    active: boolean().notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [unique("services_business_name").on(t.businessId, t.name)],
+);
+
+/** Color bar (SalonScale-style): one mixed bowl, weighed product by product. Never changes stock. */
+export const colorBowls = pgTable(
+  "color_bowls",
+  {
+    /** Which business this belongs to. Every query filters on it. */
+    businessId: integer("business_id").notNull().default(1),
+    id: serial().primaryKey(),
+    /** YYYY-MM-DD on the device. */
+    dayKey: text("day_key").notNull(),
+    clientName: text("client_name").notNull().default(""),
+    serviceId: integer("service_id"),
+    serviceName: text("service_name").notNull().default(""),
+    staffName: text("staff_name").notNull().default(""),
+    lines: jsonb().$type<{ productId: number | null; name: string; grams: number; costCents: number }[]>().notNull().default([]),
+    leftoverGrams: integer("leftover_grams").notNull().default(0),
+    costCents: integer("cost_cents").notNull().default(0),
+    chargedCents: integer("charged_cents").notNull().default(0),
+    note: text().notNull().default(""),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [index("color_bowls_business_day").on(t.businessId, t.dayKey)],
+);
 
 /** Before / after photos for a client visit (Formulas tab). Base64 JPEG ~1200px, kept apart so lists stay light. */
 export const formulaPhotos = pgTable("formula_photos", {

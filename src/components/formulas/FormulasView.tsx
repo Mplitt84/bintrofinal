@@ -49,6 +49,16 @@ import {
   type RecordSpec,
 } from "@/lib/industry";
 import type { Product } from "@/components/inventory/types";
+import { ClientProfilePanel, todayKey } from "@/components/formulas/ClientProfilePanel";
+import { ColorBarView, ServicesView } from "@/components/formulas/ColorBarView";
+import { getClientProfiles } from "@/server/client-profiles.functions";
+import { AlertTriangle, Cake } from "lucide-react";
+import {
+  clientKey,
+  clientSummary,
+  daysToBirthday,
+  type ClientProfile,
+} from "@/lib/client-profile";
 
 const today = () => {
   const d = new Date();
@@ -169,43 +179,55 @@ export function FormulasView({
   team,
   products,
   onChanged,
+  isOwner = true,
 }: {
   staffName: string;
   /** Saved team member names, for "whose client is this". */
   team: string[];
   products: Product[];
   onChanged: () => void;
+  isOwner?: boolean;
 }) {
   const { profile } = useBusiness();
   const kind = formulaKindFor(profile.businessType);
-  const [section, setSection] = useState<"records" | "theory">("records");
+  const [section, setSection] = useState<"records" | "bar" | "services" | "theory">("records");
   // Salons and tattoo shops see Color theory here; everyone else finds it in Settings.
   const theory = showsColorTheoryTab(profile.businessType);
+  // Color bar for trades that mix color; Services for everyone with client records.
+  const colorBar = ["salon", "barber", "brows", "other"].includes(profile.businessType);
+  const [clientNames, setClientNames] = useState<string[]>([]);
+  useEffect(() => {
+    if (section !== "bar") return;
+    getFormulas({ data: { search: "" } })
+      .then((r) => setClientNames([...new Set(r.formulas.map((f) => f.clientName))].sort()))
+      .catch(() => {});
+  }, [section]);
+  const sections = [
+    ["records", "Client records"],
+    ...(colorBar ? [["bar", "Color bar"] as const] : []),
+    ["services", "Services"],
+    ...(theory ? [["theory", "Color theory"] as const] : []),
+  ] as const;
   return (
     <>
       <PageHead
         title={formulaTabLabel(profile.businessType)}
         lead={recordSpecFor(profile.businessType)?.lead ?? ""}
       />
-      {theory && (
+      {(
         <div
-          className="inline-flex bg-surface rounded-full p-1 mb-4"
+          className="flex max-w-full overflow-x-auto w-fit bg-surface rounded-full p-1 mb-4"
           role="tablist"
           aria-label="Sections"
         >
-          {(
-            [
-              ["records", "Client records"],
-              ["theory", "Color theory"],
-            ] as const
-          ).map(([id, label]) => (
+          {sections.map(([id, label]) => (
             <button
               key={id}
               type="button"
               role="tab"
               aria-selected={section === id}
               onClick={() => setSection(id)}
-              className={`px-4 py-2 rounded-full border-0 cursor-pointer text-sm font-semibold ${
+              className={`px-4 py-2 rounded-full border-0 cursor-pointer text-sm font-semibold shrink-0 whitespace-nowrap ${
                 section === id
                   ? "bg-white text-ink shadow-sm"
                   : "bg-transparent text-ink-2"
@@ -216,7 +238,18 @@ export function FormulasView({
           ))}
         </div>
       )}
-      {section === "records" || !theory ? (
+      {section === "bar" && colorBar ? (
+        <ColorBarView
+          products={products}
+          staffName={staffName}
+          team={team}
+          kind={kind}
+          clientNames={clientNames}
+          isOwner={isOwner}
+        />
+      ) : section === "services" ? (
+        <ServicesView isOwner={isOwner} />
+      ) : section === "records" || !theory ? (
         <ClientRecords
           kind={kind}
           staffName={staffName}
@@ -255,6 +288,24 @@ function ClientRecords({
     (FormulaInput & { id?: number }) | null
   >(null);
 
+  const [profiles, setProfiles] = useState<ClientProfile[]>([]);
+  const [show, setShow] = useState<"all" | "due" | "birthday">("all");
+  function loadProfiles() {
+    return getClientProfiles()
+      .then((r) => setProfiles(r.profiles))
+      .catch(() => {});
+  }
+  useEffect(() => {
+    loadProfiles();
+  }, []);
+  const profileByKey = useMemo(
+    () => new Map(profiles.map((p) => [clientKey(p.name), p])),
+    [profiles],
+  );
+  async function reloadAll() {
+    await Promise.all([load(), loadProfiles()]);
+  }
+
   function load() {
     return getFormulas({ data: { search } })
       .then((r) => {
@@ -282,12 +333,34 @@ function ClientRecords({
     [team, rows],
   );
   // A client belongs to whoever saw them last.
+  const todayStr = todayKey();
+  const flags = useMemo(() => {
+    const out = new Map<string, { due: boolean; bday: number | null; alert: boolean }>();
+    for (const c of allClients) {
+      const p = profileByKey.get(clientKey(c.name));
+      const s = clientSummary(c.visits, new Map(), todayStr, p?.rebookDays ?? 0);
+      out.set(c.name, {
+        due: s.overdue,
+        bday: p ? daysToBirthday(p.birthday, todayStr) : null,
+        alert: Boolean(p?.sensitivities),
+      });
+    }
+    return out;
+  }, [allClients, profileByKey, todayStr]);
+  const dueCount = allClients.filter((c) => flags.get(c.name)?.due).length;
+  const bdayCount = allClients.filter((c) => (flags.get(c.name)?.bday ?? 99) <= 14).length;
   const clients = useMemo(
     () =>
-      member
-        ? allClients.filter((c) => c.visits[0]?.staffName === member)
-        : allClients,
-    [allClients, member],
+      allClients
+        .filter((c) => !member || c.visits[0]?.staffName === member)
+        .filter((c) =>
+          show === "due"
+            ? flags.get(c.name)?.due
+            : show === "birthday"
+              ? (flags.get(c.name)?.bday ?? 99) <= 14
+              : true,
+        ),
+    [allClients, member, show, flags],
   );
   const current =
     clients.find((c) => c.name.toLowerCase() === openClient?.toLowerCase()) ??
@@ -369,6 +442,23 @@ function ClientRecords({
         </button>
       </div>
 
+      {(dueCount > 0 || bdayCount > 0) && (
+        <div className="flex flex-wrap gap-1.5 mb-3" role="group" aria-label="Show">
+          <button type="button" className="chip" aria-pressed={show === "all"} onClick={() => setShow("all")}>
+            All clients
+          </button>
+          {dueCount > 0 && (
+            <button type="button" className="chip" aria-pressed={show === "due"} onClick={() => setShow("due")}>
+              Due back · {dueCount}
+            </button>
+          )}
+          {bdayCount > 0 && (
+            <button type="button" className="chip" aria-pressed={show === "birthday"} onClick={() => setShow("birthday")}>
+              Birthdays in 2 weeks · {bdayCount}
+            </button>
+          )}
+        </div>
+      )}
       {!rows && <div className="skel h-32 rounded-2xl" />}
       {rows && clients.length === 0 && (
         <EmptyState
@@ -398,10 +488,21 @@ function ClientRecords({
                       .toUpperCase()}
                   </span>
                   <span className="flex-1 min-w-0">
-                    <b className="block truncate text-[16px]">{c.name}</b>
+                    <b className="flex items-center gap-1.5 text-[16px] min-w-0">
+                      <span className="truncate">{c.name}</span>
+                      {flags.get(c.name)?.alert && (
+                        <AlertTriangle size={14} className="text-bad shrink-0" aria-label="Has sensitivities" />
+                      )}
+                      {(flags.get(c.name)?.bday ?? 99) <= 14 && (
+                        <Cake size={14} className="text-gold-ink shrink-0" aria-label="Birthday soon" />
+                      )}
+                    </b>
                     <span className="text-[13px] text-ink-2">
                       {c.visits.length} visit{c.visits.length === 1 ? "" : "s"}{" "}
                       · last {prettyDate(c.lastVisit)}
+                      {flags.get(c.name)?.due && (
+                        <b className="text-warn"> · due back</b>
+                      )}
                     </span>
                     {last.staffName && (
                       <span className="block text-[12px] font-semibold text-action truncate">
@@ -444,6 +545,21 @@ function ClientRecords({
       >
         {current && (
           <>
+            <ClientProfilePanel
+              name={current.name}
+              visits={current.visits}
+              profile={profileByKey.get(clientKey(current.name)) ?? null}
+              products={products}
+              onChanged={reloadAll}
+              onRenamed={(n) => {
+                setOpenClient(n);
+                reloadAll();
+              }}
+              onDeleted={() => {
+                setOpenClient(null);
+                reloadAll();
+              }}
+            />
             <button
               type="button"
               className="btn btn-primary w-full mb-4"

@@ -181,11 +181,13 @@ export async function checkTask(input: { taskId: number; staffName: string; dayK
       .select({ staffName: housekeepingChecks.staffName })
       .from(housekeepingChecks)
       .where(and(mine(housekeepingChecks), eq(housekeepingChecks.taskId, task.id), gte(housekeepingChecks.dayKey, start), lte(housekeepingChecks.dayKey, input.dayKey)));
-    const already = task.scope === "shop" ? today.length > 0 : today.some((c) => nameKey(c.staffName) === nameKey(staffName));
-    if (already) added = false;
+    // Shared clean-up: once anyone does it, it's done for the whole shop.
+    if (today.length > 0) added = false;
   }
+  let checkId: number | null = null;
   if (added) {
-    await db.insert(housekeepingChecks).values({ ...owned(), taskId: task.id, staffName, dayKey: input.dayKey });
+    const [row] = await db.insert(housekeepingChecks).values({ ...owned(), taskId: task.id, staffName, dayKey: input.dayKey }).returning({ id: housekeepingChecks.id });
+    checkId = row?.id ?? null;
   }
   if (input.reminderId) {
     await db
@@ -193,18 +195,17 @@ export async function checkTask(input: { taskId: number; staffName: string; dayK
       .set({ doneAt: new Date(), doneBy: staffName })
       .where(and(mine(housekeepingReminders), eq(housekeepingReminders.id, input.reminderId), isNull(housekeepingReminders.doneAt)));
   }
-  return added;
+  return { added, checkId };
 }
 
-/** Takes back a tap made today (a mis-tap), only by the person who made it. */
+/** Takes back a tap made today (a mis-tap). Clean-up is shared, so anyone working can. */
 export async function undoCheck(checkId: number, staffName: string, dayKey: string) {
   const [row] = await db
     .select()
     .from(housekeepingChecks)
     .where(and(mine(housekeepingChecks), eq(housekeepingChecks.id, checkId)));
-  if (!row || row.dayKey !== dayKey || nameKey(row.staffName) !== nameKey(staffName)) {
-    throw new Error("Only today's tap by the same person can be taken back.");
-  }
+  void staffName;
+  if (!row || row.dayKey !== dayKey) throw new Error("Only today's taps can be taken back.");
   await db.delete(housekeepingChecks).where(and(mine(housekeepingChecks), eq(housekeepingChecks.id, checkId)));
 }
 

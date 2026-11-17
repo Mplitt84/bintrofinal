@@ -10,6 +10,9 @@ import { db } from "../../db/index.js";
 import {
   calendarEvents,
   clientFormulas,
+  clientProfiles,
+  colorBowls,
+  services,
   expenses,
   movements,
   productCategories,
@@ -288,6 +291,62 @@ export async function buildExport(): Promise<{ files: ExportFile[]; profile: { n
       ),
     },
   ];
+
+  const clientRows = await db.select().from(clientProfiles).where(mine(clientProfiles)).orderBy(asc(clientProfiles.name));
+  files.push({
+    name: "clients.csv",
+    csv: toCsv(
+      [
+        { key: "name", label: "Client" },
+        { key: "phone", label: "Phone" },
+        { key: "email", label: "Email" },
+        { key: "birthday", label: "Birthday (MM-DD)" },
+        { key: "sensitivities", label: "Sensitivities" },
+        { key: "preferences", label: "Likes" },
+        { key: "notes", label: "Notes" },
+        { key: "rebookDays", label: "Rebook every (days)" },
+      ],
+      clientRows,
+    ),
+  });
+
+  const serviceRows = await db.select().from(services).where(mine(services)).orderBy(asc(services.name));
+  files.push({
+    name: "services.csv",
+    csv: toCsv(
+      [
+        { key: "name", label: "Service" },
+        { key: "price", label: "Price" },
+        { key: "minutes", label: "Minutes" },
+        { key: "product", label: "Product estimate" },
+        { key: "active", label: "On the menu" },
+      ],
+      serviceRows.map((r) => ({ ...r, price: csvMoney(r.priceCents), product: csvMoney(r.productCents), active: r.active ? "yes" : "no" })),
+    ),
+  });
+  const bowlRows = await db.select().from(colorBowls).where(mine(colorBowls)).orderBy(asc(colorBowls.dayKey));
+  files.push({
+    name: "color-bar.csv",
+    csv: toCsv(
+      [
+        { key: "dayKey", label: "Date" },
+        { key: "clientName", label: "Client" },
+        { key: "serviceName", label: "Service" },
+        { key: "staffName", label: "Mixed by" },
+        { key: "products", label: "Products (grams)" },
+        { key: "leftoverGrams", label: "Left over (g)" },
+        { key: "cost", label: "Bowl cost" },
+        { key: "charged", label: "Charged" },
+        { key: "note", label: "Note" },
+      ],
+      bowlRows.map((r) => ({
+        ...r,
+        products: r.lines.map((l) => `${l.name} ${l.grams} g`).join("; "),
+        cost: csvMoney(r.costCents),
+        charged: csvMoney(r.chargedCents),
+      })),
+    ),
+  });
 
   return { files, profile: { name: profile.name } };
 }

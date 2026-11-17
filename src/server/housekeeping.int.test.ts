@@ -49,20 +49,23 @@ maybe("housekeeping", () => {
     expect(again.map((t) => t.id)).toEqual(first.map((t) => t.id));
   });
 
-  it("counts after-client taps every time, own jobs once, shop jobs once for everyone", async () => {
+  it("counts after-client taps every time, other jobs once for the whole shop", async () => {
     await runForBusiness(a, async () => {
       const tasks = await hk.listTasks();
       const station = tasks.find((t) => t.key === "station-client")!;
       const organize = tasks.find((t) => t.key === "organize-station")!;
       const lock = tasks.find((t) => t.key === "lock-doors")!;
-      expect(await hk.checkTask({ taskId: station.id, staffName: "Beth", dayKey: day })).toBe(true);
-      expect(await hk.checkTask({ taskId: station.id, staffName: "Beth", dayKey: day })).toBe(true);
-      expect(await hk.checkTask({ taskId: organize.id, staffName: "Beth", dayKey: day })).toBe(true);
-      expect(await hk.checkTask({ taskId: organize.id, staffName: "beth", dayKey: day })).toBe(false);
-      expect(await hk.checkTask({ taskId: organize.id, staffName: "Kanesha", dayKey: day })).toBe(true);
-      expect(await hk.checkTask({ taskId: lock.id, staffName: "Kanesha", dayKey: day })).toBe(true);
-      expect(await hk.checkTask({ taskId: lock.id, staffName: "Beth", dayKey: day })).toBe(false);
+      expect((await hk.checkTask({ taskId: station.id, staffName: "Beth", dayKey: day })).added).toBe(true);
+      expect((await hk.checkTask({ taskId: station.id, staffName: "Beth", dayKey: day })).added).toBe(true);
+      expect((await hk.checkTask({ taskId: organize.id, staffName: "Beth", dayKey: day })).added).toBe(true);
+      expect((await hk.checkTask({ taskId: organize.id, staffName: "beth", dayKey: day })).added).toBe(false);
+      expect((await hk.checkTask({ taskId: organize.id, staffName: "Kanesha", dayKey: day })).added).toBe(false);
+      expect((await hk.checkTask({ taskId: lock.id, staffName: "Kanesha", dayKey: day })).added).toBe(true);
+      expect((await hk.checkTask({ taskId: lock.id, staffName: "Beth", dayKey: day })).added).toBe(false);
       const board = await hk.loadBoard(day);
+      const mine = board.history.find((c) => c.taskId === lock.id)!;
+      await hk.undoCheck(mine.id, "Beth", day); // shared: anyone working can take a tap back
+      expect((await hk.loadBoard(day)).history.some((c) => c.taskId === lock.id)).toBe(false);
       expect(board.history.filter((c) => c.taskId === station.id)).toHaveLength(2);
       expect(board.history.filter((c) => c.taskId === lock.id)).toHaveLength(1);
     });
@@ -101,8 +104,8 @@ maybe("housekeeping", () => {
       const tasks = await hk.listTasks();
       const recount = tasks.find((t) => t.key === "inv-recount")!;
       expect(recount.repeat).toMatchObject({ kind: "weeks", flex: true });
-      expect(await hk.checkTask({ taskId: recount.id, staffName: "Minnie", dayKey: "2026-11-15" })).toBe(true);
-      expect(await hk.checkTask({ taskId: recount.id, staffName: "Minnie", dayKey: day })).toBe(false);
+      expect((await hk.checkTask({ taskId: recount.id, staffName: "Minnie", dayKey: "2026-11-15" })).added).toBe(true);
+      expect((await hk.checkTask({ taskId: recount.id, staffName: "Minnie", dayKey: day })).added).toBe(false);
       const plants = tasks.find((t) => t.key === "water-plants")!;
       const saved = (await hk.updateTask(plants.id, { repeat: { kind: "days", days: [4, 1, 9], every: 1, anchor: "", monthDay: 1, flex: false } })).find((t) => t.id === plants.id)!;
       expect(saved.repeat).toMatchObject({ kind: "days", days: [1, 4] });

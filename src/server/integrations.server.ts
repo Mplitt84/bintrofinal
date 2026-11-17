@@ -15,9 +15,7 @@ import { db } from "../../db/index.js";
 import { mine, owned } from "./tenant.js";
 import { expenses, integrationLogs, integrations, movements, products, squareOutbox, squareSyncedOrders } from "../../db/schema.js";
 import { SQUARE_STAFF_NAME, applyMovement, findProductByBarcode } from "./inventory.server.js";
-import { addCheckoutReminder } from "./housekeeping.server.js";
-import { sendClientCheckout, sendClose } from "./housekeeping-push.server.js";
-import { matchTeamName, nameKey, reminderDetail } from "../lib/housekeeping.js";
+import { matchTeamName } from "../lib/housekeeping.js";
 import { localDay, zonedInstant } from "../lib/schedule.js";
 import { staffShifts } from "../../db/schema.js";
 import { findExpenseReceipt, findTeamMembers, findExpensesForMonth, findInventorySpend, findProductCategories, upsertProductCategories, type MonthWindow } from "./business.server.js";
@@ -644,40 +642,6 @@ type SquareOrder = {
   tenders?: Array<{ payment_id?: string }>;
 };
 
-/**
- * Who rang up a checkout, as the Bintro team list spells it ("" when Square doesn't
- * say, the scopes aren't granted, or the name matches nobody on the team). Never throws:
- * a missing name must not stop a sale from syncing.
- */
-async function checkoutStaffName(
-  token: string,
-  order: SquareOrder,
-  team: string[],
-  canRead: boolean,
-  cache: Map<string, string>,
-) {
-  const paymentId = order.tenders?.find((t) => t.payment_id)?.payment_id;
-  if (!canRead || !paymentId) return "";
-  try {
-    const { payment } = await squareFetch<{ payment?: { team_member_id?: string; employee_id?: string } }>(
-      token,
-      `/v2/payments/${encodeURIComponent(paymentId)}`,
-    );
-    const memberId = payment?.team_member_id || payment?.employee_id || "";
-    if (!memberId) return "";
-    if (!cache.has(memberId)) {
-      const { team_member } = await squareFetch<{ team_member?: { given_name?: string; family_name?: string } }>(
-        token,
-        `/v2/team-members/${encodeURIComponent(memberId)}`,
-      );
-      const squareName = [team_member?.given_name, team_member?.family_name].filter(Boolean).join(" ");
-      cache.set(memberId, matchTeamName(squareName, team));
-    }
-    return cache.get(memberId) ?? "";
-  } catch {
-    return "";
-  }
-}
 
 /**
  * Claims a Square order for this business. Returns true only for the one sync that gets
@@ -775,34 +739,12 @@ export async function syncSquareSales() {
   } while (cursor);
 
   await saveIntegration("square", { lastSyncAt: latest });
-  if (toRemind.length) await sendCheckoutReminders(row, toRemind, shopZone).catch((error) => console.error("Checkout reminders failed", error));
+  // Personal checkout reminders were retired (Team clean-up is shared now).
+  void toRemind;
+  void shopZone;
   return { sales, units, skipped, alreadyLogged };
 }
 
-/** Housekeeping: each new checkout reminds the stylist who rang it up to reset their station. */
-async function sendCheckoutReminders(row: { accessToken: string; meta: unknown }, list: Array<{ order: SquareOrder; closed: Date }>, shopZone: string) {
-  const scopes = String((row.meta as { scopes?: string } | undefined)?.scopes ?? "");
-  const canReadStaff = scopes.includes("PAYMENTS_READ") && scopes.includes("EMPLOYEES_READ");
-  const team = (await findTeamMembers()).map((t) => t.name);
-  const staffCache = new Map<string, string>();
-  for (const { order, closed } of list.slice(-20)) {
-    try {
-      const staffName = await checkoutStaffName(row.accessToken, order, team, canReadStaff, staffCache);
-      const detail = reminderDetail((order.line_items ?? []).map((l) => l.name ?? ""));
-      const ref = `square:${order.id}`;
-      await addCheckoutReminder({ ref, staffName, detail, at: closed });
-      if (!staffName) continue;
-      const { dayKey, weekday } = localDay(closed, shopZone);
-      await sendClientCheckout(staffName, ref, detail, dayKey, weekday);
-      // Their last booked client today: close-out reminder right away.
-      const shifts = await db.select().from(staffShifts).where(and(mine(staffShifts), eq(staffShifts.dayKey, dayKey)));
-      const shift = shifts.find((sh) => nameKey(sh.staffName) === nameKey(staffName));
-      if (shift && closed.getTime() >= shift.endsAt.getTime() - 20 * 60_000) await sendClose(staffName, dayKey, weekday, true);
-    } catch (error) {
-      console.error("Couldn't send a housekeeping reminder", error);
-    }
-  }
-}
 
 export type SalesCleanup = { at: string; ordersChecked: number; ordersFixed: number; removed: number; units: number; valueCents: number };
 

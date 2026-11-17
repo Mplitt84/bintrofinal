@@ -1,24 +1,23 @@
 import { PageHead } from '@/components/ui/bits'
 import { TeamManager } from '@/components/business/SettingsView'
-import { HousekeepingView } from '@/components/team/HousekeepingView'
+import { ShopCleanup } from '@/components/team/ShopCleanup'
 import { providerNounFor } from '@/lib/industry'
 import { useBusiness } from '@/components/business/BusinessContext'
 import type { TeamMember } from '@/components/inventory/types'
 
+/** Kept so old #housekeeping links still open this page. */
 export type TeamPage = 'team' | 'housekeeping'
 
-/** The Team page: the people (roles, rename) and, as a subpage, the shop's housekeeping. */
+/** The Team page: the shop's three shared clean-up checklists, then the people. */
 export function TeamView({
-  page,
-  onPage,
   team,
   onTeam,
   staffName,
   onStaffName,
   isOwner,
 }: {
-  page: TeamPage
-  onPage: (p: TeamPage) => void
+  page?: TeamPage
+  onPage?: (p: TeamPage) => void
   team: TeamMember[]
   onTeam: (t: TeamMember[]) => void
   staffName: string
@@ -28,46 +27,15 @@ export function TeamView({
   const { profile } = useBusiness()
   return (
     <>
-      <PageHead
-        title={page === 'housekeeping' ? 'Housekeeping' : 'Team'}
-        lead={
-          page === 'housekeeping'
-            ? 'Your day in three taps: Arrive, Client done, Close out. Every job already has an owner, so nothing slips.'
-            : 'Everyone who works here, what they do, and the shop’s daily housekeeping.'
-        }
+      <PageHead title="Team" lead="Shop clean-up anyone can tick off, and everyone who works here." />
+      <ShopCleanup staffName={staffName} isOwner={isOwner} />
+      <TeamManager
+        team={team}
+        onTeam={onTeam}
+        staffName={staffName}
+        onStaffName={onStaffName}
+        providerNoun={providerNounFor(profile.businessType)}
       />
-      <div className="flex max-w-full overflow-x-auto bg-surface rounded-full p-1 mb-4 w-fit" role="tablist" aria-label="Team pages">
-        {(
-          [
-            ['team', 'Team'],
-            ['housekeeping', 'Housekeeping'],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={page === id}
-            onClick={() => onPage(id)}
-            className={`px-4 py-2 rounded-full border-0 cursor-pointer text-sm font-semibold shrink-0 whitespace-nowrap ${
-              page === id ? 'bg-white text-ink shadow-sm' : 'bg-transparent text-ink-2'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      {page === 'housekeeping' ? (
-        <HousekeepingView staffName={staffName} onStaffName={onStaffName} isOwner={isOwner} />
-      ) : (
-        <TeamManager
-          team={team}
-          onTeam={onTeam}
-          staffName={staffName}
-          onStaffName={onStaffName}
-          providerNoun={providerNounFor(profile.businessType)}
-        />
-      )}
     </>
   )
 }
