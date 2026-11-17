@@ -135,41 +135,73 @@ export function predictPrices(
 
 /* ------------------------------------------------------------------ Same-line prices */
 
-/** Shade codes and numbers ("7N", "9.1", "10V", "#4") say which shade, not which line. */
-const SHADE = /^(#?\d+([.,/]\d+)?[a-z]{0,3}|[a-z]{1,2}\d+[a-z]?)$/i
-function lineWords(name: string) {
+/**
+ * Product lines. Salons name shades two ways, and both must group:
+ * - with a shade code: "EVO 7.31 Medium Blonde Golden Ash", "Gloss Toner 08.21",
+ *   "Colorwear 9.3 Very Light Gold Blonde", "Alfaparf Milano 20 Volume Developer".
+ *   The line is everything before the code (EVO, Gloss Toner, Colorwear…); the words
+ *   after it describe that one shade, so they don't count.
+ * - with a color name only: "Danger Jones Adrenaline", "Pravana Chromasilk Vivids Direct
+ *   Dye Emerald". The line is the shared start of the name, and only for color products,
+ *   so "Astral Amino Shampoo" and "Astral Amino Conditioner" never count as one line.
+ * Brand must match. Size must match when both have one; a blank size doesn't block.
+ */
+const SHADE = /^(#?\d+([.,/]\d+)?[a-z]{0,4}|\.\d+[a-z]{0,3}|[a-z]{1,2}\d+[a-z]?)$/i
+const COLORISH = /colou?r|toner|gloss|dye|pigment|lighten|developer|vivid|chromasilk|semi|demi|tint|harmoni/i
+
+function nameTokens(name: string) {
   return fold(name)
-    .split(/[\s\-/,'()]+/)
-    .filter((w) => w.length >= 2 && !SHADE.test(w))
+    .split(/[\s\-/,'()+&]+/)
+    .filter(Boolean)
+}
+
+type LineKey = { coded: true; prefix: string } | { coded: false; words: string[] }
+function lineKey(name: string): LineKey {
+  const t = nameTokens(name)
+  const i = t.findIndex((w) => SHADE.test(w))
+  if (i >= 0) return { coded: true, prefix: t.slice(0, i).join(' ') }
+  return { coded: false, words: t }
 }
 
 const sameSize = (a: string, b: string) => {
+  if (!a.trim() || !b.trim()) return true
   const pa = parseSize(a)
   const pb = parseSize(b)
   if (pa && pb) return pa.kind === pb.kind && Math.abs(pa.base - pb.base) / Math.max(pa.base, pb.base) < 0.02
   return fold(a) === fold(b)
 }
 
+type LineFields = Pick<Product, 'brand' | 'name' | 'size'> & { category?: string }
+
+/** Same brand, same product line (see above), and not two different sizes. */
+export function sameLine(a: LineFields, b: LineFields) {
+  if (!a.brand.trim() || fold(a.brand) !== fold(b.brand)) return false
+  if (!sameSize(a.size, b.size)) return false
+  const ka = lineKey(a.name)
+  const kb = lineKey(b.name)
+  if (ka.coded && kb.coded) return ka.prefix === kb.prefix && (ka.prefix.length > 0 || fold(a.brand).length > 0)
+  if (ka.coded || kb.coded) return false
+  const colorish = (x: LineFields) => COLORISH.test(`${x.category ?? ''} ${x.name}`)
+  if (!colorish(a) || !colorish(b)) return false
+  const wa = (ka as { words: string[] }).words
+  const wb = (kb as { words: string[] }).words
+  let shared = 0
+  while (shared < wa.length && shared < wb.length && wa[shared] === wb[shared]) shared++
+  // Everything but the last one or two words (the color's own name) is shared.
+  return shared >= 2 && shared >= Math.max(wa.length, wb.length) - 2
+}
+
 export type LinePrice = { cents: number; hint: string; matches: number; confident: boolean }
 
 /**
- * The price a new shade or variant almost certainly has: products from the same brand,
- * the same size and the same line (name words other than shade codes) that already
- * carry a price. Lines usually price every shade alike, so when they agree (at least
- * two-thirds on one price) that's the answer, offered with the products it came from.
- * Nothing is filled without a person tapping it.
+ * The price a new shade or variant almost certainly has: products in the same line
+ * (`sameLine`) that already carry a price. Lines usually price every shade alike, so
+ * when they agree (at least two-thirds on one price) that's the answer, offered with
+ * the products it came from. Nothing is filled without a person tapping it.
  */
-export function linePrice(products: Product[], field: PriceField, target: Pick<Product, 'brand' | 'name' | 'size'> & { id?: number }): LinePrice | null {
+export function linePrice(products: Product[], field: PriceField, target: LineFields & { id?: number }): LinePrice | null {
   if (!target.brand.trim() || !target.name.trim()) return null
-  const brand = fold(target.brand)
-  const mine = new Set(lineWords(target.name))
-  const alike = products.filter((p) => {
-    if (p.id === target.id || p[field] <= 0 || fold(p.brand) !== brand) return false
-    if (!sameSize(p.size || p.name, target.size || target.name)) return false
-    const theirs = lineWords(p.name)
-    // Same line: every non-shade word matches (both ways), or both names are only shade codes.
-    return theirs.length === mine.size && theirs.every((w) => mine.has(w))
-  })
+  const alike = products.filter((p) => p.id !== target.id && p[field] > 0 && sameLine(target, p))
   if (alike.length === 0) return null
   const tally = new Map<number, Product[]>()
   for (const p of alike) tally.set(p[field], [...(tally.get(p[field]) ?? []), p])
@@ -177,21 +209,7 @@ export function linePrice(products: Product[], field: PriceField, target: Pick<P
   const confident = from.length / alike.length >= 2 / 3
   if (!confident && from.length < 2) return null
   const names = from.slice(0, 2).map((p) => p.name).join(', ')
-  return {
-    cents,
-    matches: from.length,
-    confident,
-    hint: `Same as ${names}${from.length > 2 ? ` +${from.length - 2}` : ''}`,
-  }
-}
-
-/** Same brand, same size and same line words (shade codes ignored): another shade or variant of one product line. */
-export function sameLine(a: Pick<Product, 'brand' | 'name' | 'size'>, b: Pick<Product, 'brand' | 'name' | 'size'>) {
-  if (!a.brand.trim() || fold(a.brand) !== fold(b.brand)) return false
-  if (!sameSize(a.size || a.name, b.size || b.name)) return false
-  const wa = lineWords(a.name)
-  const wb = new Set(lineWords(b.name))
-  return wa.length === wb.size && wa.every((w) => wb.has(w))
+  return { cents, matches: from.length, confident, hint: `Same as ${names}${from.length > 2 ? ` +${from.length - 2}` : ''}` }
 }
 
 /**
@@ -199,9 +217,9 @@ export function sameLine(a: Pick<Product, 'brand' | 'name' | 'size'>, b: Pick<Pr
  * changes: they were at the same old price (or had no cost yet). A shade priced
  * differently on purpose is left alone.
  */
-export function lineSiblings<T extends Pick<Product, 'id' | 'brand' | 'name' | 'size' | 'unitCostCents'>>(
+export function lineSiblings<T extends Pick<Product, 'id' | 'brand' | 'name' | 'size' | 'unitCostCents'> & { category?: string }>(
   products: T[],
-  product: Pick<Product, 'id' | 'brand' | 'name' | 'size'>,
+  product: Pick<Product, 'id'> & LineFields,
   oldCents: number,
   skip: Set<number> = new Set(),
 ): T[] {

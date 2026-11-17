@@ -528,7 +528,7 @@ export async function countMovementsWithNote(note: string) {
  * products it changed, with their old cost, so a screen can undo.
  */
 export async function followLineCost(
-  product: { id: number; brand: string; name: string; size: string },
+  product: { id: number; brand: string; name: string; size: string; category?: string },
   oldCents: number,
   newCents: number,
   meta: PriceMeta = {},
@@ -537,7 +537,7 @@ export async function followLineCost(
   if (newCents <= 0 || newCents === oldCents) return [] as { id: number; name: string; oldCents: number }[];
   const { lineSiblings } = await import("../lib/entry-predictions.js");
   const all = await db
-    .select({ id: products.id, brand: products.brand, name: products.name, size: products.size, unitCostCents: products.unitCostCents })
+    .select({ id: products.id, brand: products.brand, name: products.name, size: products.size, category: products.category, unitCostCents: products.unitCostCents })
     .from(products)
     .where(mine(products));
   const followers = lineSiblings(all, product, oldCents, skip);
