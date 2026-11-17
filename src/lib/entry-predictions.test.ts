@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Product } from '@/components/inventory/types'
-import { linePrice } from './entry-predictions'
+import { linePrice, lineSiblings } from './entry-predictions'
 
 let id = 1
 const p = (name: string, brand: string, size: string, cost: number): Product =>
@@ -25,5 +25,20 @@ describe('linePrice', () => {
     expect(linePrice(shelf, 'unitCostCents', { brand: 'Evo', name: 'Evo 6RV', size: '4 oz' })).toBeNull()
     expect(linePrice(shelf, 'unitCostCents', { brand: 'Redken', name: 'Evo 6RV', size: '2.06 oz' })).toBeNull()
     expect(linePrice(shelf, 'unitCostCents', { brand: 'Evo', name: 'Evo Developer 30 Vol', size: '33.8 oz' })!.cents).toBe(1600)
+  })
+})
+
+describe('lineSiblings', () => {
+  it('moves the shades that shared the old price (or had none), not ones priced on purpose', () => {
+    const shelf = [
+      p('Evo 7N', 'Evo', '2.06 oz', 1080),
+      p('Evo 8N', 'Evo', '2.06 oz', 1080),
+      p('Evo 10V', 'Evo', '2.06 oz', 0),
+      p('Evo Clear', 'Evo', '2.06 oz', 1080),
+      p('Evo 9V', 'Evo', '2.06 oz', 1250),
+      p('Evo 6N', 'Evo', '4 oz', 1080),
+    ]
+    const names = lineSiblings(shelf, shelf[0], 1080).map((x) => x.name)
+    expect(names).toEqual(['Evo 8N', 'Evo 10V'])
   })
 })

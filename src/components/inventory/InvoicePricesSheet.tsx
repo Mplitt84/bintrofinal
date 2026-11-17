@@ -7,11 +7,12 @@ import { useMoney } from '@/components/business/BusinessContext'
 import { centsToDollars } from '@/components/ui/bits'
 import { shrinkImage } from '@/lib/images'
 import { MAX_IMPORT_BYTES, type ImportLine } from '@/lib/bulk-import'
+import { lineSiblings } from '@/lib/entry-predictions'
 import type { PriceMove, PriceWatch } from '@/lib/price-trends'
 import { applyImport, parseImport } from '@/server/import.functions'
 import { getPriceWatch } from '@/server/price-watch.functions'
 
-type Row = ImportLine & { pick: boolean; matchName: string; newCents: number; oldCents: number }
+type Row = ImportLine & { pick: boolean; matchName: string; newCents: number; oldCents: number; withLine: boolean }
 type Stage =
   | { kind: 'start'; error?: string }
   | { kind: 'reading'; fileName: string }
@@ -95,7 +96,7 @@ export function InvoicePricesSheet({
         .map((l) => {
           const p = l.productId ? byId.get(l.productId) : undefined
           const oldCents = p?.unitCostCents ?? 0
-          return { ...l, pick: Boolean(p) && oldCents !== l.unitCostCents, matchName: '', newCents: l.unitCostCents, oldCents }
+          return { ...l, pick: Boolean(p) && oldCents !== l.unitCostCents, matchName: '', newCents: l.unitCostCents, oldCents, withLine: true }
         })
       if (next.length === 0) return setStage({ kind: 'start', error: "Bintro couldn't find any unit prices on that invoice. Try a sharper photo of the line items." })
       setRows(next)
@@ -121,8 +122,40 @@ export function InvoicePricesSheet({
   const unmatched = rows.filter((r) => !r.productId)
   const picked = changed.filter((r) => r.pick)
 
+  /** Other shades in each changed product's line that were at the same old price (or had none): they move with it. */
+  const siblings = useMemo(() => {
+    const onInvoice = new Set(rows.map((r) => r.productId).filter((id): id is number => Boolean(id)))
+    const taken = new Set<number>()
+    const out = new Map<number, Product[]>()
+    for (const r of changed) {
+      const p = byId.get(r.productId!)
+      if (!p) continue
+      const list = lineSiblings(products, p, r.oldCents, onInvoice).filter((s) => !taken.has(s.id))
+      list.forEach((s) => taken.add(s.id))
+      if (list.length) out.set(r.key, list)
+    }
+    return out
+  }, [rows, changed, byId, products])
+  const siblingCount = picked.reduce((n, r) => n + (r.withLine ? (siblings.get(r.key)?.length ?? 0) : 0), 0)
+
   async function apply() {
     // Same-price lines go too: they confirm the price (a data point for Price watch) without changing it.
+    const lineFollowers = picked.flatMap((r) =>
+      r.withLine
+        ? (siblings.get(r.key) ?? []).map((s) => ({
+            productId: s.id,
+            barcode: s.barcode,
+            name: s.name,
+            brand: s.brand,
+            size: s.size,
+            category: s.category,
+            vendor: s.vendor || r.vendor || vendor,
+            qty: null,
+            unitCostCents: r.newCents,
+            retailPriceCents: 0,
+          }))
+        : [],
+    )
     const lines = [...picked, ...same].map((r) => ({
       productId: r.productId,
       barcode: r.barcode,
@@ -143,7 +176,7 @@ export function InvoicePricesSheet({
           mode: 'prices',
           staffName,
           source: ['Invoice', vendor, date].filter(Boolean).join(' · ').slice(0, 160),
-          lines,
+          lines: [...lines, ...lineFollowers],
           priceDate: date,
           priceSource: 'invoice',
         },
@@ -152,7 +185,7 @@ export function InvoicePricesSheet({
       const historical = summary.historical ?? 0
       setStage({
         kind: 'done',
-        changed: Math.max(0, picked.length - historical),
+        changed: Math.max(0, picked.length + lineFollowers.length - historical),
         up: picked.filter((r) => r.newCents > r.oldCents).length,
         down: picked.filter((r) => r.newCents < r.oldCents).length,
         historical,
@@ -284,6 +317,25 @@ export function InvoicePricesSheet({
                               {p && p.name.toLowerCase() !== r.name.toLowerCase() && <span className="block text-[12px] text-ink-2">On the invoice: {r.name}</span>}
                             </span>
                           </label>
+                          {siblings.get(r.key) && r.pick && (
+                            <label className="flex items-start gap-2.5 mt-2 ml-6 text-[12px] cursor-pointer">
+                              <input type="checkbox" className="mt-0.5" checked={r.withLine} onChange={(e) => patch(r.key, { withLine: e.target.checked })} />
+                              <span>
+                                <b className="text-ink">
+                                  Also update {siblings.get(r.key)!.length} more in this line
+                                </b>
+                                <span className="block text-ink-2">
+                                  {siblings
+                                    .get(r.key)!
+                                    .slice(0, 6)
+                                    .map((s) => s.name)
+                                    .join(', ')}
+                                  {siblings.get(r.key)!.length > 6 ? ` +${siblings.get(r.key)!.length - 6}` : ''} · same brand and size, were at{' '}
+                                  {r.oldCents ? money(r.oldCents) : 'no cost'}
+                                </span>
+                              </span>
+                            </label>
+                          )}
                         </li>
                       )
                     })}
@@ -345,7 +397,7 @@ export function InvoicePricesSheet({
                 Start over
               </button>
               <button type="button" className="btn btn-primary" disabled={picked.length === 0} onClick={apply}>
-                Update {picked.length} cost{picked.length === 1 ? '' : 's'}
+                Update {picked.length + siblingCount} cost{picked.length + siblingCount === 1 ? '' : 's'}
               </button>
             </SheetActions>
           )}

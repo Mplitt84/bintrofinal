@@ -184,3 +184,23 @@ export function linePrice(products: Product[], field: PriceField, target: Pick<P
     hint: `Same as ${names}${from.length > 2 ? ` +${from.length - 2}` : ''}`,
   }
 }
+
+/** Same brand, same size and same line words (shade codes ignored): another shade or variant of one product line. */
+export function sameLine(a: Pick<Product, 'brand' | 'name' | 'size'>, b: Pick<Product, 'brand' | 'name' | 'size'>) {
+  if (!a.brand.trim() || fold(a.brand) !== fold(b.brand)) return false
+  if (!sameSize(a.size || a.name, b.size || b.name)) return false
+  const wa = lineWords(a.name)
+  const wb = new Set(lineWords(b.name))
+  return wa.length === wb.size && wa.every((w) => wb.has(w))
+}
+
+/**
+ * The other products in a product's line that should move with it when its price
+ * changes: they were at the same old price (or had no cost yet). A shade priced
+ * differently on purpose is left alone.
+ */
+export function lineSiblings(products: Product[], product: Pick<Product, 'id' | 'brand' | 'name' | 'size'>, oldCents: number, skip: Set<number> = new Set()) {
+  return products.filter(
+    (p) => p.id !== product.id && !skip.has(p.id) && (p.unitCostCents === oldCents || p.unitCostCents <= 0) && sameLine(product, p),
+  )
+}
