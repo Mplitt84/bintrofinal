@@ -4,7 +4,7 @@
  * matches them to existing products, and applies stock counts and price updates.
  * Server-only.
  */
-import { applyMovement, countMovementsWithNote, findAllProducts, flushSquareSoon, insertProduct, updateProductFields, type Product } from "./inventory.server.js";
+import { applyMovement, countMovementsWithNote, findAllProducts, flushSquareSoon, insertProduct, latestCostAt, recordCostCheck, recordPastCost, updateProductFields, type Product } from "./inventory.server.js";
 import {
   CSV_FIELDS,
   extractImportDocument,
@@ -239,6 +239,10 @@ export async function applyImportLines(params: {
   staffName: string;
   source: string;
   lines: Omit<ImportLine, "key" | "include" | "costSource" | "retailSource">[];
+  /** The invoice's own date, so price history lines up with when the price was charged. */
+  priceDate?: string;
+  /** Price-history source label; defaults from the mode. */
+  priceSource?: string;
 }): Promise<ImportSummary> {
   if (params.mode === "inventory") {
     // Count any Square sales first, so the file's counts aren't later lowered again by sales they already reflect.
@@ -260,13 +264,34 @@ export async function applyImportLines(params: {
 
     if (product) {
       const changes: Parameters<typeof updateProductFields>[1] = {};
-      if (line.unitCostCents > 0 && line.unitCostCents !== product.unitCostCents) changes.unitCostCents = line.unitCostCents;
+      // An invoice dated before the newest price on file is history, not today's cost.
+      let pastPrice = false;
+      if (params.priceDate && line.unitCostCents > 0 && line.unitCostCents !== product.unitCostCents) {
+        const latest = await latestCostAt(product.id);
+        if (latest && latest.toISOString().slice(0, 10) > params.priceDate.slice(0, 10)) {
+          await recordPastCost(product.id, line.unitCostCents, line.vendor.trim() || product.vendor, { source: params.priceSource ?? "invoice", note: params.source, at: params.priceDate });
+          summary.historical = (summary.historical ?? 0) + 1;
+          pastPrice = true;
+        }
+      }
+      if (!pastPrice && line.unitCostCents > 0 && line.unitCostCents !== product.unitCostCents) changes.unitCostCents = line.unitCostCents;
       if (line.retailPriceCents > 0 && line.retailPriceCents !== product.retailPriceCents) changes.retailPriceCents = line.retailPriceCents;
       if (changes.unitCostCents || changes.retailPriceCents) summary.priced++;
       for (const k of ["brand", "size", "category", "vendor"] as const) {
         if (!product[k] && line[k].trim()) changes[k] = line[k].trim();
       }
-      if (Object.keys(changes).length) product = (await updateProductFields(product.id, changes)) ?? product;
+      if (params.priceSource === "invoice" && line.unitCostCents > 0 && line.unitCostCents === product.unitCostCents) {
+        await recordCostCheck(product.id, line.unitCostCents, line.vendor.trim() || product.vendor, { source: "invoice", note: params.source, at: params.priceDate });
+      }
+      if (Object.keys(changes).length) {
+        product =
+          (await updateProductFields(product.id, changes, {
+            source: params.priceSource ?? (params.mode === "receipt" ? "delivery" : params.mode === "prices" ? "invoice" : "import"),
+            vendor: line.vendor.trim() || product.vendor,
+            note: params.source,
+            at: params.priceDate,
+          })) ?? product;
+      }
       summary.updated++;
     } else {
       if (params.mode === "prices" || !line.name.trim()) continue;

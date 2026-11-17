@@ -70,6 +70,8 @@ export const applyImport = createServerFn({ method: "POST" }).middleware([requir
       staffName: z.string().max(60),
       source: z.string().max(160),
       lines: z.array(LineSchema).min(1).max(MAX_IMPORT_LINES),
+      priceDate: z.string().max(40).optional(),
+      priceSource: z.enum(["invoice", "delivery", "import"]).optional(),
     }),
   )
   .handler(async ({ data }) => {
@@ -100,6 +102,8 @@ export const applyReceiptPrices = createServerFn({ method: "POST" }).middleware(
       mode: "prices",
       staffName: data.staffName ?? "",
       source: `Receipt: ${parsed.vendor || "photo"}`,
+      priceDate: parsed.date || undefined,
+      priceSource: "invoice",
       lines: lines.map((l) => ({ ...l, retailPriceCents: 0 })),
     });
     return { updated: lines.length, names: lines.slice(0, 5).map((l) => l.name) };

@@ -1,7 +1,7 @@
 import { and, eq, desc, asc, like, or, sql, inArray, gte, ne } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { mine, owned } from "./tenant.js";
-import { products, movements, integrations, squareOutbox } from "../../db/schema.js";
+import { products, movements, integrations, squareOutbox, priceHistory } from "../../db/schema.js";
 import { DEFAULT_REORDER_THRESHOLD, clampOrderQty, deriveInitials, onHandQty, selectBelowPar, stockStats } from "../lib/inventory-defaults.js";
 import type { PurchaseOrderLine } from "../lib/purchase-order.js";
 
@@ -68,6 +68,58 @@ export async function searchProductsByText(query: string) {
     .limit(20);
 }
 
+/** Where a cost came from, for the price history (Price watch). */
+export type PriceMeta = { source?: string; vendor?: string; note?: string; /** Invoice date, YYYY-MM-DD or ISO. */ at?: string | Date };
+
+function priceDate(at: PriceMeta["at"]) {
+  if (!at) return new Date();
+  const d = typeof at === "string" ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(at) ? `${at}T12:00:00Z` : at) : at;
+  // A date in the future or before 2000 is a misread, not an invoice date.
+  return Number.isNaN(d.getTime()) || d.getTime() > Date.now() + 86_400_000 || d.getFullYear() < 2000 ? new Date() : d;
+}
+
+/** Writes one price-history row when a cost really changed. Never throws: history must not block a save. */
+async function recordCost(productId: number, previousCents: number, cents: number, vendor: string, meta: PriceMeta = {}) {
+  if (cents <= 0 || cents === previousCents) return;
+  try {
+    await db.insert(priceHistory).values({
+      ...owned(),
+      productId,
+      unitCostCents: cents,
+      previousCents: previousCents < 0 ? cents : previousCents,
+      vendor: (meta.vendor ?? vendor ?? "").slice(0, 120),
+      source: (meta.source ?? "manual").slice(0, 20),
+      note: (meta.note ?? "").slice(0, 200),
+      recordedAt: priceDate(meta.at),
+    });
+  } catch (error) {
+    console.error("Price history write failed", error);
+  }
+}
+
+/** When this product's newest recorded cost is dated, or null when it has none. */
+export async function latestCostAt(productId: number) {
+  const [row] = await db
+    .select({ at: priceHistory.recordedAt })
+    .from(priceHistory)
+    .where(and(mine(priceHistory), eq(priceHistory.productId, productId)))
+    .orderBy(desc(priceHistory.recordedAt))
+    .limit(1);
+  return row?.at ?? null;
+}
+
+/** A price from an older invoice: kept as a dated point, today's cost untouched. */
+export async function recordPastCost(productId: number, cents: number, vendor: string, meta: PriceMeta) {
+  if (cents <= 0) return;
+  await recordCost(productId, -1, cents, vendor, { ...meta, note: `${meta.note ? `${meta.note} · ` : ""}older than the cost on file` });
+}
+
+/** An invoice showed the same cost again: a dated point that the price held, without changing anything. */
+export async function recordCostCheck(productId: number, cents: number, vendor: string, meta: PriceMeta) {
+  if (cents <= 0) return;
+  await recordCost(productId, -1, cents, vendor, meta);
+}
+
 export async function insertProduct(data: {
   barcode: string;
   name: string;
@@ -105,6 +157,7 @@ export async function insertProduct(data: {
       priceUpdatedAt: data.unitCostCents || data.retailPriceCents ? new Date() : null,
     })
     .returning();
+  if (row.unitCostCents > 0) await recordCost(row.id, 0, row.unitCostCents, row.vendor, { source: "new" });
   return row;
 }
 
@@ -134,7 +187,12 @@ export async function updateProductFields(
     imageUrl: string;
     extraBarcodes: string[];
   }>,
+  priceMeta?: PriceMeta,
 ) {
+  const before =
+    data.unitCostCents !== undefined
+      ? (await db.select({ cost: products.unitCostCents, vendor: products.vendor }).from(products).where(and(mine(products), eq(products.id, productId))))[0]
+      : undefined;
   // Stamp the price date only when cost or retail actually changes, so the
   // "update prices" reminder isn't silenced by editing a name.
   const cost = data.unitCostCents ?? null;
@@ -150,16 +208,22 @@ export async function updateProductFields(
     .set({ ...data, ...(priceUpdatedAt ? { priceUpdatedAt } : {}), updatedAt: new Date() })
     .where(and(mine(products), eq(products.id, productId)))
     .returning();
+  if (row && before) await recordCost(row.id, before.cost, row.unitCostCents, row.vendor, priceMeta);
   return row;
 }
 
 /** Records that staff checked a product's prices and they're still right (or were just changed). */
-export async function markPricesChecked(productId: number, prices: { unitCostCents?: number; retailPriceCents?: number } = {}) {
+export async function markPricesChecked(productId: number, prices: { unitCostCents?: number; retailPriceCents?: number } = {}, meta: PriceMeta = { source: "ai" }) {
+  const before =
+    prices.unitCostCents !== undefined
+      ? (await db.select({ cost: products.unitCostCents }).from(products).where(and(mine(products), eq(products.id, productId))))[0]
+      : undefined;
   const [row] = await db
     .update(products)
     .set({ ...prices, priceUpdatedAt: new Date(), updatedAt: new Date() })
     .where(and(mine(products), eq(products.id, productId)))
     .returning();
+  if (row && before) await recordCost(row.id, before.cost, row.unitCostCents, row.vendor, meta);
   return row ?? null;
 }
 

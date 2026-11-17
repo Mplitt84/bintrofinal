@@ -47,6 +47,7 @@ export const TENANT_TABLES = [
   "color_mixes",
   "square_synced_orders",
   "price_alternatives",
+  "price_history",
   "staff_schedules",
   "staff_reminder_prefs",
   "push_subscriptions",

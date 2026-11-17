@@ -324,6 +324,27 @@ export const priceChecks = pgTable("price_checks", {
 });
 
 /**
+ * Every cost a product has had, for watching prices rise and fall. A row is written
+ * whenever a product's cost changes (invoice, delivery, import, edit, AI check,
+ * Better prices switch); `recordedAt` is the invoice date when there was one.
+ */
+export const priceHistory = pgTable("price_history", {
+  /** Which business this belongs to. Every query filters on it. */
+  businessId: integer("business_id").notNull().default(1),
+  id: serial().primaryKey(),
+  productId: integer("product_id")
+    .notNull()
+    .references(() => products.id, { onDelete: "cascade" }),
+  unitCostCents: integer("unit_cost_cents").notNull(),
+  previousCents: integer("previous_cents").notNull().default(0),
+  vendor: text().notNull().default(""),
+  /** invoice · delivery · import · manual · ai · switch · new · baseline */
+  source: text().notNull().default("manual"),
+  note: text().notNull().default(""),
+  recordedAt: timestamp("recorded_at").defaultNow().notNull(),
+}, (t) => [index("price_history_business_product").on(t.businessId, t.productId, t.recordedAt)]);
+
+/**
  * Better prices: cheaper places to buy a product, found by the weekly scan. One row per
  * offer; a new scan replaces a product's open offers. `status`: new · switched · dismissed.
  */
