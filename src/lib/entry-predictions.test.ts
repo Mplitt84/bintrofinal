@@ -1,44 +1,58 @@
 import { describe, expect, it } from 'vitest'
 import type { Product } from '@/components/inventory/types'
-import { linePrice, lineSiblings } from './entry-predictions'
+import { linePrice, lineSiblings, sameLine } from './entry-predictions'
 
 let id = 1
-const p = (name: string, brand: string, size: string, cost: number): Product =>
-  ({ id: id++, name, brand, size, unitCostCents: cost, retailPriceCents: 0, category: '', vendor: '', barcode: '', createdAt: new Date().toISOString() }) as unknown as Product
+const p = (name: string, brand: string, size: string, cost: number, category = 'Color'): Product =>
+  ({ id: id++, name, brand, size, category, unitCostCents: cost, retailPriceCents: 0, vendor: '', barcode: '', createdAt: new Date().toISOString() }) as unknown as Product
 
-describe('linePrice', () => {
-  const shelf = [
-    p('Evo 7N', 'Evo', '2.06 oz', 1080),
-    p('Evo 8N', 'Evo', '2.06oz', 1080),
-    p('Evo 9V', 'Evo', '2.06 OZ', 1080),
-    p('Evo Developer 20 Vol', 'Evo', '33.8 oz', 1600),
-    p('Gloss 7N', 'Evo', '2 oz', 950),
-  ]
-  it('prices a new shade like the rest of its line, ignoring size spelling', () => {
-    const r = linePrice(shelf, 'unitCostCents', { brand: 'evo', name: 'Evo 6RV', size: '2.06 oz' })!
-    expect(r.cents).toBe(1080)
-    expect(r.confident).toBe(true)
-    expect(r.matches).toBe(3)
+const A = 'Alfaparf Milano'
+describe('sameLine — names from a real salon shelf', () => {
+  it('groups shades named with a code and a description', () => {
+    expect(sameLine(p('EVO 7.31 Medium Blonde Golden Ash', A, '', 0), p('EVO 10 Lightest Natural Blonde', A, '2.06oz', 0))).toBe(true)
+    expect(sameLine(p('EVO 05N Light Brown', A, '60 ml', 0), p('EVO 9 NB Warm Very Light Blonde', A, '', 0))).toBe(true)
+    expect(sameLine(p('EVO .03 Soft Gold', A, '', 0), p('EVO 000sss Lifting Reinforcer', A, '', 0))).toBe(true)
+    expect(sameLine(p('Gloss Toner 08.21', A, '60 ml', 0), p('Gloss Toner 010N', A, '', 0))).toBe(true)
+    expect(sameLine(p('Colorwear 4.66 Medium Intense Red Brown', A, '2.05oz', 0), p('Colorwear 9.13 very light blonde ash gold', A, '60 ml', 0))).toBe(true)
+    expect(sameLine(p('Alfaparf Milano 10 Volume Developer', A, '33.8 oz', 0), p('Alfaparf Milano 20 Volume Developer', A, '1 L', 0))).toBe(true)
   })
-  it('keeps lines and sizes apart', () => {
-    expect(linePrice(shelf, 'unitCostCents', { brand: 'Evo', name: 'Gloss 9V', size: '2 oz' })!.cents).toBe(950)
-    expect(linePrice(shelf, 'unitCostCents', { brand: 'Evo', name: 'Evo 6RV', size: '4 oz' })).toBeNull()
-    expect(linePrice(shelf, 'unitCostCents', { brand: 'Redken', name: 'Evo 6RV', size: '2.06 oz' })).toBeNull()
-    expect(linePrice(shelf, 'unitCostCents', { brand: 'Evo', name: 'Evo Developer 30 Vol', size: '33.8 oz' })!.cents).toBe(1600)
+  it('keeps different lines apart', () => {
+    expect(sameLine(p('EVO 7 Medium Blonde', A, '', 0), p('Gloss Toner 07N', A, '', 0))).toBe(false)
+    expect(sameLine(p('EVO 7 Medium Blonde', A, '', 0), p('Colorwear 7 Medium Pure Blonde', A, '', 0))).toBe(false)
+    expect(sameLine(p('EVO 7 Medium Blonde', A, '', 0), p('EVO Harmonizer .01 Soft Ash', A, '', 0))).toBe(false)
+    expect(sameLine(p('Gloss Toner 08.21', A, '60 ml', 0), p('Gloss Toner 08.2', A, '4 oz', 0))).toBe(false)
+  })
+  it('groups color-named lines, never shampoo and conditioner', () => {
+    expect(sameLine(p('Danger Jones Adrenaline', 'Danger Jones', '', 0), p('Danger Jones Cheap Date', 'Danger Jones', '', 0))).toBe(true)
+    expect(
+      sameLine(
+        p('Pravana Chromasilk Vivids Direct Dye Blue topaz', 'Pravana', '90 ml', 0),
+        p('Pravana Chromasilk Vivids Direct Dye Emerald', 'Pravana', '90 ml', 0),
+      ),
+    ).toBe(true)
+    expect(
+      sameLine(
+        p('Cult + King Astral Amino Shampoo', 'Cult + King', '32 fl oz', 0, 'Back bar'),
+        p('Cult + King Astral Amino Conditioner', 'Cult + King', '32 fl oz', 0, 'Back bar'),
+      ),
+    ).toBe(false)
   })
 })
 
-describe('lineSiblings', () => {
-  it('moves the shades that shared the old price (or had none), not ones priced on purpose', () => {
-    const shelf = [
-      p('Evo 7N', 'Evo', '2.06 oz', 1080),
-      p('Evo 8N', 'Evo', '2.06 oz', 1080),
-      p('Evo 10V', 'Evo', '2.06 oz', 0),
-      p('Evo Clear', 'Evo', '2.06 oz', 1080),
-      p('Evo 9V', 'Evo', '2.06 oz', 1250),
-      p('Evo 6N', 'Evo', '4 oz', 1080),
-    ]
-    const names = lineSiblings(shelf, shelf[0], 1080).map((x) => x.name)
-    expect(names).toEqual(['Evo 8N', 'Evo 10V'])
+describe('linePrice and lineSiblings', () => {
+  const shelf = [
+    p('EVO 7.31 Medium Blonde Golden Ash', A, '', 1104),
+    p('EVO 8.1 Light Ash Blonde', A, '', 1104),
+    p('EVO 10.21 Lightest Blonde Violet Ash', A, '2.06oz', 1104),
+    p('EVO 6.66I Dark Blonde Intense Red', A, '', 0),
+    p('EVO 9NI Intense Very Light Blonde', A, '', 1250),
+    p('Gloss Toner 08.21', A, '60 ml', 836),
+  ]
+  it('prices a new shade like its line', () => {
+    expect(linePrice(shelf, 'unitCostCents', { brand: A, name: 'EVO 4.52 Medium Mahogany Violet Brown', size: '' })!.cents).toBe(1104)
+  })
+  it('moves shades that shared the old price (or had none), not ones priced on purpose', () => {
+    const names = lineSiblings(shelf, shelf[0], 1104).map((x) => x.name)
+    expect(names).toEqual(['EVO 8.1 Light Ash Blonde', 'EVO 10.21 Lightest Blonde Violet Ash', 'EVO 6.66I Dark Blonde Intense Red'])
   })
 })

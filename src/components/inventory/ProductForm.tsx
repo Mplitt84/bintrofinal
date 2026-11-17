@@ -184,12 +184,12 @@ export function ProductForm({
     if (!product) return []
     const next = toCentsField(cost)
     if (!next || next === product.unitCostCents) return []
-    return lineSiblings(others, { id: product.id, brand, name, size }, product.unitCostCents)
-  }, [product, others, brand, name, size, cost])
+    return lineSiblings(others, { id: product.id, brand, name, size, category }, product.unitCostCents)
+  }, [product, others, brand, name, size, category, cost])
   /** A new shade / variant of a line already priced: one tap fills both prices. */
   const line = useMemo(() => {
     if (!brand.trim() || !name.trim()) return null
-    const target = { id: product?.id, brand, name, size }
+    const target = { id: product?.id, brand, name, size, category }
     const c = linePrice(others, 'unitCostCents', target)
     const r = linePrice(others, 'retailPriceCents', target)
     const costCents = c?.confident ? c.cents : 0
@@ -197,7 +197,7 @@ export function ProductForm({
     if (!costCents && !retailCents) return null
     const want = (costCents && toCentsField(cost) !== costCents) || (retailCents && toCentsField(retail) !== retailCents)
     return want ? { costCents, retailCents, hint: (c?.confident ? c : r)!.hint } : null
-  }, [others, product?.id, brand, name, size, cost, retail])
+  }, [others, product?.id, brand, name, size, category, cost, retail])
   /** A previous entry that looks like this one, offered inline while details are still blank. */
   const similar = useMemo(() => {
     if (!canCopy || copiedFrom || similarDismissed || (category && cost)) return null
