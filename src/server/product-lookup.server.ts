@@ -1182,3 +1182,120 @@ export async function chatWithClaude(
     .trim();
   return text ? { ok: true, text } : { ok: false, message: "Bintro didn't have an answer. Try asking another way." };
 }
+
+// --- Better prices: cheaper sellers -----------------------------------------
+
+const RECORD_OFFERS_TOOL: ToolSpec = {
+  name: "record_offers",
+  description: "Record up to 3 places that sell this exact product (same size) for less than the business pays now. Call exactly once, at the end.",
+  input_schema: {
+    type: "object",
+    properties: {
+      offers: {
+        type: "array",
+        maxItems: 3,
+        items: {
+          type: "object",
+          properties: {
+            seller: { type: "string", description: "Store name, e.g. 'CosmoProf', 'Salon Service Group', a local beauty supply's name, 'Amazon'." },
+            url: { type: "string", description: "Exact product page URL showing the price." },
+            seller_type: { type: "string", enum: ["distributor", "brand", "local", "marketplace"] },
+            unit_cost: { type: "number", description: "Price per single unit in USD, as listed (divide packs/cases and say so in the note)." },
+            note: { type: "string", description: "One short sentence: pack maths, pro account needed, member price, sale price, or local pickup." },
+          },
+          required: ["seller", "url", "seller_type", "unit_cost", "note"],
+        },
+      },
+    },
+    required: ["offers"],
+  },
+};
+
+export type SellerOffer = { sellerName: string; sellerUrl: string; sellerType: "distributor" | "brand" | "local" | "marketplace"; unitCostCents: number; note: string };
+
+/**
+ * Looks on the web for cheaper places to buy one product, following the shop's buying
+ * rules: pro distributors and brand pro stores always; local independents when the shop
+ * supports local (big-box marketplaces then blocked outright); Amazon / Walmart / Target
+ * only when `allowMarketplace` (the shop buys there AND the item is a shop supply). Resale
+ * sites are always blocked. Only listed prices count, and only ones below today's cost.
+ */
+export async function findCheaperSellers(
+  fields: { brand: string; name: string; size: string; vendor: string; barcode?: string; unitCostCents: number },
+  opts: { businessType: string; itemNoun: string; local: boolean; city: string; allowMarketplace: boolean },
+): Promise<{ ok: true; offers: SellerOffer[] } | { ok: false; message: string }> {
+  if (!anthropicEndpoint()) return { ok: false, message: "AI help isn't available on this deploy yet." };
+  const label = [fields.brand, fields.name, fields.size].filter((v) => v.trim()).join(" ");
+  const distributors = PRO_DISTRIBUTORS[opts.businessType] ?? DEFAULT_DISTRIBUTORS;
+  const blocked = [...RESALE_DOMAINS, ...(opts.allowMarketplace ? [] : MARKETPLACES)];
+  const now = (fields.unitCostCents / 100).toFixed(2);
+  const where = [
+    `Professional distributors: ${distributors}`,
+    "The brand's own professional / wholesale store",
+    opts.local
+      ? `Local and independent beauty supply stores${opts.city ? ` in or near ${opts.city}` : " near the business"} that list prices online (not national big-box chains)`
+      : "",
+    opts.allowMarketplace ? "Amazon, Walmart or Target — only listings sold by the retailer itself or the brand's official store" : "",
+  ].filter(Boolean);
+  const prompt = `A professional ${opts.itemNoun.replace(/ product$/, "")} business pays $${now} per unit for:
+${label}${fields.barcode && /^\d{8,14}$/.test(fields.barcode) ? `\nUPC/EAN: ${fields.barcode}` : ""}${fields.vendor ? `\nCurrent supplier: ${fields.vendor}` : ""}
+
+Find up to 3 places that sell this EXACT product and size for less than $${now} per unit. Look only at:
+${where.map((w, i) => `${i + 1}. ${w}`).join("\n")}
+
+Rules:
+- Same product, same size. A different size or a similar product is not a match.
+- Per-unit price: divide a pack or case and say so in the note.
+- Only prices actually listed on the page. If a price needs a pro login and isn't shown, skip it.
+- Skip the current supplier.${opts.allowMarketplace ? "" : "\n- Never Amazon, Walmart, Target or any marketplace."}
+- Never resale or third-party marketplace sellers (eBay, Poshmark, Mercari, Etsy, liquidators, price-comparison sites).
+- If nothing is cheaper, record an empty list. That is a fine answer.
+When done, call record_offers once.`;
+
+  const messages: Array<{ role: "user" | "assistant"; content: unknown }> = [{ role: "user", content: prompt }];
+  let record: Record<string, unknown> | undefined;
+  for (let turn = 0; turn < 4 && !record; turn++) {
+    const res = await postToClaude(
+      {
+        model: LABEL_MODEL,
+        max_tokens: 2000,
+        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6, blocked_domains: blocked }, RECORD_OFFERS_TOOL],
+        tool_choice: turn >= 2 ? { type: "tool", name: RECORD_OFFERS_TOOL.name } : { type: "auto" },
+        messages,
+      },
+      90_000,
+      "better prices",
+    );
+    if (!res || !res.ok) return { ok: false, message: "The price search didn't answer. It will try again next week." };
+    const data = (await res.json()) as { content?: Block[]; stop_reason?: string };
+    const content = data.content ?? [];
+    record = content.find((c) => c.type === "tool_use" && c.name === RECORD_OFFERS_TOOL.name)?.input;
+    if (record) break;
+    messages.push({ role: "assistant", content });
+    if (data.stop_reason !== "pause_turn") messages.push({ role: "user", content: "Now call record_offers (an empty list is fine)." });
+  }
+  const raw = Array.isArray(record?.offers) ? (record!.offers as Record<string, unknown>[]) : [];
+  const vendor = fields.vendor.trim().toLowerCase();
+  const offers: SellerOffer[] = [];
+  for (const o of raw) {
+    const url = clean(o.url, 500);
+    if (!/^https?:\/\//.test(url) || isResaleUrl(url)) continue;
+    let host = "";
+    try {
+      host = new URL(url).hostname.replace(/^www\./, "");
+    } catch {
+      continue;
+    }
+    const isMarket = MARKETPLACES.some((d) => host === d || host.endsWith(`.${d}`));
+    if (isMarket && !opts.allowMarketplace) continue;
+    const type = String(o.seller_type);
+    const sellerType = isMarket ? "marketplace" : type === "brand" || type === "local" ? type : "distributor";
+    if (sellerType === "local" && !opts.local) continue;
+    const cost = toCents(o.unit_cost);
+    const sellerName = clean(o.seller, 80);
+    if (!cost || !sellerName || cost >= fields.unitCostCents) continue;
+    if (vendor && (sellerName.toLowerCase() === vendor || host.includes(vendor.replace(/\s+/g, "")))) continue;
+    offers.push({ sellerName, sellerUrl: url, sellerType, unitCostCents: cost, note: clean(o.note, 240) });
+  }
+  return { ok: true, offers: offers.sort((a, b) => a.unitCostCents - b.unitCostCents).slice(0, 3) };
+}

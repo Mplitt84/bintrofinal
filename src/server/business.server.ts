@@ -27,6 +27,7 @@ export async function findBusinessProfile(): Promise<BusinessProfile> {
     palette: row.palette,
     orderEveryDays: row.orderEveryDays,
     taxState: row.taxState,
+    buyingPreference: row.buyingPreference,
     retailCommissionPct: row.retailCommissionPct,
     currency: row.currency,
   };

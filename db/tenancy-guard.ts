@@ -46,6 +46,7 @@ export const TENANT_TABLES = [
   "color_waste_logs",
   "color_mixes",
   "square_synced_orders",
+  "price_alternatives",
   "staff_schedules",
   "staff_reminder_prefs",
   "push_subscriptions",
