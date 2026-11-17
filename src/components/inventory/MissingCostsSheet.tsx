@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Copy, ExternalLink, Search, Sparkles } from 'lucide-react'
+import { ChevronDown, Copy, ExternalLink, Pencil, Search, Sparkles, Trash2 } from 'lucide-react'
+import { deleteProduct } from '@/server/inventory.functions'
 import { linePrice } from '@/lib/entry-predictions'
 import type { Product } from './types'
 import { Sheet, SheetActions } from '@/components/ui/Sheet'
@@ -42,11 +43,14 @@ export function MissingCostsSheet({
   onClose,
   products,
   onDone,
+  onEdit,
 }: {
   open: boolean
   onClose: () => void
   products: Product[]
   onDone: () => void | Promise<void>
+  /** Opens the full Edit product sheet on top of this one (name, category, prices, barcode, merge, delete). */
+  onEdit?: (p: Product) => void
 }) {
   const toast = useToast()
   const [query, setQuery] = useState('')
@@ -62,6 +66,23 @@ export function MissingCostsSheet({
     message: '',
   })
   const stop = useRef(false)
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null)
+
+  async function remove(p: Product) {
+    if (confirmDelete !== p.id) return setConfirmDelete(p.id)
+    setConfirmDelete(null)
+    patch(p.id, { saving: true })
+    try {
+      await deleteProduct({ data: { productId: p.id } })
+      setSaved((s) => new Set(s).add(p.id))
+      setOpenId(null)
+      toast(`Deleted ${p.name}`)
+      await onDone()
+    } catch {
+      patch(p.id, { saving: false })
+      toast('Couldn’t delete that. Try again.')
+    }
+  }
 
   useEffect(() => {
     if (open) return
@@ -264,9 +285,10 @@ export function MissingCostsSheet({
             const isOpen = openId === p.id
             return (
               <li key={p.id} className="border-b border-line last:border-b-0">
+                <div className="flex items-center">
                 <button
                   type="button"
-                  className="w-full flex items-center gap-3 py-2.5 bg-transparent border-0 text-left cursor-pointer"
+                  className="flex-1 min-w-0 flex items-center gap-3 py-2.5 bg-transparent border-0 text-left cursor-pointer"
                   aria-expanded={isOpen}
                   onClick={() => setOpenId(isOpen ? null : p.id)}
                 >
@@ -288,6 +310,18 @@ export function MissingCostsSheet({
                   ) : null}
                   <ChevronDown size={18} className={`text-ink-2 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                 </button>
+                {onEdit && (
+                  <button
+                    type="button"
+                    aria-label={`Edit everything for ${p.name}`}
+                    title="Edit everything"
+                    className="w-10 h-10 shrink-0 rounded-full border-0 bg-transparent grid place-items-center text-ink-2 cursor-pointer hover:bg-surface"
+                    onClick={() => onEdit(p)}
+                  >
+                    <Pencil size={16} />
+                  </button>
+                )}
+                </div>
 
                 {isOpen && (
                   <div className="pb-3 pl-[52px]">
@@ -336,6 +370,14 @@ export function MissingCostsSheet({
                       </button>
                       <button type="button" className="btn btn-tonal btn-sm" disabled={st.checking || bulk.running} onClick={() => findOne(p)}>
                         <Sparkles size={15} /> {st.checking ? 'Checking…' : st.found || st.note ? 'Check again' : 'Find with AI'}
+                      </button>
+                      {onEdit && (
+                        <button type="button" className="btn btn-tonal btn-sm" onClick={() => onEdit(p)}>
+                          <Pencil size={14} /> Edit everything
+                        </button>
+                      )}
+                      <button type="button" className="btn btn-text btn-sm !text-bad" disabled={st.saving} onClick={() => remove(p)}>
+                        <Trash2 size={14} /> {confirmDelete === p.id ? 'Tap again to delete' : 'Delete'}
                       </button>
                     </div>
                   </div>
