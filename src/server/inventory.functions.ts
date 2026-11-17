@@ -10,6 +10,7 @@ import {
   insertProduct,
   updateProductBarcode,
   updateProductFields,
+  followLineCost,
   applyMovement,
   findRecentMovements,
   findMovementsSince,
@@ -132,6 +133,8 @@ const UpdateProductSchema = z.object({
   /** Additional barcodes / SKUs that also scan to this product. */
   extraBarcodes: z.array(z.string().max(64)).max(20).optional(),
   staffName: z.string().optional(),
+  /** Give a changed cost to the rest of the product's line (same brand, size, line). */
+  alsoLine: z.boolean().optional(),
 });
 
 /** Throws (with "duplicate" in the message, which the form shows as a clash) when another product scans with this code. */
@@ -143,7 +146,8 @@ async function assertBarcodeFree(barcode: string, exceptId?: number) {
 export const updateProduct = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(UpdateProductSchema)
   .handler(async ({ data }) => {
-    const { productId, qty, staffName, extraBarcodes, ...rest } = data;
+    const { productId, qty, staffName, extraBarcodes, alsoLine, ...rest } = data;
+    const before = alsoLine && rest.unitCostCents !== undefined ? await findProductById(productId) : null;
     let extras: string[] | undefined;
     if (extraBarcodes !== undefined) {
       const current = await findProductById(productId);
@@ -173,7 +177,11 @@ export const updateProduct = createServerFn({ method: "POST" }).middleware([requ
         });
       }
     }
-    return updateProductFields(productId, extras === undefined ? rest : { ...rest, extraBarcodes: extras });
+    const saved = await updateProductFields(productId, extras === undefined ? rest : { ...rest, extraBarcodes: extras });
+    if (saved && before && rest.unitCostCents !== undefined && rest.unitCostCents !== before.unitCostCents) {
+      await followLineCost(saved, before.unitCostCents, rest.unitCostCents, { source: "manual" });
+    }
+    return saved;
   });
 
 export const deleteProduct = createServerFn({ method: "POST" }).middleware([requireUser])

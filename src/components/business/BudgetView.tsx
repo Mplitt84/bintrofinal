@@ -871,7 +871,7 @@ function ExpenseForm({
         .then((p) => {
           if (p.updated > 0) {
             setInfo(
-              `Read from your receipt. Also updated the cost of ${p.updated} product${p.updated === 1 ? "" : "s"} (${p.names.join(", ")}${p.updated > p.names.length ? "…" : ""}).`,
+              `Read from your receipt. Also updated the cost of ${p.updated} product${p.updated === 1 ? "" : "s"} (${p.names.join(", ")}${p.updated > p.names.length ? "…" : ""})${p.lineUpdated ? `, and ${p.lineUpdated} more in the same line${p.lineUpdated === 1 ? "" : "s"}` : ""}.`,
             );
           }
         })

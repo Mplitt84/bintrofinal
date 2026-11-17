@@ -371,6 +371,11 @@ export function ReceiveDeliverySheet({
             {stage.result.status === 'received' && '. Order complete.'}
             {stage.result.status === 'partial' && '. The rest stays on order.'}
           </p>
+          {(stage.result.summary.lineUpdated ?? 0) > 0 && (
+            <p className="m-0 mt-1 text-sm text-ink-2">
+              New invoice costs also went to {stage.result.summary.lineUpdated} more product{stage.result.summary.lineUpdated === 1 ? '' : 's'} in the same lines (same brand and size, same old cost).
+            </p>
+          )}
           {stage.result.short.length > 0 && (
             <div className="mt-3 rounded-xl bg-bad-tint p-3 text-sm">
               <p className="m-0 mb-1 font-semibold text-bad flex items-center gap-1.5">

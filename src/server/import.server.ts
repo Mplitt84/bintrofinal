@@ -4,7 +4,7 @@
  * matches them to existing products, and applies stock counts and price updates.
  * Server-only.
  */
-import { applyMovement, countMovementsWithNote, findAllProducts, flushSquareSoon, insertProduct, latestCostAt, recordCostCheck, recordPastCost, updateProductFields, type Product } from "./inventory.server.js";
+import { applyMovement, countMovementsWithNote, findAllProducts, flushSquareSoon, insertProduct, followLineCost, latestCostAt, recordCostCheck, recordPastCost, updateProductFields, type Product } from "./inventory.server.js";
 import {
   CSV_FIELDS,
   extractImportDocument,
@@ -243,6 +243,8 @@ export async function applyImportLines(params: {
   priceDate?: string;
   /** Price-history source label; defaults from the mode. */
   priceSource?: string;
+  /** When a cost changes, move the rest of the product's line with it (see followLineCost). */
+  followLine?: boolean;
 }): Promise<ImportSummary> {
   if (params.mode === "inventory") {
     // Count any Square sales first, so the file's counts aren't later lowered again by sales they already reflect.
@@ -284,13 +286,19 @@ export async function applyImportLines(params: {
         await recordCostCheck(product.id, line.unitCostCents, line.vendor.trim() || product.vendor, { source: "invoice", note: params.source, at: params.priceDate });
       }
       if (Object.keys(changes).length) {
-        product =
-          (await updateProductFields(product.id, changes, {
-            source: params.priceSource ?? (params.mode === "receipt" ? "delivery" : params.mode === "prices" ? "invoice" : "import"),
-            vendor: line.vendor.trim() || product.vendor,
-            note: params.source,
-            at: params.priceDate,
-          })) ?? product;
+        const oldCost = product.unitCostCents;
+        const meta = {
+          source: params.priceSource ?? (params.mode === "receipt" ? "delivery" : params.mode === "prices" ? "invoice" : "import"),
+          vendor: line.vendor.trim() || product.vendor,
+          note: params.source,
+          at: params.priceDate,
+        };
+        product = (await updateProductFields(product.id, changes, meta)) ?? product;
+        if (params.followLine && changes.unitCostCents) {
+          const onFile = new Set(params.lines.map((l) => l.productId).filter((id): id is number => Boolean(id)));
+          const moved = await followLineCost(product, oldCost, changes.unitCostCents, meta, onFile);
+          summary.lineUpdated = (summary.lineUpdated ?? 0) + moved.length;
+        }
       }
       summary.updated++;
     } else {

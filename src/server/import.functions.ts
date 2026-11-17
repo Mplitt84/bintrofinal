@@ -72,6 +72,7 @@ export const applyImport = createServerFn({ method: "POST" }).middleware([requir
       lines: z.array(LineSchema).min(1).max(MAX_IMPORT_LINES),
       priceDate: z.string().max(40).optional(),
       priceSource: z.enum(["invoice", "delivery", "import"]).optional(),
+      followLine: z.boolean().optional(),
     }),
   )
   .handler(async ({ data }) => {
@@ -95,18 +96,19 @@ export const applyReceiptPrices = createServerFn({ method: "POST" }).middleware(
   .handler(async ({ data }) => {
     await assertFeature("import");
     const parsed = await parseImportFile({ kind: "document", data: data.data, mediaType: data.mediaType }, await businessContext());
-    if (!parsed.ok) return { updated: 0, names: [] as string[] };
+    if (!parsed.ok) return { updated: 0, names: [] as string[], lineUpdated: 0 };
     const lines = parsed.lines.filter((l) => l.productId && l.costSource === "document" && l.unitCostCents > 0);
-    if (lines.length === 0) return { updated: 0, names: [] as string[] };
-    await applyImportLines({
+    if (lines.length === 0) return { updated: 0, names: [] as string[], lineUpdated: 0 };
+    const summary = await applyImportLines({
       mode: "prices",
       staffName: data.staffName ?? "",
       source: `Receipt: ${parsed.vendor || "photo"}`,
       priceDate: parsed.date || undefined,
       priceSource: "invoice",
+      followLine: true,
       lines: lines.map((l) => ({ ...l, retailPriceCents: 0 })),
     });
-    return { updated: lines.length, names: lines.slice(0, 5).map((l) => l.name) };
+    return { updated: lines.length, names: lines.slice(0, 5).map((l) => l.name), lineUpdated: summary.lineUpdated ?? 0 };
   });
 
 const FileSchema = z.discriminatedUnion("kind", [
