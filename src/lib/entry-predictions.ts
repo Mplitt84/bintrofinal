@@ -1,4 +1,5 @@
 import type { Product } from '@/components/inventory/types'
+import { parseSize } from './categorize'
 
 export type PriceField = 'unitCostCents' | 'retailPriceCents'
 export type PriceOption = { cents: number; hint: string }
@@ -130,4 +131,56 @@ export function predictPrices(
     .sort((a, b) => b.rank - a.rank || a.cents - b.cents)
     .slice(0, limit)
     .map(({ cents, hint }) => ({ cents, hint }))
+}
+
+/* ------------------------------------------------------------------ Same-line prices */
+
+/** Shade codes and numbers ("7N", "9.1", "10V", "#4") say which shade, not which line. */
+const SHADE = /^(#?\d+([.,/]\d+)?[a-z]{0,3}|[a-z]{1,2}\d+[a-z]?)$/i
+function lineWords(name: string) {
+  return fold(name)
+    .split(/[\s\-/,'()]+/)
+    .filter((w) => w.length >= 2 && !SHADE.test(w))
+}
+
+const sameSize = (a: string, b: string) => {
+  const pa = parseSize(a)
+  const pb = parseSize(b)
+  if (pa && pb) return pa.kind === pb.kind && Math.abs(pa.base - pb.base) / Math.max(pa.base, pb.base) < 0.02
+  return fold(a) === fold(b)
+}
+
+export type LinePrice = { cents: number; hint: string; matches: number; confident: boolean }
+
+/**
+ * The price a new shade or variant almost certainly has: products from the same brand,
+ * the same size and the same line (name words other than shade codes) that already
+ * carry a price. Lines usually price every shade alike, so when they agree (at least
+ * two-thirds on one price) that's the answer, offered with the products it came from.
+ * Nothing is filled without a person tapping it.
+ */
+export function linePrice(products: Product[], field: PriceField, target: Pick<Product, 'brand' | 'name' | 'size'> & { id?: number }): LinePrice | null {
+  if (!target.brand.trim() || !target.name.trim()) return null
+  const brand = fold(target.brand)
+  const mine = new Set(lineWords(target.name))
+  const alike = products.filter((p) => {
+    if (p.id === target.id || p[field] <= 0 || fold(p.brand) !== brand) return false
+    if (!sameSize(p.size || p.name, target.size || target.name)) return false
+    const theirs = lineWords(p.name)
+    // Same line: every non-shade word matches (both ways), or both names are only shade codes.
+    return theirs.length === mine.size && theirs.every((w) => mine.has(w))
+  })
+  if (alike.length === 0) return null
+  const tally = new Map<number, Product[]>()
+  for (const p of alike) tally.set(p[field], [...(tally.get(p[field]) ?? []), p])
+  const [cents, from] = [...tally].sort((a, b) => b[1].length - a[1].length)[0]
+  const confident = from.length / alike.length >= 2 / 3
+  if (!confident && from.length < 2) return null
+  const names = from.slice(0, 2).map((p) => p.name).join(', ')
+  return {
+    cents,
+    matches: from.length,
+    confident,
+    hint: `Same as ${names}${from.length > 2 ? ` +${from.length - 2}` : ''}`,
+  }
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ExternalLink, Search, Sparkles } from 'lucide-react'
+import { ChevronDown, Copy, ExternalLink, Search, Sparkles } from 'lucide-react'
+import { linePrice } from '@/lib/entry-predictions'
 import type { Product } from './types'
 import { Sheet, SheetActions } from '@/components/ui/Sheet'
 import { Thumb, centsToDollars } from '@/components/ui/bits'
@@ -12,6 +13,8 @@ type RowState = {
   cost: string
   /** AI result shown on the row (applied only when staff tap Use / Save). */
   found?: Found
+  /** Same-line price from the shop's own products (no AI), shown for review. */
+  line?: { cents: number; hint: string }
   /** "Not found" / error message from the last AI check. */
   note?: string
   checking?: boolean
@@ -125,8 +128,27 @@ export function MissingCostsSheet({
 
   const foundRows = shown.filter((p) => {
     const st = rows[p.id]
-    return st?.found && toCents(st.cost) > 0 && !st.saving
+    return (st?.found || st?.line) && toCents(st.cost) > 0 && !st.saving
   })
+
+  /** Same brand, size and line already priced → offered at once, for review. */
+  const lineMatches = useMemo(() => {
+    const out = new Map<number, { cents: number; hint: string }>()
+    for (const p of missing) {
+      const r = linePrice(products, 'unitCostCents', p)
+      if (r?.confident) out.set(p.id, { cents: r.cents, hint: r.hint })
+    }
+    return out
+  }, [missing, products])
+  const lineWaiting = shown.filter((p) => lineMatches.has(p.id) && !rows[p.id]?.line && !rows[p.id]?.found)
+
+  function fillFromLine() {
+    for (const p of lineWaiting) {
+      const m = lineMatches.get(p.id)!
+      patch(p.id, { line: m, cost: centsToDollars(m.cents), note: undefined })
+    }
+    toast(`Filled ${lineWaiting.length} from products in the same line. Check them, then save.`)
+  }
 
   async function saveFound() {
     let n = 0
@@ -147,7 +169,7 @@ export function MissingCostsSheet({
 
   async function findAll() {
     stop.current = false
-    const queue = [...shown]
+    const queue = shown.filter((p) => !rows[p.id]?.line)
     let done = 0
     let found = 0
     let unreachable = 0
@@ -211,6 +233,18 @@ export function MissingCostsSheet({
         </label>
       </div>
 
+      {lineWaiting.length > 0 && !bulk.running && (
+        <div className="rounded-xl bg-good-tint p-3 mb-3 flex items-center gap-3 flex-wrap">
+          <span className="flex-1 min-w-[12rem] text-sm">
+            <b>{lineWaiting.length} can be filled right now</b>
+            <span className="block text-[12px] text-ink-2">Same brand, size and line as products you already priced, like a new shade. No AI needed.</span>
+          </span>
+          <button type="button" className="btn btn-primary btn-sm" onClick={fillFromLine}>
+            <Copy size={14} /> Fill {lineWaiting.length}
+          </button>
+        </div>
+      )}
+
       {(bulk.running || bulk.done > 0) && (
         <p className="text-sm mt-0">
           AI checked {bulk.done} of {bulk.total} · <b className="text-good">{bulk.found} found to review</b>
@@ -247,6 +281,8 @@ export function MissingCostsSheet({
                     <span className="text-[12px] text-ink-2">Checking…</span>
                   ) : st.found ? (
                     <span className="text-[12px] text-good font-semibold">Found ${centsToDollars(st.found.unitCostCents)} · review</span>
+                  ) : st.line ? (
+                    <span className="text-[12px] text-good font-semibold">${centsToDollars(st.line.cents)} · same line</span>
                   ) : st.note ? (
                     <span className="text-[12px] text-ink-2">Not found</span>
                   ) : null}
@@ -279,6 +315,19 @@ export function MissingCostsSheet({
                         {st.found.note && <span className="block">{st.found.note}</span>}
                       </p>
                     )}
+                    {st.line && <p className="text-[12px] text-ink-2 mt-0 mb-2">{st.line.hint} (same brand, size and line)</p>}
+                    {!st.line && !st.found && lineMatches.has(p.id) && (
+                      <button
+                        type="button"
+                        className="chip mb-2"
+                        onClick={() => {
+                          const m = lineMatches.get(p.id)!
+                          patch(p.id, { line: m, cost: centsToDollars(m.cents) })
+                        }}
+                      >
+                        <Copy size={13} /> ${centsToDollars(lineMatches.get(p.id)!.cents)} · {lineMatches.get(p.id)!.hint}
+                      </button>
+                    )}
                     {st.note && <p className="text-[12px] text-ink-2 mt-0 mb-2">{st.note}</p>}
 
                     <div className="flex gap-2 flex-wrap">
@@ -300,7 +349,7 @@ export function MissingCostsSheet({
       <SheetActions>
         {!bulk.running && foundRows.length > 0 && (
           <button type="button" className="btn btn-primary" onClick={saveFound}>
-            Save {foundRows.length} found
+            Save {foundRows.length} to review
           </button>
         )}
         {bulk.running ? (
