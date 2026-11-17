@@ -781,6 +781,12 @@ export const sustainabilityPartners = pgTable("sustainability_partners", {
   /** Month the partnership started, YYYY-MM, or "". */
   since: text().notNull().default(""),
   notes: text().notNull().default(""),
+  /** Where the shop books a recycling pickup (the partner's own page), or "". */
+  pickupUrl: text("pickup_url").notNull().default(""),
+  /** Day of the month pickups are booked for (1–31, 31 = last day); 0 = no monthly reminder. */
+  pickupDay: integer("pickup_day").notNull().default(0),
+  /** Name of the partner this one is an affiliate of (e.g. a Green Circle affiliate), or "". */
+  affiliateOf: text("affiliate_of").notNull().default(""),
   addedBy: text("added_by").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [

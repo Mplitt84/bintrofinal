@@ -5,13 +5,14 @@
  * an ounce of color costs it. Nothing here is estimated.
  */
 
-export type PartnerKind = 'recycling' | 'certification' | 'donation' | 'supplier' | 'other'
+export type PartnerKind = 'recycling' | 'certification' | 'donation' | 'supplier' | 'affiliate' | 'other'
 
 export const PARTNER_KINDS: { id: PartnerKind; label: string }[] = [
   { id: 'recycling', label: 'Recycling program' },
   { id: 'certification', label: 'Certification' },
   { id: 'donation', label: 'Donations' },
   { id: 'supplier', label: 'Green supplier' },
+  { id: 'affiliate', label: 'Affiliate' },
   { id: 'other', label: 'Other' },
 ]
 
@@ -23,10 +24,19 @@ export type Partner = {
   website: string
   since: string
   notes: string
+  /** Where to book a recycling pickup, or "". */
+  pickupUrl: string
+  /** Day of the month for the monthly pickup reminder (31 = last day); 0 = none. */
+  pickupDay: number
+  /** The partner this one is an affiliate of, or "". */
+  affiliateOf: string
 }
 
+/** Title of the monthly calendar reminder for a partner's pickup (also how an existing one is found). */
+export const pickupEventTitle = (name: string) => `Book recycling pickup · ${name}`
+
 /** A one-tap start for beauty businesses. Everything else is written in by the shop. */
-export const PARTNER_SUGGESTIONS: Array<Omit<Partner, 'id' | 'contact' | 'since' | 'notes'>> = [
+export const PARTNER_SUGGESTIONS: Array<Pick<Partner, 'name' | 'kind' | 'website'>> = [
   { name: 'Green Circle Salons', kind: 'recycling', website: 'https://greencirclesalons.com' },
 ]
 
