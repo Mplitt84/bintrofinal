@@ -50,7 +50,7 @@ export function InventoryView({
       .then((s) => setBetterCount(new Set(s.offers.map((o) => o.productId)).size))
       .catch(() => {})
     getPriceFixes()
-      .then((d) => setFixCount(d.groups.reduce((n, g) => n + g.fixes.length, 0)))
+      .then((d) => setFixCount(d.groups.reduce((n, g) => n + g.fixes.filter((f) => f.sure).length, 0)))
       .catch(() => {})
   }, [tool])
   // Bulk edit: select products, then edit or delete them together.

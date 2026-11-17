@@ -17,7 +17,7 @@ describe('invoiceFixes', () => {
     { productId: gloss.id, cents: 820, at: '2026-08-01T12:00:00Z', vendor: 'SSG', from: 'delivery' as const },
     { productId: gloss.id, cents: 836, at: '2026-10-02T12:00:00Z', vendor: 'SSG', from: 'invoice' as const },
   ]
-  const { groups } = invoiceFixes(shelf, evidence)
+  const { groups } = invoiceFixes(shelf, evidence, new Date('2026-11-17T12:00:00Z'))
   const all = groups.flatMap((g) => g.fixes)
 
   it('corrects guesses across the line to the invoice price, leaving right ones alone', () => {
@@ -30,5 +30,16 @@ describe('invoiceFixes', () => {
     expect(all.find((f) => f.productId === gloss.id)).toMatchObject({ cents: 836, own: true })
     expect(all.find((f) => f.productId === gloss2.id)!.cents).toBe(836)
     expect(groups.map((g) => g.line).sort()).toEqual(['Alfaparf Milano · EVO', 'Alfaparf Milano · Gloss Toner'])
+  })
+})
+
+describe('old invoices', () => {
+  it('start unticked and say how old they are', () => {
+    const a = p('EVO 7.31 Medium Blonde Golden Ash', 1104)
+    const b = p('EVO 8.1 Light Ash Blonde', 1104)
+    const { groups } = invoiceFixes([a, b], [{ productId: a.id, cents: 988, at: '2024-10-28T12:00:00Z', vendor: 'Alfaparf Group', from: 'invoice' }], new Date('2026-11-17T12:00:00Z'))
+    const fixes = groups[0].fixes
+    expect(fixes.every((f) => f.old && !f.sure)).toBe(true)
+    expect(fixes[0].reason).toMatch(/invoice is 2 years old/)
   })
 })

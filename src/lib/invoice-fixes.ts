@@ -7,7 +7,9 @@
  * - it has its own invoice price and its cost differs → its own invoice price;
  * - otherwise, products in its line (`sameLine`) have invoice prices → the newest one.
  *   When those invoices disagree, the suggestion starts unticked.
- * A product whose cost already matches is left out. Nothing changes until applied.
+ * A product whose cost already matches is left out. An invoice older than STALE_DAYS
+ * may simply be out of date (prices rise), so its suggestions start unticked and say
+ * how old it is. Nothing changes until applied.
  */
 import { lineLabel, sameLine } from './entry-predictions'
 
@@ -26,10 +28,23 @@ export type PriceFix = {
   vendor: string
   own: boolean
   sure: boolean
+  /** The invoice is older than STALE_DAYS. */
+  old: boolean
+}
+
+export const STALE_DAYS = 180
+
+function ago(at: string, now: Date) {
+  const days = Math.floor((now.getTime() - new Date(at).getTime()) / 86_400_000)
+  if (days < 60) return `${days} days old`
+  const months = Math.round(days / 30.4)
+  return months < 24 ? `${months} months old` : `${Math.round(months / 12)} years old`
 }
 export type PriceFixGroup = { line: string; fixes: PriceFix[] }
 
-export function invoiceFixes(products: FixProduct[], evidence: Evidence[]): { groups: PriceFixGroup[]; checked: number } {
+export function invoiceFixes(products: FixProduct[], evidence: Evidence[], now = new Date()): { groups: PriceFixGroup[]; checked: number } {
+  const isOld = (at: string) => now.getTime() - new Date(at).getTime() > STALE_DAYS * 86_400_000
+  const age = (at: string) => (isOld(at) ? ` · invoice is ${ago(at, now)}` : '')
   // Newest invoice price per product.
   const latest = new Map<number, Evidence>()
   for (const e of evidence) {
@@ -41,10 +56,14 @@ export function invoiceFixes(products: FixProduct[], evidence: Evidence[]): { gr
   const anchors = [...latest.values()].filter((e) => byId.has(e.productId))
 
   const groups = new Map<string, PriceFix[]>()
-  const add = (p: FixProduct, fix: Omit<PriceFix, 'productId' | 'name' | 'size' | 'currentCents'>, lineOf: FixProduct) => {
+  const add = (p: FixProduct, fix: Omit<PriceFix, 'productId' | 'name' | 'size' | 'currentCents' | 'old'>, lineOf: FixProduct) => {
     if (fix.cents === p.unitCostCents) return
     const key = lineLabel(lineOf)
-    groups.set(key, [...(groups.get(key) ?? []), { productId: p.id, name: p.name, size: p.size, currentCents: p.unitCostCents, ...fix }])
+    const old = isOld(fix.at)
+    groups.set(key, [
+      ...(groups.get(key) ?? []),
+      { productId: p.id, name: p.name, size: p.size, currentCents: p.unitCostCents, ...fix, reason: fix.reason + age(fix.at), sure: fix.sure && !old, old },
+    ])
   }
 
   for (const p of products) {

@@ -142,6 +142,9 @@ export function FixPricesSheet({
                         {on} of {ids.length} · invoice {money(newest.cents)}
                         {newest.vendor ? ` from ${newest.vendor}` : ''}, {shortDate(newest.at)}
                       </span>
+                      {newest.old && (
+                        <span className="block text-[12px] text-bad font-semibold">Old invoice — prices may have gone up since. Upload a recent one to be sure.</span>
+                      )}
                     </button>
                     <ChevronDown size={18} className={`text-ink-2 shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
                   </div>
@@ -170,7 +173,7 @@ export function FixPricesSheet({
             })}
           </ul>
           <p className="m-0 text-[12px] text-ink-2">
-            Only costs change, never stock or retail. Shades whose invoice shows their own price keep it. If invoices in one line disagree, those start unticked so you can check.
+            Only costs change, never stock or retail. Shades whose invoice shows their own price keep it. Lines whose invoices disagree, or whose newest invoice is more than 6 months old, start unticked so you can check.
           </p>
         </div>
       )}
