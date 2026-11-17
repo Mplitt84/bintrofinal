@@ -199,7 +199,12 @@ export function sameLine(a: Pick<Product, 'brand' | 'name' | 'size'>, b: Pick<Pr
  * changes: they were at the same old price (or had no cost yet). A shade priced
  * differently on purpose is left alone.
  */
-export function lineSiblings(products: Product[], product: Pick<Product, 'id' | 'brand' | 'name' | 'size'>, oldCents: number, skip: Set<number> = new Set()) {
+export function lineSiblings<T extends Pick<Product, 'id' | 'brand' | 'name' | 'size' | 'unitCostCents'>>(
+  products: T[],
+  product: Pick<Product, 'id' | 'brand' | 'name' | 'size'>,
+  oldCents: number,
+  skip: Set<number> = new Set(),
+): T[] {
   return products.filter(
     (p) => p.id !== product.id && !skip.has(p.id) && (p.unitCostCents === oldCents || p.unitCostCents <= 0) && sameLine(product, p),
   )

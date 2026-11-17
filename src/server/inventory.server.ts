@@ -520,3 +520,29 @@ export async function countMovementsWithNote(note: string) {
   const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(movements).where(and(mine(movements), eq(movements.note, note)));
   return row?.n ?? 0;
 }
+
+/**
+ * A product's cost changed from `oldCents` to `newCents`: give the same new cost to the
+ * other shades / variants in its line (same brand, size and line words) that were at the
+ * old cost or had none. Shades priced differently on purpose are left alone. Returns the
+ * products it changed, with their old cost, so a screen can undo.
+ */
+export async function followLineCost(
+  product: { id: number; brand: string; name: string; size: string },
+  oldCents: number,
+  newCents: number,
+  meta: PriceMeta = {},
+  skip: Set<number> = new Set(),
+) {
+  if (newCents <= 0 || newCents === oldCents) return [] as { id: number; name: string; oldCents: number }[];
+  const { lineSiblings } = await import("../lib/entry-predictions.js");
+  const all = await db
+    .select({ id: products.id, brand: products.brand, name: products.name, size: products.size, unitCostCents: products.unitCostCents })
+    .from(products)
+    .where(mine(products));
+  const followers = lineSiblings(all, product, oldCents, skip);
+  for (const f of followers) {
+    await updateProductFields(f.id, { unitCostCents: newCents }, { ...meta, note: `${meta.note ? `${meta.note} · ` : ""}same line as ${product.name}`.slice(0, 200) });
+  }
+  return followers.map((f) => ({ id: f.id, name: f.name, oldCents: f.unitCostCents }));
+}

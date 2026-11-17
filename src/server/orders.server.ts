@@ -180,7 +180,7 @@ export async function receiveDelivery(params: {
 }): Promise<DeliveryResult> {
   const lines = params.lines.filter((l) => (l.qty ?? 0) > 0);
   const summary: ImportSummary = lines.length
-    ? await applyImportLines({ mode: "receipt", staffName: params.staffName, source: params.source, lines })
+    ? await applyImportLines({ mode: "receipt", staffName: params.staffName, source: params.source, lines, followLine: true })
     : { created: 0, updated: 0, priced: 0, units: 0 };
 
   if (!params.orderId) return { summary, status: null, short: [], priceChanges: [] };

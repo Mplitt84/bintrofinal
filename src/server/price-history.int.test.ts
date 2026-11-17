@@ -101,10 +101,33 @@ maybe("price history", () => {
     expect(p.unitCostCents).toBe(1080);
   });
 
+  it("moves the rest of a line with a changed cost, leaving shades priced on purpose", async () => {
+    const ids = await runForBusiness(a, async () => {
+      const mk = (n: string, c: number, i: number) => inv.insertProduct({ barcode: `${mark}-L${i}`, name: n, brand: "Joico", size: "2.5 oz", unitCostCents: c });
+      return [(await mk("Lumishine 6N", 900, 1)).id, (await mk("Lumishine 7N", 900, 2)).id, (await mk("Lumishine 9V", 1100, 3)).id, (await mk("Lumishine 8N", 0, 4)).id];
+    });
+    const lead = await runForBusiness(a, async () => (await db.select().from(schema.products).where(and(eq(schema.products.businessId, a), eq(schema.products.id, ids[0]))))[0]);
+    const summary = await runForBusiness(a, () =>
+      imp.applyImportLines({
+        mode: "receipt",
+        staffName: "Minnie",
+        source: "Delivery",
+        followLine: true,
+        lines: [{ productId: lead.id, barcode: "", name: lead.name, brand: "Joico", size: "2.5 oz", category: "", vendor: "", qty: 1, unitCostCents: 950, retailPriceCents: 0 }],
+      }),
+    );
+    expect(summary.lineUpdated).toBe(2);
+    const costs = await runForBusiness(a, async () =>
+      (await db.select().from(schema.products).where(eq(schema.products.businessId, a))).filter((p) => ids.includes(p.id)).map((p) => [p.name, p.unitCostCents]),
+    );
+    expect(Object.fromEntries(costs)).toEqual({ "Lumishine 6N": 950, "Lumishine 7N": 950, "Lumishine 9V": 1100, "Lumishine 8N": 950 });
+  });
+
   it("feeds Price watch", async () => {
     const w = await runForBusiness(a, () => watch.computePriceWatch(12));
     // Aug $9.50 (old invoice) → Sep $10.00 → Oct $10.80: up 13.7% over the year.
-    expect(w.risers.map((m) => [m.name, m.changePct])).toEqual([["Evo 7N Natural", 13.7]]);
+    expect(w.risers.find((m) => m.name === "Evo 7N Natural")!.changePct).toBe(13.7);
+    expect(w.risers.filter((m) => m.name.startsWith("Lumishine")).map((m) => m.name).sort()).toEqual(["Lumishine 6N", "Lumishine 7N"]);
     const history = await runForBusiness(a, () => watch.costHistory(evo));
     expect(history[0].cents).toBe(1080);
   });

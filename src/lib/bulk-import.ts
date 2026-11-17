@@ -39,6 +39,8 @@ export type ImportSummary = {
   units: number
   /** Prices from an invoice older than the cost on file: saved to price history only. */
   historical?: number
+  /** Other shades in a changed product's line that took the same new cost. */
+  lineUpdated?: number
 }
 
 /** Largest upload accepted. Server functions cap request bodies at about 6 MB once base64-encoded. */

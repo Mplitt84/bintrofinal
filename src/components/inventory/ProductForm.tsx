@@ -9,7 +9,7 @@ import { checkWebPrice, confirmPrices } from '@/server/insights.functions'
 import { PRICE_STALE_DAYS, WEB_PRICE_SOURCE_LABELS, daysBetween, type WebPriceResult } from '@/lib/insights'
 import { DEFAULT_REORDER_THRESHOLD } from '@/lib/inventory-defaults'
 import { shrinkImage } from '@/lib/images'
-import { bestSimilarEntry, linePrice, predictPrices } from '@/lib/entry-predictions'
+import { bestSimilarEntry, linePrice, lineSiblings, predictPrices } from '@/lib/entry-predictions'
 import { Field, SheetActions } from '@/components/ui/Sheet'
 import { AutoInput, QuickChips } from '@/components/ui/AutoInput'
 import { PriceInput } from '@/components/ui/PriceInput'
@@ -40,6 +40,8 @@ export type ProductFormValues = {
   retailPriceCents: number
   imageUrl: string
   extraBarcodes: string[]
+  /** The cost changed: give it to the rest of this product's line too (same brand, size, line). */
+  alsoLine?: boolean
 }
 
 type PriceState =
@@ -176,6 +178,14 @@ export function ProductForm({
       }),
     [others, context, cost],
   )
+  /** Editing a cost: the other shades in this line at the old cost (or none) can follow. */
+  const [alsoLine, setAlsoLine] = useState(true)
+  const followers = useMemo(() => {
+    if (!product) return []
+    const next = toCentsField(cost)
+    if (!next || next === product.unitCostCents) return []
+    return lineSiblings(others, { id: product.id, brand, name, size }, product.unitCostCents)
+  }, [product, others, brand, name, size, cost])
   /** A new shade / variant of a line already priced: one tap fills both prices. */
   const line = useMemo(() => {
     if (!brand.trim() || !name.trim()) return null
@@ -518,6 +528,7 @@ export function ProductForm({
         retailPriceCents: Math.max(0, Math.round((Number(retail) || 0) * 100)),
         imageUrl,
         extraBarcodes: pendingExtras().filter((c) => c !== barcode.trim()),
+        ...(followers.length && alsoLine ? { alsoLine: true } : {}),
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : ''
@@ -855,6 +866,22 @@ export function ProductForm({
           </Field>
         </div>
         <PriceNote cost={cost} retail={retail} state={price} />
+        {followers.length > 0 && (
+          <label className="flex items-start gap-2.5 mt-2 rounded-xl bg-surface p-2.5 text-[13px] cursor-pointer">
+            <input type="checkbox" className="mt-0.5" checked={alsoLine} onChange={(e) => setAlsoLine(e.target.checked)} />
+            <span>
+              <b>Also update {followers.length} more in this line</b>
+              <span className="block text-[12px] text-ink-2">
+                {followers
+                  .slice(0, 6)
+                  .map((f) => f.name)
+                  .join(', ')}
+                {followers.length > 6 ? ` +${followers.length - 6}` : ''} · same brand and size, were at{' '}
+                {product?.unitCostCents ? money(product.unitCostCents) : 'no cost'}
+              </span>
+            </span>
+          </label>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-2.5">
