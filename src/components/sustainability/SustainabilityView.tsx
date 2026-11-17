@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ExternalLink, FlaskConical, Handshake, Leaf, Pencil, Plus, Scale, Trash2 } from 'lucide-react'
+import { ExternalLink, FlaskConical, Handshake, Leaf, Pencil, Plus, Scale, Trash2, Truck } from 'lucide-react'
 import { PageHead, StatGrid, StatTile, centsToDollars } from '@/components/ui/bits'
 import { Field, Sheet, SheetActions } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
@@ -150,6 +150,7 @@ export function SustainabilityView({ staffName }: { staffName: string }) {
                     {PARTNER_KINDS.find((k) => k.id === p.kind)?.label}
                     {p.since ? ` · since ${monthLabel(p.since)}` : ''}
                   </span>
+                  {p.affiliateOf && <span className="block text-[12px] text-ink-2">Affiliate of {p.affiliateOf}</span>}
                   {p.contact && <span className="block mt-1">{p.contact}</span>}
                   {p.website && (
                     <a href={p.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 mt-1 text-[13px] font-semibold">
@@ -157,6 +158,20 @@ export function SustainabilityView({ staffName }: { staffName: string }) {
                     </a>
                   )}
                   {p.notes && <p className="m-0 mt-1 text-ink-2 text-[13px] whitespace-pre-wrap">{p.notes}</p>}
+                  {(p.pickupUrl || p.pickupDay > 0) && (
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                      {p.pickupUrl && (
+                        <a href={p.pickupUrl} target="_blank" rel="noreferrer" className="btn btn-sm text-white" style={{ background: TOOL_TONES.green.bg }}>
+                          <Truck size={14} /> Schedule a pickup
+                        </a>
+                      )}
+                      {p.pickupDay > 0 && (
+                        <span className="text-[12px] text-ink-2">
+                          Reminder every month on the {p.pickupDay === 31 ? 'last day' : ordinal(p.pickupDay)}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <button className="btn btn-text btn-sm !px-2" aria-label={`Edit ${p.name}`} onClick={() => setEditingPartner(p)}>
                   <Pencil size={15} />
@@ -351,6 +366,7 @@ export function SustainabilityView({ staffName }: { staffName: string }) {
 
       <PartnerSheet
         partner={editingPartner}
+        others={(partners ?? []).map((p) => p.name).filter((n) => n !== editingPartner?.name)}
         onClose={() => setEditingPartner(null)}
         staffName={staffName}
         onSaved={(list, message) => {
@@ -385,16 +401,20 @@ export function SustainabilityView({ staffName }: { staffName: string }) {
   )
 }
 
+const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'}`
+
 function PartnerSheet({
   partner,
   onClose,
   staffName,
   onSaved,
+  others,
 }: {
   partner: Partial<Partner> | null
   onClose: () => void
   staffName: string
   onSaved: (partners: Partner[], message: string) => void
+  others: string[]
 }) {
   const toast = useToast()
   const [draft, setDraft] = useState<Partial<Partner>>({})
@@ -412,6 +432,9 @@ function PartnerSheet({
         website: draft.website ?? '',
         since: draft.since ?? '',
         notes: draft.notes ?? '',
+        pickupUrl: draft.pickupUrl ?? '',
+        pickupDay: draft.pickupDay ?? 0,
+        affiliateOf: draft.kind === 'affiliate' ? (draft.affiliateOf ?? '') : '',
         addedBy: staffName,
       },
     })
@@ -442,6 +465,56 @@ function PartnerSheet({
         <Field label="Website">
           <input className="field-input" maxLength={200} inputMode="url" value={draft.website ?? ''} onChange={(e) => setDraft({ ...draft, website: e.target.value })} />
         </Field>
+        {draft.kind === 'affiliate' && (
+          <Field label="Affiliate of">
+            <input
+              className="field-input"
+              maxLength={80}
+              list="partner-names"
+              placeholder="Green Circle Salons"
+              value={draft.affiliateOf ?? ''}
+              onChange={(e) => setDraft({ ...draft, affiliateOf: e.target.value })}
+            />
+            <datalist id="partner-names">
+              {others.map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
+          </Field>
+        )}
+        {(draft.kind ?? 'recycling') === 'recycling' || draft.kind === 'affiliate' ? (
+          <div className="rounded-2xl bg-surface p-3 grid gap-3">
+            <span className="text-sm font-semibold">Recycling pickups</span>
+            <Field label="Pickup booking link">
+              <input
+                className="field-input"
+                maxLength={300}
+                inputMode="url"
+                placeholder="Paste the page where you schedule a pickup"
+                value={draft.pickupUrl ?? ''}
+                onChange={(e) => setDraft({ ...draft, pickupUrl: e.target.value })}
+              />
+            </Field>
+            <Field label="Remind us every month on">
+              <select
+                className="field-input"
+                value={draft.pickupDay ?? 0}
+                onChange={(e) => setDraft({ ...draft, pickupDay: Number(e.target.value) })}
+              >
+                <option value={0}>No monthly reminder</option>
+                {Array.from({ length: 30 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>
+                    The {ordinal(d)}
+                  </option>
+                ))}
+                <option value={31}>The last day of the month</option>
+              </select>
+            </Field>
+            <p className="m-0 text-[12px] text-ink-2">
+              The reminder goes on the Calendar, repeating monthly, with the booking link in it.
+            </p>
+          </div>
+        ) : null}
         <Field label="Partners since">
           <input className="field-input" type="month" value={draft.since ?? ''} onChange={(e) => setDraft({ ...draft, since: e.target.value })} />
         </Field>

@@ -22,11 +22,14 @@ export const savePartnerFn = createServerFn({ method: "POST" })
     z.object({
       id: z.number().int().optional(),
       name: z.string().trim().min(1).max(80),
-      kind: z.enum(["recycling", "certification", "donation", "supplier", "other"]),
+      kind: z.enum(["recycling", "certification", "donation", "supplier", "affiliate", "other"]),
       contact: z.string().max(120),
       website: z.string().max(200),
       since: Month.or(z.literal("")),
       notes: z.string().max(400),
+      pickupUrl: z.string().max(300).default(""),
+      pickupDay: z.number().int().min(0).max(31).default(0),
+      affiliateOf: z.string().max(80).default(""),
       addedBy: z.string().max(60),
     }),
   )

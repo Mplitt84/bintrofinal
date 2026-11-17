@@ -27,7 +27,7 @@ maybe("sustainability", () => {
 
   afterAll(async () => {
     for (const id of [a, b]) {
-      for (const t of [schema.sustainabilityPartners, schema.colorWasteLogs, schema.colorMixes, schema.appUsers, schema.businessProfile]) {
+      for (const t of [schema.calendarEvents, schema.sustainabilityPartners, schema.colorWasteLogs, schema.colorMixes, schema.appUsers, schema.businessProfile]) {
         await db.delete(t).where(eq(t.businessId, id));
       }
       await db.delete(schema.businesses).where(eq(schema.businesses.id, id));
@@ -41,6 +41,27 @@ maybe("sustainability", () => {
       await expect(sus.savePartner({ name: "green circle salons", kind: "other", contact: "", website: "", since: "", notes: "" }, "x")).rejects.toThrow();
     });
     expect(await runForBusiness(b, () => sus.listPartners())).toHaveLength(0);
+  });
+
+  it("keeps one monthly pickup reminder per partner, with the booking link", async () => {
+    await runForBusiness(a, async () => {
+      const [gc] = await sus.listPartners();
+      const events = () => db.select().from(schema.calendarEvents).where(eq(schema.calendarEvents.businessId, a));
+      await sus.savePartner({ ...gc, pickupUrl: "greencirclesalons.com/pickup", pickupDay: 31 }, "Minnie");
+      let ev = await events();
+      expect(ev).toHaveLength(1);
+      expect(ev[0]).toMatchObject({ title: "Book recycling pickup · Green Circle Salons", repeat: "monthly", kind: "task" });
+      expect(ev[0].notes).toContain("https://greencirclesalons.com/pickup");
+      await sus.savePartner({ ...gc, name: "Green Circle", pickupUrl: "greencirclesalons.com/pickup", pickupDay: 15 }, "Minnie");
+      ev = await events();
+      expect(ev).toHaveLength(1);
+      expect(ev[0].title).toBe("Book recycling pickup · Green Circle");
+      expect(ev[0].date.slice(8)).toBe("15");
+      await sus.savePartner({ name: "Local Affiliate", kind: "affiliate", affiliateOf: "Green Circle", contact: "", website: "", since: "", notes: "" }, "Minnie");
+      expect((await sus.listPartners()).find((p) => p.name === "Local Affiliate")!.affiliateOf).toBe("Green Circle");
+      await sus.deletePartner(gc.id);
+      expect(await events()).toHaveLength(0);
+    });
   });
 
   it("saves each shop's color lines with exact sizes and ratios, unique by name", async () => {
