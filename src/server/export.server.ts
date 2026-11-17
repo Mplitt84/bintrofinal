@@ -10,6 +10,7 @@ import { db } from "../../db/index.js";
 import {
   calendarEvents,
   clientFormulas,
+  clientProfiles,
   expenses,
   movements,
   productCategories,
@@ -288,6 +289,24 @@ export async function buildExport(): Promise<{ files: ExportFile[]; profile: { n
       ),
     },
   ];
+
+  const clientRows = await db.select().from(clientProfiles).where(mine(clientProfiles)).orderBy(asc(clientProfiles.name));
+  files.push({
+    name: "clients.csv",
+    csv: toCsv(
+      [
+        { key: "name", label: "Client" },
+        { key: "phone", label: "Phone" },
+        { key: "email", label: "Email" },
+        { key: "birthday", label: "Birthday (MM-DD)" },
+        { key: "sensitivities", label: "Sensitivities" },
+        { key: "preferences", label: "Likes" },
+        { key: "notes", label: "Notes" },
+        { key: "rebookDays", label: "Rebook every (days)" },
+      ],
+      clientRows,
+    ),
+  });
 
   return { files, profile: { name: profile.name } };
 }

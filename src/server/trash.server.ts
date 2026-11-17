@@ -17,6 +17,7 @@ import { db } from "../../db/index.js";
 import {
   calendarEvents,
   clientFormulas,
+  clientProfiles,
   expenseReceipts,
   expenses,
   formulaPhotos,
@@ -37,6 +38,7 @@ const TABLES = {
   priceChecks,
   priceHistory,
   clientFormulas,
+  clientProfiles,
   formulaPhotos,
   calendarEvents,
   expenses,
