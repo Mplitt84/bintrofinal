@@ -179,6 +179,7 @@ export const PRIVACY: LegalSection[] = [
     heading: 'What we don\'t collect',
     paragraphs: [
       `Apart from the client names, contact details, notes and photos you choose to save in client records, ${product} does not collect your clients' personal information, does not use advertising trackers, and does not sell or rent data to anyone.`,
+      `When you message the Bintro team from inside the app, we keep the message, your name and email, the screen you were on and your device type so we can answer, and we may get a notification about it on our own phones. If the app hits an error during the pilot, a short note about the error is sent to us the same way.`,
     ],
   },
   {

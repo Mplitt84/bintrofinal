@@ -14,7 +14,7 @@
 import { and, desc, eq, getTableColumns, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import { db } from "../../db/index.js";
-import {
+import { stockCountLines,
   calendarEvents,
   clientFormulas,
   clientProfiles,
@@ -50,6 +50,7 @@ const TABLES = {
   teamMembers,
   productCategories,
   purchaseOrders,
+  stockCountLines,
 } as const;
 export type TableName = keyof typeof TABLES;
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useId } from "react";
+import { openSupport } from "@/components/support/SupportCenter";
 import { ArrowUp } from "lucide-react";
 import { Sheet } from "@/components/ui/Sheet";
 import { useBusiness } from "@/components/business/BusinessContext";
@@ -331,7 +332,14 @@ export function AskBintro() {
             </form>
             <div className="flex items-center justify-between mt-2">
               <p className="m-0 text-[12px] text-ink-2">
-                Bintro can’t change anything. Double-check big decisions.
+                Bintro can’t change anything. Double-check big decisions.{" "}
+                <button
+                  type="button"
+                  className="underline bg-transparent border-0 p-0 cursor-pointer text-inherit font-semibold"
+                  onClick={() => openSupport()}
+                >
+                  Message a person instead
+                </button>
               </p>
               {turns.length > 0 && (
                 <button

@@ -77,6 +77,7 @@ import { WelcomeSetup } from "@/components/business/WelcomeSetup";
 import { getWelcomeState } from "@/server/signup.functions";
 import { SignInScreen } from "@/components/auth/SignInScreen";
 import { CleanupReminder } from "@/components/team/CleanupReminder";
+import { SupportHost } from "@/components/support/SupportCenter";
 import { AskBintro } from "@/components/assistant/AskBintro";
 import { getAuthState } from "@/server/auth.functions";
 import type { AuthState } from "@/lib/auth";
@@ -935,7 +936,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                   ))}
                 </div>
                 {activityView === "reports" ? (
-                  <ReportsView />
+                  <ReportsView isOwner={auth.user?.role !== "staff"} staffName={staffName} />
                 ) : activityView === "showstopper" ? (
                   <ShowstopperView
                     staffName={staffName}
@@ -1050,6 +1051,13 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
             {tabButtons("bar")}
           </nav>
 
+          {auth.enabled && auth.user && (
+            <SupportHost
+              siteOwner={Boolean(auth.siteOwner)}
+              myName={auth.user.teamName || staffName || auth.user.name}
+              page={tab}
+            />
+          )}
           {auth.enabled && auth.user && (
             <CleanupReminder
               userId={auth.user.id}

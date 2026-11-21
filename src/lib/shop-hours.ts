@@ -18,6 +18,9 @@ export const REMIND = {
   afterClose: 120,
   /** "Remind me later" waits this long. */
   snooze: 15,
+  /** A shift starting up to an hour after opening still opens; one ending up to an hour before closing still closes. */
+  openerSlack: 60,
+  closerSlack: 60,
 }
 
 const mins = (hhmm: string) => {
@@ -60,13 +63,20 @@ export function reminderDue(
   hours: ShopHours,
   now: Date,
   left: { arrive: number; close: number },
+  /** This person's shift today. Omitted = don't check (the Team page uses that); null = not scheduled, no reminder. */
+  shift?: { start: string; end: string } | null,
 ): { moment: 'arrive' | 'close'; at: string } | null {
+  if (shift === null) return null
   const day = hoursFor(hours, now.getDay())
   if (!day) return null
   const t = now.getHours() * 60 + now.getMinutes()
   const open = mins(day.open)
   const close = mins(day.close)
-  if (left.arrive > 0 && t >= open - REMIND.beforeOpen && t < open + REMIND.afterOpen) return { moment: 'arrive', at: day.open }
-  if (left.close > 0 && t >= close - REMIND.beforeClose && t < close + REMIND.afterClose) return { moment: 'close', at: day.close }
+  // Openers get the opening list, closers the closing one: a shift that starts within an hour
+  // of opening opens; one that ends within an hour of closing closes.
+  const opens = !shift || mins(shift.start) <= open + REMIND.openerSlack
+  const closes = !shift || mins(shift.end) >= close - REMIND.closerSlack
+  if (opens && left.arrive > 0 && t >= open - REMIND.beforeOpen && t < open + REMIND.afterOpen) return { moment: 'arrive', at: day.open }
+  if (closes && left.close > 0 && t >= close - REMIND.beforeClose && t < close + REMIND.afterClose) return { moment: 'close', at: day.close }
   return null
 }
