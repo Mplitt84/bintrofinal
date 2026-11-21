@@ -82,7 +82,9 @@ export function ScanOverview({
     } catch {}
   }, []);
 
-  // Reload on period change and after every scan / undo (recent changes).
+  // Reload on period change and after every scan / undo. The feed array is replaced on every
+  // 30 s refresh, so key on what's in it, not its identity.
+  const feedKey = recent.map((m) => m.id).join(",");
   useEffect(() => {
     let live = true;
     const w = overviewWindows(period);
@@ -105,7 +107,7 @@ export function ScanOverview({
     return () => {
       live = false;
     };
-  }, [period, recent]);
+  }, [period, feedKey]);
 
   const pick = (p: OverviewPeriod) => {
     setPeriod(p);
