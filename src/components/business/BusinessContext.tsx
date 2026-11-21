@@ -18,6 +18,8 @@ type BusinessContextValue = {
   can: (feature: Feature) => boolean
   /** Opens Settings → Account & billing on the plan picker. */
   openPlans: () => void
+  /** Replace the profile everywhere after a save (optional; screens that save it use this). */
+  onProfile?: (next: BusinessProfile) => void
 }
 
 const BusinessContext = createContext<BusinessContextValue>({
@@ -41,6 +43,7 @@ export function BusinessProvider({
   account,
   onAccount,
   openPlans,
+  onProfile,
   children,
 }: {
   profile: BusinessProfile
@@ -49,6 +52,7 @@ export function BusinessProvider({
   account: AccountSummary | null
   onAccount: (next: AccountSummary) => void
   openPlans: () => void
+  onProfile?: (next: BusinessProfile) => void
   children: React.ReactNode
 }) {
   // Until the account loads, nothing is locked so the app never flashes upgrade prompts.
@@ -66,6 +70,7 @@ export function BusinessProvider({
         plan: planById(account?.effectivePlan ?? 'premium'),
         can,
         openPlans,
+        onProfile,
       }}
     >
       {children}

@@ -29,13 +29,27 @@ export function TeamView({
     <>
       <PageHead title="Team" lead="Shop clean-up anyone can tick off, and everyone who works here." />
       <ShopCleanup staffName={staffName} isOwner={isOwner} />
-      <TeamManager
-        team={team}
-        onTeam={onTeam}
-        staffName={staffName}
-        onStaffName={onStaffName}
-        providerNoun={providerNounFor(profile.businessType)}
-      />
+      {isOwner ? (
+        <TeamManager
+          team={team}
+          onTeam={onTeam}
+          staffName={staffName}
+          onStaffName={onStaffName}
+          providerNoun={providerNounFor(profile.businessType)}
+        />
+      ) : (
+        <section>
+          <h2 className="m-0 mb-2 text-lg font-bold">The team</h2>
+          <ul className="list-none m-0 p-0 flex flex-wrap gap-2">
+            {team.map((t) => (
+              <li key={t.id} className="chip">
+                {t.name}
+              </li>
+            ))}
+          </ul>
+          <p className="text-[13px] text-ink-2 mt-2">The owner adds people and sets who does what.</p>
+        </section>
+      )}
     </>
   )
 }

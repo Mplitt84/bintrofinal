@@ -180,6 +180,8 @@ export type BusinessProfile = {
   retailCommissionPct: number
   /** ISO 4217 code every amount on screen is shown in (see src/lib/money.ts). */
   currency: string
+  /** Shop hours by weekday ("0" = Sunday), HH:MM; a missing day is closed (see src/lib/shop-hours.ts). */
+  hours: Record<string, { open: string; close: string }>
 }
 
 export const EMPTY_PROFILE: BusinessProfile = {
@@ -200,6 +202,7 @@ export const EMPTY_PROFILE: BusinessProfile = {
   buyingPreference: 'pro',
   retailCommissionPct: 0,
   currency: 'USD',
+  hours: {},
 }
 
 export function displayBusinessName(profile: { name: string } | null | undefined) {

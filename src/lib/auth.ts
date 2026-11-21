@@ -1,5 +1,5 @@
 /** Client-safe sign-in types. */
-export type AuthUser = { id: number; email: string; name: string; role: 'owner' | 'staff' }
+export type AuthUser = { id: number; email: string; name: string; role: 'owner' | 'staff'; teamName?: string; remindersOn?: boolean }
 
 export type AuthState = {
   /** False until the Google keys are set; the app is then open as before. */
@@ -27,3 +27,9 @@ export const SIGN_IN_ERRORS: Record<string, string> = {
   'signed-out': 'Sign in to continue.',
   'owner-only': 'Only an owner can do that. Ask the owner to make the change.',
 }
+
+/** Profile fields a team member (not an owner) may change: Smart par's order cycle and the Calendar's tax state. */
+export const STAFF_PROFILE_FIELDS: readonly string[] = ['orderEveryDays', 'taxState']
+
+/** True when a team member may save this profile change. */
+export const staffMayChangeProfile = (keys: string[]) => keys.every((k) => STAFF_PROFILE_FIELDS.includes(k))

@@ -76,6 +76,7 @@ import type { Insights } from "@/lib/insights";
 import { WelcomeSetup } from "@/components/business/WelcomeSetup";
 import { getWelcomeState } from "@/server/signup.functions";
 import { SignInScreen } from "@/components/auth/SignInScreen";
+import { CleanupReminder } from "@/components/team/CleanupReminder";
 import { AskBintro } from "@/components/assistant/AskBintro";
 import { getAuthState } from "@/server/auth.functions";
 import type { AuthState } from "@/lib/auth";
@@ -292,6 +293,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [insightSegment, setInsightSegment] = useState<InsightSegment>("fast");
   const [insightPopupShowing, setInsightPopupShowing] = useState(false);
+  const [cleanupShowing, setCleanupShowing] = useState(false);
   // Bumped when a scan is kept on the device, so the waiting band shows at once.
   const [queuedAt, setQueuedAt] = useState(0);
   const { fresh: freshTip, markSeen: markTipSeen } = useFreshTip();
@@ -335,7 +337,9 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
     const saved =
       window.localStorage.getItem(STAFF_NAME_KEY) ??
       window.localStorage.getItem(LEGACY_INITIALS_KEY);
-    if (saved) setStaffName(saved);
+    // A signed-in person is who their invite says they are.
+    if (auth.user?.teamName) setStaffName(auth.user.teamName);
+    else if (saved) setStaffName(saved);
     setHydrated(true);
 
     const fromHash = tabFromHash(window.location.hash);
@@ -701,6 +705,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
       account={account}
       onAccount={setAccount}
       openPlans={openPlans}
+      onProfile={setProfile}
     >
       <ToastProvider>
         <div
@@ -1039,9 +1044,18 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
             {tabButtons("bar")}
           </nav>
 
+          {auth.enabled && auth.user && (
+            <CleanupReminder
+              userId={auth.user.id}
+              name={auth.user.teamName || staffName || auth.user.name}
+              hours={profile.hours ?? {}}
+              enabled={auth.user.remindersOn !== false}
+              onVisible={setCleanupShowing}
+            />
+          )}
           <TipNudge
             tab={tab}
-            enabled={!insightPopupShowing && tab !== "team"}
+            enabled={!insightPopupShowing && !cleanupShowing && tab !== "team"}
             onSeen={markTipSeen}
             onOpenAll={() => setTipsOpen(true)}
             onNavigate={navigateFromTip}

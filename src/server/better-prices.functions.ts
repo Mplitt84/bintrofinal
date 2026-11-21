@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { SCAN_PER_TAP } from "../lib/better-prices.js";
 import { hasFeature } from "./account.server.js";
-import { requireUser } from "./auth.middleware";
+import { requireOwner, requireUser } from "./auth.middleware";
 import { saveBusinessProfile } from "./business.server.js";
 import { betterPricesState, runPriceScan, setOfferStatus, switchToOffer, undoSwitch } from "./better-prices.server.js";
 
@@ -12,7 +12,7 @@ export const getBetterPrices = createServerFn({ method: "GET" })
   .handler(async () => ({ ...(await betterPricesState()), canScan: await hasFeature("ai") }));
 
 export const setBuyingPreference = createServerFn({ method: "POST" })
-  .middleware([requireUser])
+  .middleware([requireOwner])
   .inputValidator(z.object({ preference: z.enum(["pro", "local", "marketplace"]) }))
   .handler(async ({ data }) => {
     await saveBusinessProfile({ buyingPreference: data.preference });

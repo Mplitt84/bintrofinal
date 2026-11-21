@@ -1,4 +1,4 @@
-import { requireUser } from "./auth.middleware";
+import { requireOwner, requireUser } from "./auth.middleware";
 import { categorySnapshot, saveSnapshot, vendorSnapshot } from "./trash.server.js";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -25,7 +25,7 @@ export const undoPars = createServerFn({ method: "POST" }).middleware([requireUs
 
 export const getCategoryGroups = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => categoryGroups());
 
-export const mergeCategories = createServerFn({ method: "POST" }).middleware([requireUser])
+export const mergeCategories = createServerFn({ method: "POST" }).middleware([requireOwner])
   .inputValidator(z.object({ from: z.array(z.string().max(80)).min(2).max(30), to: z.string().trim().min(1).max(80) }))
   .handler(async ({ data }) => {
     const snap = await categorySnapshot(data.from.filter((f) => f !== data.to));
@@ -49,7 +49,7 @@ export const saveCounts = createServerFn({ method: "POST" }).middleware([require
 export const getCategoryList = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => categoryList());
 
 /** Deletes a category; its products move to `moveTo` (blank = no category). */
-export const deleteCategory = createServerFn({ method: "POST" }).middleware([requireUser])
+export const deleteCategory = createServerFn({ method: "POST" }).middleware([requireOwner])
   .inputValidator(z.object({ name: z.string().min(1).max(80), moveTo: z.string().max(80) }))
   .handler(async ({ data }) => {
     const snap = await categorySnapshot([data.name]);
@@ -70,7 +70,7 @@ export const getVendorList = createServerFn({ method: "POST" })
 
 /** Give several spellings of one supplier the single name that was kept. */
 export const mergeVendors = createServerFn({ method: "POST" })
-  .middleware([requireUser])
+  .middleware([requireOwner])
   .inputValidator(z.object({ from: z.array(z.string().max(120)).min(1).max(20), to: z.string().trim().min(1).max(120) }))
   .handler(async ({ data }) => {
     const snap = await vendorSnapshot(data.from.filter((f) => f !== data.to));
@@ -80,7 +80,7 @@ export const mergeVendors = createServerFn({ method: "POST" })
 
 /** Rename one supplier on every product that carries it. */
 export const renameVendorFn = createServerFn({ method: "POST" })
-  .middleware([requireUser])
+  .middleware([requireOwner])
   .inputValidator(z.object({ from: z.string().min(1).max(120), to: z.string().trim().min(1).max(120) }))
   .handler(async ({ data }) => {
     const snap = await vendorSnapshot([data.from]);
@@ -90,7 +90,7 @@ export const renameVendorFn = createServerFn({ method: "POST" })
 
 /** Delete a supplier; its products move to `moveTo` (blank = no supplier). */
 export const deleteVendorFn = createServerFn({ method: "POST" })
-  .middleware([requireUser])
+  .middleware([requireOwner])
   .inputValidator(z.object({ name: z.string().min(1).max(120), moveTo: z.string().max(120) }))
   .handler(async ({ data }) => {
     const snap = await vendorSnapshot([data.name]);

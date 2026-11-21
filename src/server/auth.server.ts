@@ -206,6 +206,8 @@ export async function userForToken(token: string | undefined): Promise<SessionUs
       email: appUsers.email,
       name: appUsers.name,
       role: appUsers.role,
+      teamName: appUsers.teamName,
+      remindersOn: appUsers.remindersOn,
       businessId: appUsers.businessId,
     })
     .from(appSessions)
@@ -229,11 +231,32 @@ export async function listUsers() {
     email: u.email,
     name: u.name,
     role: u.role === "owner" ? ("owner" as const) : ("staff" as const),
+    teamName: u.teamName,
+    remindersOn: u.remindersOn,
     lastSignInAt: u.lastSignInAt?.toISOString() ?? null,
   }));
 }
 
-export async function addUser(email: string, role: "owner" | "staff", addedBy: string) {
+/** Owner: change someone's role or which team member they are. Keeps at least one owner. */
+export async function updateUser(id: number, patch: { role?: "owner" | "staff"; teamName?: string }) {
+  const [target] = await db.select().from(appUsers).where(and(mine(appUsers), eq(appUsers.id, id)));
+  if (!target) throw new Error("That person isn't on the list any more.");
+  if (patch.role === "staff" && target.role === "owner") {
+    const owners = await db.select({ id: appUsers.id }).from(appUsers).where(and(mine(appUsers), eq(appUsers.role, "owner")));
+    if (owners.length <= 1) throw new Error("Keep at least one owner.");
+  }
+  const set: Partial<typeof appUsers.$inferInsert> = {};
+  if (patch.role) set.role = patch.role;
+  if (patch.teamName !== undefined) set.teamName = patch.teamName.trim().slice(0, 60);
+  if (Object.keys(set).length) await db.update(appUsers).set(set).where(and(mine(appUsers), eq(appUsers.id, id)));
+}
+
+/** The signed-in person turns their own opening / closing pop-ups on or off. */
+export async function setOwnReminders(id: number, on: boolean) {
+  await db.update(appUsers).set({ remindersOn: on }).where(and(mine(appUsers), eq(appUsers.id, id)));
+}
+
+export async function addUser(email: string, role: "owner" | "staff", addedBy: string, teamName = "") {
   const clean = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) throw new Error("That doesn't look like an email address.");
   // Emails are unique across all of Bintro. Never touch someone who belongs to another
@@ -244,11 +267,12 @@ export async function addUser(email: string, role: "owner" | "staff", addedBy: s
     .where(and(signInLookup, eq(appUsers.email, clean)));
   if (existing && existing.businessId !== businessId()) throw new Error(CANT_ADD);
   if (!existing && (await hasOpenInvite(clean))) throw new Error(CANT_ADD);
+  const team = teamName.trim().slice(0, 60);
   if (existing) {
-    await db.update(appUsers).set({ role }).where(and(mine(appUsers), eq(appUsers.id, existing.id)));
+    await db.update(appUsers).set({ role, ...(team ? { teamName: team } : {}) }).where(and(mine(appUsers), eq(appUsers.id, existing.id)));
     return;
   }
-  await db.insert(appUsers).values({ businessId: businessId(), email: clean, role, addedBy });
+  await db.insert(appUsers).values({ businessId: businessId(), email: clean, role, addedBy, teamName: team, name: team });
 }
 
 const CANT_ADD = "That email can't be added here. It may already be set up with Bintro somewhere else.";

@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireUser } from "./auth.middleware";
+import { requireOwner, requireUser } from "./auth.middleware";
 import { recentlyDeleted, undo } from "./trash.server.js";
 
 /** Undo from a toast, or Restore from Recently deleted. */
@@ -10,5 +10,5 @@ export const undoChange = createServerFn({ method: "POST" })
   .handler(async ({ data }) => undo(data.id));
 
 export const getRecentlyDeleted = createServerFn({ method: "GET" })
-  .middleware([requireUser])
+  .middleware([requireOwner])
   .handler(async () => recentlyDeleted());

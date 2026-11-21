@@ -37,6 +37,8 @@ export function BetterPricesSheet({ open, onClose, staffName, onChanged }: { ope
     try {
       setState({ ...(await setBuyingPreference({ data: { preference } })), canScan: state?.canScan })
       toast(preference === 'local' ? 'Got it. Amazon, Walmart and Target are off the list.' : 'Saved. The next check uses it.')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Couldn’t save that.')
     } finally {
       setBusy(null)
     }
