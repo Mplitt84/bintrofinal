@@ -38,5 +38,7 @@ jobs:
           for f in $(ls -d netlify/database/migrations/*/ | sort); do
             psql -h localhost -U postgres bintro -v ON_ERROR_STOP=1 -q -f "$f/migration.sql"
           done
-      - run: npx tsc --noEmit -p .
       - run: npx vitest run
+      # The build writes routeTree.gen.ts, which the type check needs.
+      - run: npx vite build
+      - run: npx tsc --noEmit -p .
