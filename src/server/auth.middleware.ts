@@ -18,7 +18,11 @@ export const requireUser = createMiddleware({ type: 'function' }).server(async (
     user = await userForToken(getCookie(SESSION_COOKIE))
     if (!user) throw new Error('SIGNED_OUT: Your session ended. Sign in again.')
   }
-  return runForBusiness(user?.businessId ?? DEFAULT_BUSINESS_ID, () => next({ context: { user } }))
+  return runForBusiness(
+    user?.businessId ?? DEFAULT_BUSINESS_ID,
+    () => next({ context: { user } }),
+    user ? user.teamName || user.email : '',
+  )
 })
 
 /** Owner-only actions (access list). */

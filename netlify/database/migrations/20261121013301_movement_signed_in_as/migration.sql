@@ -1,0 +1,1 @@
+ALTER TABLE "movements" ADD COLUMN "signed_in_as" text DEFAULT '' NOT NULL;

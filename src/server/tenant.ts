@@ -18,7 +18,8 @@ import type { PgColumn } from "drizzle-orm/pg-core";
 /** The business that was already here before Bintro held more than one. */
 export const DEFAULT_BUSINESS_ID = 1;
 
-type Scope = { businessId: number };
+/** `actor`: who is signed in for this request (their team name, else email), "" for jobs and open sites. */
+type Scope = { businessId: number; actor?: string };
 
 const store = new AsyncLocalStorage<Scope>();
 
@@ -26,11 +27,16 @@ const store = new AsyncLocalStorage<Scope>();
  * Runs `fn` with every query inside it belonging to one business. Nested calls
  * replace the id, so a job looping over businesses stays honest.
  */
-export function runForBusiness<T>(businessId: number, fn: () => T): T {
+export function runForBusiness<T>(businessId: number, fn: () => T, actor = ""): T {
   if (!Number.isInteger(businessId) || businessId < 1) {
     throw new Error(`Bad business id: ${businessId}`);
   }
-  return store.run({ businessId }, fn);
+  return store.run({ businessId, actor }, fn);
+}
+
+/** Who is signed in for this request ("" when nobody is: scheduled jobs, Square sync, sign-in off). */
+export function actor(): string {
+  return store.getStore()?.actor ?? "";
 }
 
 /**

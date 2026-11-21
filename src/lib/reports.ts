@@ -97,6 +97,9 @@ export type ReportItem = {
   cents: number
   /** Profit on what sold, for sold items; 0 for product used on clients. */
   profitCents: number
+  /** The product's category today, and whether that makes it a sale or product used. */
+  category: string
+  kind: 'sold' | 'used'
 }
 
 /** What the report can't see, said plainly so nobody trusts a number too far. */
@@ -116,6 +119,8 @@ export type Report = {
   buckets: ReportBucket[]
   topSold: ReportItem[]
   topUsed: ReportItem[]
+  /** Every product sold or used in the period (not just the top ones), biggest first, so any can be re-filed. */
+  items: ReportItem[]
   byCategory: ReportSlice[]
   byStaff: ReportSlice[]
   byVendor: ReportSlice[]
@@ -277,7 +282,7 @@ export function buildReport(input: ReportInput): Report {
           add(categories, p.category || 'No category', p.category || 'No category', units, cents)
           const who = m.staffName.trim() || 'Not recorded'
           add(staff, who, who, units, cents)
-          const item = sold.get(p.id) ?? { productId: p.id, name: p.name, brand: p.brand, imageUrl: p.imageUrl, units: 0, cents: 0, profitCents: 0 }
+          const item = sold.get(p.id) ?? { productId: p.id, name: p.name, brand: p.brand, imageUrl: p.imageUrl, units: 0, cents: 0, profitCents: 0, category: p.category, kind: p.kind }
           item.units += units
           item.cents += cents
           item.profitCents += cents - cost
@@ -289,7 +294,7 @@ export function buildReport(input: ReportInput): Report {
         totals.usedCents += cost
         if (bucket) bucket.usedCents += cost
         if (now) {
-          const item = used.get(p.id) ?? { productId: p.id, name: p.name, brand: p.brand, imageUrl: p.imageUrl, units: 0, cents: 0, profitCents: 0 }
+          const item = used.get(p.id) ?? { productId: p.id, name: p.name, brand: p.brand, imageUrl: p.imageUrl, units: 0, cents: 0, profitCents: 0, category: p.category, kind: p.kind }
           item.units += units
           item.cents += cost
           used.set(p.id, item)
@@ -350,6 +355,7 @@ export function buildReport(input: ReportInput): Report {
     buckets,
     topSold: rank(sold),
     topUsed: rank(used),
+    items: [...sold.values(), ...used.values()].sort((a, b) => b.cents - a.cents || b.units - a.units),
     byCategory: slices(categories),
     byStaff: slices(staff),
     byVendor: slices(vendors),

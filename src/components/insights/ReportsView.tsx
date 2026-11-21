@@ -11,7 +11,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDownToLine, Download, ShoppingBag, Sparkles, TriangleAlert, Users } from 'lucide-react'
 import { OVERVIEW_PERIODS, changeLabel, type OverviewPeriod } from '@/lib/overview'
-import { marginOf, profitOf, reportCsvRows, type Report, type ReportSlice, type ReportTotals } from '@/lib/reports'
+import { marginOf, profitOf, reportCsvRows, type Report, type ReportItem, type ReportSlice, type ReportTotals } from '@/lib/reports'
+import { SOLD_TAX_GROUPS } from '@/lib/insights'
+import { taxGroupById } from '@/lib/tax-categories'
+import { updateProduct } from '@/server/inventory.functions'
+import { useToast } from '@/components/ui/Toast'
+import { toastUndo } from '@/components/ui/undo'
+import { Sheet, SheetActions } from '@/components/ui/Sheet'
 import { overviewWindows } from '@/lib/overview'
 import { getReport } from '@/server/reports.functions'
 import { useBusiness, useMoney } from '@/components/business/BusinessContext'
@@ -41,9 +47,13 @@ function periodTitle(period: OverviewPeriod, start: Date) {
 
 export function ReportsView() {
   const { type, name } = useBusiness()
+  const toast = useToast()
   const [period, setPeriod] = useState<OverviewPeriod>('month')
   const [report, setReport] = useState<Report | null>(null)
   const [failed, setFailed] = useState(false)
+  const [version, setVersion] = useState(0)
+  const [fixing, setFixing] = useState<ReportItem | null>(null)
+  const reload = () => setVersion((v) => v + 1)
   const windows = useMemo(() => overviewWindows(period), [period])
 
   useEffect(() => {
@@ -75,7 +85,7 @@ export function ReportsView() {
     return () => {
       live = false
     }
-  }, [period, windows])
+  }, [period, windows, version])
 
   const pick = (p: OverviewPeriod) => {
     setPeriod(p)
@@ -157,8 +167,9 @@ export function ReportsView() {
           {report.current.soldCents > 0 && (
             <Breakdown title="Sales by category" rows={report.byCategory} empty="Nothing sold yet in this period." />
           )}
-          <TopItems title="Top sellers" rows={report.topSold} kind="sold" />
-          <TopItems title="Most used on clients" rows={report.topUsed} kind="used" />
+          <TopItems title="Top sellers" rows={report.topSold} kind="sold" onPick={setFixing} />
+          <TopItems title="Most used on clients" rows={report.topUsed} kind="used" onPick={setFixing} />
+          <AllItems items={report.items ?? []} onPick={setFixing} />
           {report.current.soldCents > 0 && (
             <Breakdown
               title={`Sales by ${whoLabel}`}
@@ -185,6 +196,17 @@ export function ReportsView() {
           )}
           <Gaps report={report} />
         </div>
+      )}
+      {fixing && (
+        <FixItemSheet
+          item={fixing}
+          onClose={() => setFixing(null)}
+          onSaved={(undoId, msg) => {
+            setFixing(null)
+            reload()
+            toastUndo(toast, msg, undoId, reload)
+          }}
+        />
       )}
     </>
   )
@@ -438,7 +460,7 @@ function Breakdown({
   )
 }
 
-function TopItems({ title, rows, kind }: { title: string; rows: Report['topSold']; kind: 'sold' | 'used' }) {
+function TopItems({ title, rows, kind, onPick }: { title: string; rows: Report['topSold']; kind: 'sold' | 'used'; onPick: (i: ReportItem) => void }) {
   const { money: fmt } = useMoney()
   if (!rows.length) return null
   return (
@@ -448,7 +470,7 @@ function TopItems({ title, rows, kind }: { title: string; rows: Report['topSold'
       </h3>
       <ul className="list-none p-0 m-0 grid gap-2">
         {rows.map((i, n) => (
-          <li key={i.productId} className="flex items-center gap-3">
+          <li key={i.productId} className="flex items-center gap-3 cursor-pointer" onClick={() => onPick(i)} title="Tap to fix how this is counted">
             <span className="w-5 text-[12px] text-ink-2 font-bold tabular-nums shrink-0">{n + 1}</span>
             <Thumb imageUrl={i.imageUrl} label={i.name} />
             <span className="min-w-0 flex-1">
@@ -519,5 +541,100 @@ function Gaps({ report }: { report: Report }) {
         ))}
       </ul>
     </section>
+  )
+}
+
+/** Every product sold or used in the period, searchable, so a mis-filed one can be found and fixed. */
+function AllItems({ items, onPick }: { items: ReportItem[]; onPick: (i: ReportItem) => void }) {
+  const { money: fmt } = useMoney()
+  const [q, setQ] = useState('')
+  if (!items.length) return null
+  const shown = items.filter((i) => `${i.brand} ${i.name} ${i.category}`.toLowerCase().includes(q.trim().toLowerCase()))
+  return (
+    <details className="bg-white border border-line rounded-2xl p-4">
+      <summary className="cursor-pointer text-[15px] font-bold">Everything sold and used ({items.length}) — fix one that’s counted wrong</summary>
+      <p className="text-[13px] text-ink-2 mt-2 mb-2">
+        Whether a product counts as a <b>sale</b> or as <b>product used</b> comes from its category. Tap one to move it to the right category; every report updates.
+      </p>
+      <input className="field-input mb-2" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />
+      <ul className="list-none p-0 m-0 divide-y divide-line">
+        {shown.slice(0, 300).map((i) => (
+          <li key={i.productId}>
+            <button type="button" onClick={() => onPick(i)} className="w-full flex items-center gap-2 py-2 bg-transparent border-0 text-left cursor-pointer">
+              <span className="flex-1 min-w-0">
+                <span className="block text-[14px] font-semibold truncate">{i.name}</span>
+                <span className="block text-[12px] text-ink-2 truncate">
+                  {i.category || 'No category'} · {i.units} {i.kind === 'sold' ? 'sold' : 'used'}
+                </span>
+              </span>
+              <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${i.kind === 'sold' ? 'bg-good-tint text-good' : 'bg-surface text-ink-2'}`}>
+                {i.kind === 'sold' ? 'Sale' : 'Used'}
+              </span>
+              <span className="text-[13px] tabular-nums w-20 text-right">{fmt(i.cents)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </details>
+  )
+}
+
+/** Re-file a product: its category decides whether its scans count as sales or product used. */
+function FixItemSheet({ item, onClose, onSaved }: { item: ReportItem; onClose: () => void; onSaved: (undoId: number, message: string) => void }) {
+  const toast = useToast()
+  const { categories } = useBusiness()
+  const [category, setCategory] = useState(item.category)
+  const [saving, setSaving] = useState(false)
+  const kindOf = (name: string) => {
+    const c = categories.find((x) => x.name.toLowerCase() === name.toLowerCase())
+    return c && SOLD_TAX_GROUPS.includes(c.taxGroup) ? 'sold' : c ? 'used' : null
+  }
+  const sorted = [...categories].sort((a, b) => Number(SOLD_TAX_GROUPS.includes(b.taxGroup)) - Number(SOLD_TAX_GROUPS.includes(a.taxGroup)) || a.name.localeCompare(b.name))
+  const next = kindOf(category)
+  async function save() {
+    setSaving(true)
+    try {
+      const r = await updateProduct({ data: { productId: item.productId, category } })
+      if (!r?.undoId) return toast('Couldn’t save that.')
+      onSaved(r.undoId, `${item.name} → ${category || 'no category'}`)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Couldn’t save that.')
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <Sheet open onClose={onClose} title={item.name} subtitle={`Counted as ${item.kind === 'sold' ? 'a sale' : 'product used on clients'} because it’s filed under “${item.category || 'no category'}”.`}>
+      <p className="text-sm m-0 mb-2 font-semibold">Move it to</p>
+      <div className="grid gap-1.5 max-h-[50vh] overflow-y-auto">
+        {sorted.map((c) => {
+          const sold = SOLD_TAX_GROUPS.includes(c.taxGroup)
+          return (
+            <label key={c.name} className={`flex items-center gap-2 rounded-xl px-3 py-2 cursor-pointer ${category === c.name ? 'bg-surface' : ''}`}>
+              <input type="radio" name="fix-category" checked={category === c.name} onChange={() => setCategory(c.name)} />
+              <span className="flex-1">
+                {c.name}
+                <span className="block text-[12px] text-ink-2">{taxGroupById(c.taxGroup).label}</span>
+              </span>
+              <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${sold ? 'bg-good-tint text-good' : 'bg-surface text-ink-2'}`}>{sold ? 'Counts as sale' : 'Counts as used'}</span>
+            </label>
+          )
+        })}
+      </div>
+      {next && next !== item.kind && (
+        <p className="text-[13px] mt-3 mb-0">
+          Its {item.units} {item.kind === 'sold' ? 'sale' : 'use'}
+          {item.units === 1 ? '' : 's'} in this period will count as {next === 'sold' ? 'sales' : 'product used'} instead — here and in Profit, Showstopper and the Scan tab.
+        </p>
+      )}
+      <SheetActions>
+        <button type="button" className="btn btn-text" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="button" className="btn btn-primary" disabled={saving || category === item.category} onClick={save}>
+          Save
+        </button>
+      </SheetActions>
+    </Sheet>
   )
 }

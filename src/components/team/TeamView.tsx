@@ -1,6 +1,7 @@
 import { PageHead } from '@/components/ui/bits'
 import { TeamManager } from '@/components/business/SettingsView'
 import { ShopCleanup } from '@/components/team/ShopCleanup'
+import { ScheduleCard } from '@/components/team/ScheduleCard'
 import { providerNounFor } from '@/lib/industry'
 import { useBusiness } from '@/components/business/BusinessContext'
 import type { TeamMember } from '@/components/inventory/types'
@@ -29,6 +30,7 @@ export function TeamView({
     <>
       <PageHead title="Team" lead="Shop clean-up anyone can tick off, and everyone who works here." />
       <ShopCleanup staffName={staffName} isOwner={isOwner} />
+      <ScheduleCard me={staffName} team={team.map((t) => t.name)} isOwner={isOwner} />
       {isOwner ? (
         <TeamManager
           team={team}

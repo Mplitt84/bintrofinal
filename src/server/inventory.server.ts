@@ -1,6 +1,6 @@
 import { and, eq, desc, asc, like, or, sql, inArray, gte, ne } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { mine, owned } from "./tenant.js";
+import { actor, mine, owned } from "./tenant.js";
 import { products, movements, integrations, squareOutbox, priceHistory } from "../../db/schema.js";
 import { DEFAULT_REORDER_THRESHOLD, clampOrderQty, deriveInitials, onHandQty, selectBelowPar, stockStats } from "../lib/inventory-defaults.js";
 import type { PurchaseOrderLine } from "../lib/purchase-order.js";
@@ -290,6 +290,7 @@ export async function applyMovement(params: {
       staffName: params.staffName.trim(),
       staffInitials: deriveInitials(params.staffName),
       note: params.note ?? "",
+      signedInAs: actor(),
     })
     .returning();
 

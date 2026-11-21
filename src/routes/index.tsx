@@ -154,6 +154,9 @@ const ShowstopperView = lazy(() =>
     default: m.ShowstopperView,
   })),
 );
+const ScanCheckView = lazy(() =>
+  import("@/components/insights/ScanCheckView").then((m) => ({ default: m.ScanCheckView })),
+);
 const ReportsView = lazy(() =>
   import("@/components/insights/ReportsView").then((m) => ({
     default: m.ReportsView,
@@ -287,7 +290,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
   const [tipsOpen, setTipsOpen] = useState(false);
   const [teamPage, setTeamPage] = useState<TeamPage>("team");
   const [activityView, setActivityView] = useState<
-    "reports" | "showstopper" | "profit" | "usage" | "green"
+    "reports" | "showstopper" | "profit" | "usage" | "green" | "scans"
   >("reports");
   const [insights, setInsights] = useState<Insights | null>(null);
   const [insightsOpen, setInsightsOpen] = useState(false);
@@ -912,6 +915,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                       ["profit", "Profit"],
                       ["usage", "Usage"],
                       ["green", "Sustainability"],
+                      ...(auth.user?.role !== "staff" ? ([["scans", "Scan check"]] as const) : []),
                     ] as const
                   ).map(([id, label]) => (
                     <button
@@ -937,6 +941,8 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
                     staffName={staffName}
                     isOwner={auth.user?.role !== "staff"}
                   />
+                ) : activityView === "scans" ? (
+                  <ScanCheckView team={team.map((t) => t.name)} />
                 ) : activityView === "green" ? (
                   <SustainabilityView staffName={staffName} />
                 ) : activityView === "profit" ? (
