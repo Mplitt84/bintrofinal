@@ -18,6 +18,7 @@ import { updateProduct } from '@/server/inventory.functions'
 import { useToast } from '@/components/ui/Toast'
 import { toastUndo } from '@/components/ui/undo'
 import { Sheet, SheetActions } from '@/components/ui/Sheet'
+import { CorrectionsSheet } from '@/components/insights/CorrectionsSheet'
 import { overviewWindows } from '@/lib/overview'
 import { getReport } from '@/server/reports.functions'
 import { useBusiness, useMoney } from '@/components/business/BusinessContext'
@@ -45,7 +46,7 @@ function periodTitle(period: OverviewPeriod, start: Date) {
   return String(start.getFullYear())
 }
 
-export function ReportsView() {
+export function ReportsView({ isOwner = true, staffName = '' }: { isOwner?: boolean; staffName?: string }) {
   const { type, name } = useBusiness()
   const toast = useToast()
   const [period, setPeriod] = useState<OverviewPeriod>('month')
@@ -53,6 +54,7 @@ export function ReportsView() {
   const [failed, setFailed] = useState(false)
   const [version, setVersion] = useState(0)
   const [fixing, setFixing] = useState<ReportItem | null>(null)
+  const [lostOpen, setLostOpen] = useState(false)
   const reload = () => setVersion((v) => v + 1)
   const windows = useMemo(() => overviewWindows(period), [period])
 
@@ -162,7 +164,7 @@ export function ReportsView() {
         <Skeleton />
       ) : (
         <div className="grid gap-4">
-          <Headline report={report} compare={compare} />
+          <Headline report={report} compare={compare} onLost={isOwner ? () => setLostOpen(true) : undefined} />
           <SalesChart report={report} />
           {report.current.soldCents > 0 && (
             <Breakdown title="Sales by category" rows={report.byCategory} empty="Nothing sold yet in this period." />
@@ -191,11 +193,21 @@ export function ReportsView() {
               rows={report.byReason}
               empty=""
               icon={<TriangleAlert size={15} />}
-              note="From count corrections, priced at what each item cost you."
+              note="Real losses only (damaged, expired, missing, theft…), priced at what each item cost you. Record fixes and unscanned use or sales aren't here."
             />
           )}
           <Gaps report={report} />
         </div>
+      )}
+      {lostOpen && (
+        <CorrectionsSheet
+          start={windows.start}
+          end={windows.end}
+          title={title}
+          staffName={staffName}
+          onClose={() => setLostOpen(false)}
+          onChanged={reload}
+        />
       )}
       {fixing && (
         <FixItemSheet
@@ -227,7 +239,7 @@ function Skeleton() {
 }
 
 /** The four numbers the owner looks at first, each against the period before. */
-function Headline({ report, compare }: { report: Report; compare: string }) {
+function Headline({ report, compare, onLost }: { report: Report; compare: string; onLost?: () => void }) {
   const { money: fmt } = useMoney()
   const { current, previous } = report
   const margin = marginOf(current)
@@ -279,22 +291,24 @@ function Headline({ report, compare }: { report: Report; compare: string }) {
           </div>
         ))}
       </section>
-      <SecondRow current={current} previous={previous} />
+      <SecondRow current={current} previous={previous} onLost={onLost} />
     </>
   )
 }
 
-function SecondRow({ current, previous }: { current: ReportTotals; previous: ReportTotals }) {
+function SecondRow({ current, previous, onLost }: { current: ReportTotals; previous: ReportTotals; onLost?: () => void }) {
   const { money: fmt } = useMoney()
-  const items: { label: string; value: string; hint?: string }[] = []
+  const items: { label: string; value: string; hint?: string; onClick?: () => void }[] = []
   if (current.visits || previous.visits) {
     items.push({ label: 'Client visits logged', value: String(current.visits), hint: changeLabel(current.visits, previous.visits) })
   }
-  if (current.shrinkCents || previous.shrinkCents) {
+  if (current.shrinkCents || previous.shrinkCents || current.corrections) {
+    const losses = current.lossCorrections ?? current.corrections
     items.push({
       label: 'Lost to corrections',
       value: fmt(current.shrinkCents),
-      hint: `${current.corrections} ${current.corrections === 1 ? 'correction' : 'corrections'}`,
+      hint: `${losses} loss${losses === 1 ? '' : 'es'} of ${current.corrections} correction${current.corrections === 1 ? '' : 's'}${onLost ? ' · tap to check' : ''}`,
+      onClick: onLost,
     })
   }
   if (current.expensesCents || previous.expensesCents) {
@@ -303,14 +317,25 @@ function SecondRow({ current, previous }: { current: ReportTotals; previous: Rep
   if (!items.length) return null
   return (
     <section className="flex flex-wrap gap-2">
-      {items.map((i) => (
-        <div key={i.label} className="bg-surface rounded-xl px-3 py-2 flex-1 min-w-[150px]">
-          <p className="m-0 text-[12px] text-ink-2 font-semibold">{i.label}</p>
-          <p className="m-0 text-[16px] font-bold tabular-nums">
-            {i.value} {i.hint && <span className="text-[12px] text-ink-2 font-normal">· {i.hint}</span>}
-          </p>
-        </div>
-      ))}
+      {items.map((i) => {
+        const body = (
+          <>
+            <p className="m-0 text-[12px] text-ink-2 font-semibold">{i.label}</p>
+            <p className="m-0 text-[16px] font-bold tabular-nums">
+              {i.value} {i.hint && <span className="text-[12px] text-ink-2 font-normal">· {i.hint}</span>}
+            </p>
+          </>
+        )
+        return i.onClick ? (
+          <button key={i.label} type="button" onClick={i.onClick} className="bg-surface rounded-xl px-3 py-2 flex-1 min-w-[150px] text-left border border-line cursor-pointer">
+            {body}
+          </button>
+        ) : (
+          <div key={i.label} className="bg-surface rounded-xl px-3 py-2 flex-1 min-w-[150px]">
+            {body}
+          </div>
+        )
+      })}
     </section>
   )
 }

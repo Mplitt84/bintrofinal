@@ -1,4 +1,5 @@
 import { Sheet } from "@/components/ui/Sheet";
+import { openInbox, openSupport } from "@/components/support/SupportCenter";
 import { RecentlyDeletedCard } from "./RecentlyDeleted";
 import { toastUndo } from "@/components/ui/undo";
 import { providerNounFor } from "@/lib/industry";
@@ -277,7 +278,7 @@ export function SettingsView({
           <ProblemsCard />
         </>
       )}
-      <HelpSupport />
+      <HelpSupport siteOwner={Boolean(auth.siteOwner)} signedIn={Boolean(auth.enabled && auth.user)} />
       <nav
         className="mt-6 pt-4 border-t border-line flex flex-wrap gap-x-4 gap-y-1 text-[13px]"
         aria-label="Legal"
@@ -1693,7 +1694,7 @@ function ProblemsCard() {
   );
 }
 
-function HelpSupport() {
+function HelpSupport({ siteOwner, signedIn }: { siteOwner: boolean; signedIn: boolean }) {
   const { name } = useBusiness();
   const ready = !LEGAL.supportEmail.includes("[");
   const href = () => {
@@ -1706,14 +1707,8 @@ function HelpSupport() {
       `Site: ${window.location.host}`,
       `Device: ${navigator.userAgent}`,
       `Time: ${new Date().toString()}`,
-      "If this is about Square or QuickBooks, attach the error log from Settings → Connections → Download error log.",
     ].join("\n");
-    const params = new URLSearchParams({
-      subject: `Bintro help: ${name}`,
-      body,
-    })
-      .toString()
-      .replace(/\+/g, "%20");
+    const params = new URLSearchParams({ subject: `Bintro help: ${name}`, body }).toString().replace(/\+/g, "%20");
     return `mailto:${LEGAL.supportEmail}?${params}`;
   };
   return (
@@ -1722,25 +1717,35 @@ function HelpSupport() {
         <Mail size={18} className="text-ink-2" />
         Help &amp; support
       </h3>
-      <p className="text-ink-2 text-sm mt-0 mb-3">
-        Something not working, or a question? Email us and we’ll get back to
-        you.
-      </p>
-      {ready ? (
-        <a
-          className="btn btn-primary btn-sm no-underline"
-          href={href()}
-          onClick={(e) => (e.currentTarget.href = href())}
-        >
+      {siteOwner ? (
+        <>
+          <p className="text-ink-2 text-sm mt-0 mb-3">
+            Questions and problems from pilot shops come here, and to your phone once alerts are on.
+          </p>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => openInbox()}>
+            Messages from shops
+          </button>
+        </>
+      ) : signedIn ? (
+        <>
+          <p className="text-ink-2 text-sm mt-0 mb-3">
+            Something not working, or a question? Message the Bintro team right here — it reaches them right away, and the reply shows up in the app.
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => openSupport("question")}>
+              Message Bintro
+            </button>
+            <button type="button" className="btn btn-tonal btn-sm" onClick={() => openSupport("problem")}>
+              Something’s not working
+            </button>
+          </div>
+        </>
+      ) : ready ? (
+        <a className="btn btn-primary btn-sm no-underline" href={href()} onClick={(e) => (e.currentTarget.href = href())}>
           Email support
         </a>
       ) : (
-        <p className="text-sm m-0 text-warn">
-          Support email isn’t set yet (LEGAL.supportEmail in src/lib/legal.ts).
-        </p>
-      )}
-      {ready && (
-        <p className="text-ink-2 text-[13px] mt-2 mb-0">{LEGAL.supportEmail}</p>
+        <p className="text-sm m-0 text-warn">Support email isn’t set yet (LEGAL.supportEmail in src/lib/legal.ts).</p>
       )}
     </section>
   );

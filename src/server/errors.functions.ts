@@ -24,6 +24,13 @@ export const reportAppError = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     await recordError(data);
+    // A crash in a pilot shop pings the site owner (at most once an hour per shop).
+    try {
+      const { autoReportProblem } = await import("./support.server.js");
+      await autoReportProblem(data);
+    } catch (error) {
+      console.error("Auto problem report failed", error);
+    }
     return { ok: true };
   });
 

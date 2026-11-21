@@ -6,6 +6,7 @@
  *  - shrink = count corrections that lowered stock (adjust movements with a count reason)
  *  - cash tied up = on hand × cost for stock that isn't moving, is over Fill to, or has expired
  */
+import { correctionKind, reasonFor } from "../lib/corrections.js";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { businessId, mine } from "./tenant.js";
@@ -31,10 +32,10 @@ import {
 
 const DAY_MS = 86_400_000;
 
-/** Reason written on a count correction: "Count #12 · Damaged" → "Damaged". */
-function countReason(note: string) {
-  if (!/^Count #\d+/.test(note)) return null;
-  return note.split("·").slice(1).join("·").trim() || "No reason given";
+/** Reason on a correction that is a real loss ("Count #12 · Damaged" → "Damaged"); null for record fixes and unscanned use/sales. */
+function countReason(note: string, delta: number) {
+  if (correctionKind(note, delta) !== "loss") return null;
+  return reasonFor(note) || "No reason given";
 }
 
 export async function computeProfit(
@@ -151,7 +152,7 @@ export async function computeProfit(
     { units: number; costCents: number; reasons: Set<string> }
   >();
   for (const c of counts) {
-    const reason = countReason(c.note);
+    const reason = countReason(c.note, c.delta);
     const p = byId.get(c.productId);
     if (!reason || !p || ex(p.id, "shrink")) continue;
     const units = -c.delta;

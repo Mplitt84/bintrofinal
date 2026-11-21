@@ -9,6 +9,7 @@
  * in Square isn't known here, so sales are "what the shelf price says it sold for" —
  * `ReportGaps` carries what the numbers are missing so the screen can say so.
  */
+import { correctionKind, reasonFor } from './corrections'
 import type { OverviewPeriod } from './overview.js'
 
 export type ReportPeriod = OverviewPeriod
@@ -59,6 +60,8 @@ export type ReportTotals = {
   receivedCents: number
   /** Count corrections: how many, and the value of what went missing. */
   corrections: number
+  /** How many of those were real losses (the ones in shrinkCents). */
+  lossCorrections: number
   shrinkCents: number
   /** Expenses outside stock (Premium). */
   expensesCents: number
@@ -160,6 +163,7 @@ function emptyTotals(): ReportTotals {
     receivedUnits: 0,
     receivedCents: 0,
     corrections: 0,
+    lossCorrections: 0,
     shrinkCents: 0,
     expensesCents: 0,
     visits: 0,
@@ -314,10 +318,14 @@ export function buildReport(input: ReportInput): Report {
 
     if (m.type === 'adjust') {
       totals.corrections += 1
-      if (m.delta < 0) {
+      // Only real losses count (damaged, expired, missing, theft…), not record fixes,
+      // imports or "used / sold, not scanned" — see src/lib/corrections.ts.
+      if (correctionKind(m.note, m.delta) === 'loss') {
         const lost = -m.delta * p.unitCostCents
         totals.shrinkCents += lost
-        if (now) add(reasons, reasonOf(m.note), reasonOf(m.note), -m.delta, lost)
+        totals.lossCorrections += 1
+        const why = reasonFor(m.note) || 'No reason given'
+        if (now) add(reasons, why, why, -m.delta, lost)
       }
     }
   }

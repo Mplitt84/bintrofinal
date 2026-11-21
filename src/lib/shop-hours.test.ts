@@ -31,6 +31,20 @@ describe('reminderDue', () => {
   })
 })
 
+describe('only people scheduled today', () => {
+  it('no shift today means no reminder', () => {
+    expect(reminderDue(hours, at('2026-11-23T09:45'), { arrive: 2, close: 3 }, null)).toBeNull()
+  })
+  it('openers get opening, closers get closing', () => {
+    const opener = { start: '10:00', end: '15:00' }
+    const closer = { start: '13:00', end: '18:00' }
+    expect(reminderDue(hours, at('2026-11-23T09:45'), { arrive: 2, close: 3 }, opener)?.moment).toBe('arrive')
+    expect(reminderDue(hours, at('2026-11-23T09:45'), { arrive: 2, close: 3 }, closer)).toBeNull()
+    expect(reminderDue(hours, at('2026-11-23T17:45'), { arrive: 0, close: 3 }, closer)?.moment).toBe('close')
+    expect(reminderDue(hours, at('2026-11-23T17:45'), { arrive: 0, close: 3 }, opener)).toBeNull()
+  })
+})
+
 describe('momentProgress', () => {
   const task = (id: number, cadence: HkTask['cadence']): HkTask =>
     ({ id, key: '', name: `Job ${id}`, cadence, repeat: { ...DEFAULT_REPEAT }, active: true }) as HkTask

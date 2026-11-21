@@ -1067,3 +1067,28 @@ export const pushKeys = pgTable("push_keys", {
   privateKey: text("private_key").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+/**
+ * Messages between a shop and the Bintro site owner (pilot help line). Site-wide on purpose:
+ * the site owner reads every shop's thread; a shop reads only its own (filtered by businessId
+ * in code, since this is a shared table). direction "in" = from the shop, "out" = from Bintro.
+ */
+export const supportMessages = pgTable(
+  "support_messages",
+  {
+    id: serial().primaryKey(),
+    businessId: integer("business_id").notNull(),
+    businessName: text("business_name").notNull().default(""),
+    fromEmail: text("from_email").notNull().default(""),
+    fromName: text("from_name").notNull().default(""),
+    direction: text().notNull().default("in"),
+    /** question | problem | auto-error | reply */
+    kind: text().notNull().default("question"),
+    body: text().notNull(),
+    page: text().notNull().default(""),
+    device: text().notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+  },
+  (t) => [index("support_messages_business").on(t.businessId, t.createdAt)],
+);
