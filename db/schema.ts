@@ -72,6 +72,9 @@ export const movements = pgTable("movements", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("movements_business").on(t.businessId),
+  // Reports, Usage, Scan check and corrections read by date; product history reads by product.
+  index("movements_business_created").on(t.businessId, t.createdAt),
+  index("movements_business_product").on(t.businessId, t.productId),
 ]);
 
 /**

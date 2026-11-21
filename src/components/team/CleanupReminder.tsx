@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, ChevronUp, Moon, Sun, X } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 import type { HkCheck, HkTask } from '@/lib/housekeeping'
@@ -38,7 +38,7 @@ function writeState(key: string, v: 'skip' | number) {
 export function CleanupReminder({
   userId,
   name,
-  hours,
+  hours: hoursIn,
   enabled,
   onVisible,
 }: {
@@ -55,6 +55,10 @@ export function CleanupReminder({
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState(false)
   const lastFetch = useRef(0)
+  // The profile object is replaced on every refresh; key the hours by value so the checker
+  // (and its effect) only change when the hours really do.
+  const hoursKey = JSON.stringify(hoursIn ?? {})
+  const hours = useMemo(() => JSON.parse(hoursKey) as ShopHours, [hoursKey])
   const schedule = useRef<{ at: number; mine: Schedule | null } | null>(null)
   const who = name.trim() || 'Team'
 
@@ -64,7 +68,8 @@ export function CleanupReminder({
       const now = new Date()
       // Cheap first look with "everything open": no window, nothing to fetch.
       if (!reminderDue(hours, now, { arrive: 1, close: 1 })) return setDue(null)
-      if (!force && Date.now() - lastFetch.current < 60_000) return
+      // Never more than once every 15 seconds, even when forced (focus events come in bursts).
+      if (Date.now() - lastFetch.current < (force ? 15_000 : 60_000)) return
       lastFetch.current = Date.now()
       const day = dayKeyOf(now)
       try {
@@ -123,6 +128,7 @@ export function CleanupReminder({
         const r = await checkHousekeeping({ data: { taskId: row.task.id, staffName: who, dayKey: due!.day } })
         if (!r.ok) toast(r.message)
       }
+      lastFetch.current = 0
       await check(true)
     } finally {
       setBusy(false)
