@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import {
   findAllProducts,
+  changeStamp,
   findProductByBarcode,
   findBarcodeOwner,
   findProductById,
@@ -29,6 +30,11 @@ import { assertFeature, assertProductRoom, hasFeature } from "./account.server.j
 
 export const listProducts = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => {
   return findAllProducts();
+});
+
+/** Cheap "did anything change?" check for the app's background catch-up. */
+export const getChangeStamp = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => {
+  return changeStamp();
 });
 
 export const getStats = createServerFn({ method: "GET" }).middleware([requireUser]).handler(async () => {

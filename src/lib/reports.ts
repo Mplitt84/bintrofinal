@@ -130,6 +130,8 @@ export type Report = {
   byReason: ReportSlice[]
   byService: ReportSlice[]
   gaps: ReportGaps
+  /** Color bar bowls mixed in the period (the bowls themselves, not stock). Absent when no bowls. */
+  colorBar?: import('./color-bar').ColorBarTotals
 }
 
 export type ReportWindow = {

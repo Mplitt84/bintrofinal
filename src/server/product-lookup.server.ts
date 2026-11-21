@@ -6,6 +6,8 @@
  * inventory spreadsheets / vendor invoices for bulk import. Server-only.
  */
 
+import { AI_LIMIT_MESSAGE, takeAiCall } from "./ai-usage.server.js";
+
 export type LookupResult =
   | {
       found: true;
@@ -182,6 +184,11 @@ const RETRY_STATUS = new Set([408, 429, 500, 502, 503, 504, 529]);
  * flaky route doesn't take every AI feature down. Returns the last response.
  */
 async function postToClaude(body: Record<string, unknown>, timeoutMs: number, tag: string): Promise<Response | null> {
+  // Over the shop's daily allowance: answer 429 with the reason instead of calling Claude.
+  if (!(await takeAiCall())) {
+    console.warn(`AI ${tag} skipped: daily cap reached`);
+    return new Response(AI_LIMIT_MESSAGE, { status: 429, headers: { "x-bintro-limit": "1" } });
+  }
   const endpoints = anthropicEndpoints();
   const models = [String(body.model), ...(body.model === LABEL_MODEL ? [BACKUP_MODEL] : body.model === SUGGEST_MODEL ? [LABEL_MODEL] : [])];
   let last: Response | null = null;
@@ -238,6 +245,7 @@ async function callTool(
       opts.timeoutMs ?? 30_000,
       tool.name,
     );
+    if (res?.headers.get("x-bintro-limit")) return { ok: false, message: AI_LIMIT_MESSAGE };
     if (!res || !res.ok) {
       return { ok: false, message: "The AI couldn't answer just now. Try again in a moment." };
     }
@@ -1167,6 +1175,7 @@ export async function chatWithClaude(
 ): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
   if (anthropicEndpoints().length === 0) return { ok: false, message: "AI isn't set up on this site yet." };
   const res = await postToClaude({ model: LABEL_MODEL, max_tokens: maxTokens, system, messages }, 60_000, "ask");
+  if (res?.headers.get("x-bintro-limit")) return { ok: false, message: AI_LIMIT_MESSAGE };
   if (!res || !res.ok) {
     const status = res?.status ?? 0;
     return {

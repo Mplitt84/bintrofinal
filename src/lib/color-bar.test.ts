@@ -51,3 +51,15 @@ describe('reports', () => {
     expect(r[0].service.id).toBe(1) // thinnest margin first
   })
 })
+
+describe('colorBarTotals', () => {
+  it('adds cost, charges and the leftover share', async () => {
+    const { colorBarTotals } = await import('./color-bar')
+    const t = colorBarTotals([
+      { lines: [{ productId: 1, name: 'A', grams: 40, costCents: 400 }], leftoverGrams: 10, chargedCents: 900 },
+      { lines: [{ productId: 2, name: 'B', grams: 20, costCents: 300 }], leftoverGrams: 0, chargedCents: 0 },
+    ])
+    expect(t).toEqual({ bowls: 2, grams: 60, costCents: 700, chargedCents: 900, wasteGrams: 10, wasteCents: 100 })
+    expect(colorBarTotals([]).bowls).toBe(0)
+  })
+})

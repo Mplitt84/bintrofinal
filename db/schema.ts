@@ -1095,3 +1095,15 @@ export const supportMessages = pgTable(
   },
   (t) => [index("support_messages_business").on(t.businessId, t.createdAt)],
 );
+
+/** AI calls per shop per day (UTC), so one shop can't run up the AI bill. See src/server/ai-usage.server.ts. */
+export const aiUsage = pgTable(
+  "ai_usage",
+  {
+    businessId: integer("business_id").notNull(),
+    /** YYYY-MM-DD, UTC. */
+    day: text().notNull(),
+    calls: integer().notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.businessId, t.day] })],
+);

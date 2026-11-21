@@ -1,0 +1,42 @@
+# Full test suite, including the database tests, against a throwaway Postgres on every push.
+name: Tests
+on:
+  push:
+    branches: [main, PILOT]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bintro
+          TZ: America/Chicago
+          PGTZ: America/Chicago
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NETLIFY_DB_URL: postgres://postgres:postgres@localhost:5432/bintro
+      NETLIFY_DB_DRIVER: server
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply migrations
+        run: |
+          for f in $(ls -d netlify/database/migrations/*/ | sort); do
+            psql -h localhost -U postgres bintro -v ON_ERROR_STOP=1 -q -f "$f/migration.sql"
+          done
+      - run: npx tsc --noEmit -p .
+      - run: npx vitest run

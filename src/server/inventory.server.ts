@@ -1,6 +1,6 @@
 import { and, eq, desc, asc, like, or, sql, inArray, gte, ne } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { actor, mine, owned } from "./tenant.js";
+import { actor, businessId, mine, owned } from "./tenant.js";
 import { products, movements, integrations, squareOutbox, priceHistory } from "../../db/schema.js";
 import { DEFAULT_REORDER_THRESHOLD, clampOrderQty, deriveInitials, onHandQty, selectBelowPar, stockStats } from "../lib/inventory-defaults.js";
 import type { PurchaseOrderLine } from "../lib/purchase-order.js";
@@ -10,6 +10,24 @@ export type Movement = typeof movements.$inferSelect;
 
 export async function findAllProducts() {
   return db.select().from(products).where(mine(products)).orderBy(asc(products.name));
+}
+
+/**
+ * A fingerprint of the shop's products and newest movements. The app's 30-second
+ * catch-up asks for this (32 characters) and only re-downloads the product list and
+ * feed when it changed. Hashes whole rows, so any edit from any screen, sync or import counts.
+ */
+export async function changeStamp(): Promise<string> {
+  const id = businessId();
+  const result = await db.execute(sql`
+    select md5(
+      coalesce((select string_agg(p::text, ',' order by p.id) from products p where p.business_id = ${id}), '') || '|' ||
+      coalesce((select string_agg(m::text, ',' order by m.id) from (
+        select * from movements where business_id = ${id} order by id desc limit 25
+      ) m), '')
+    ) as stamp`);
+  const rows = (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as { stamp: string }[];
+  return rows[0]?.stamp ?? "";
 }
 
 export async function findProductByBarcode(barcode: string) {

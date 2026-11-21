@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev --port 3000",
-    "build": "vitest run && vite build",
+    "build": "env -u NETLIFY_DB_URL -u NETLIFY_DATABASE_URL vitest run && vite build",
     "build:only": "vite build",
     "test": "vitest run",
     "test:watch": "vitest"

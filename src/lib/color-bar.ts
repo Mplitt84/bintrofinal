@@ -153,3 +153,20 @@ export function serviceProfits(services: Service[], bowls: Bowl[], laborCentsPer
     })
     .sort((a, b) => (a.marginPct ?? 999) - (b.marginPct ?? 999))
 }
+
+export type ColorBarTotals = { bowls: number; grams: number; costCents: number; chargedCents: number; wasteGrams: number; wasteCents: number }
+
+/** Reports' color bar line: what the bowls in a period cost, what was charged for product, and what was thrown away. */
+export function colorBarTotals(bowls: Pick<Bowl, 'lines' | 'leftoverGrams' | 'chargedCents'>[]): ColorBarTotals {
+  const t: ColorBarTotals = { bowls: 0, grams: 0, costCents: 0, chargedCents: 0, wasteGrams: 0, wasteCents: 0 }
+  for (const b of bowls) {
+    t.bowls += 1
+    t.grams += bowlGrams(b.lines)
+    t.costCents += bowlCost(b.lines)
+    t.chargedCents += Math.max(0, b.chargedCents)
+    t.wasteGrams += Math.max(0, b.leftoverGrams)
+    t.wasteCents += wasteCents(b)
+  }
+  t.grams = Math.round(t.grams)
+  return t
+}

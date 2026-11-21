@@ -8,7 +8,8 @@
  */
 import { and, gte, lt } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { clientFormulas, expenses, movements, products } from "../../db/schema.js";
+import { clientFormulas, colorBowls, expenses, movements, products } from "../../db/schema.js";
+import { colorBarTotals } from "../lib/color-bar.js";
 import { buildReport } from "../lib/reports.js";
 import type { Report, ReportPeriod, ReportWindow } from "../lib/reports.js";
 import { findBusinessProfile, findProductCategories } from "./business.server.js";
@@ -68,7 +69,15 @@ export async function computeReport(period: ReportPeriod, w: ReportWindow): Prom
       .where(and(mine(clientFormulas), gte(clientFormulas.serviceDate, fromText))),
   ]);
 
-  return buildReport({
+  // Color bar bowls are reported beside stock, not deducted from it: tubes are still
+  // scanned as used when they're emptied, so counting grams too would double it.
+  const bowls = await db
+    .select({ lines: colorBowls.lines, leftoverGrams: colorBowls.leftoverGrams, chargedCents: colorBowls.chargedCents })
+    .from(colorBowls)
+    .where(and(mine(colorBowls), gte(colorBowls.createdAt, w.start), lt(colorBowls.createdAt, w.end)));
+  const colorBar = bowls.length ? colorBarTotals(bowls) : undefined;
+
+  const report = buildReport({
     period,
     window: w,
     products: all.map((p) => ({ ...p, kind: useKindFor(p, categories, profile.businessType) })),
@@ -76,4 +85,5 @@ export async function computeReport(period: ReportPeriod, w: ReportWindow): Prom
     expenses: books.map((e) => ({ category: e.category, vendor: e.vendor, amountCents: e.amountCents, at: fromDateText(e.spentOn) })),
     visits: visitRows.map((v) => ({ at: fromDateText(v.serviceDate), service: v.service, tags: v.tags ?? [], staffName: v.staffName })),
   });
+  return colorBar ? { ...report, colorBar } : report;
 }
