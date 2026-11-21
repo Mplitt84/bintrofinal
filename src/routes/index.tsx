@@ -532,9 +532,12 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
   // Other devices, the Square sync and imports change stock too: catch up when the app
   // comes back to the foreground and every 30 seconds while it's open.
   useEffect(() => {
+    // focus and visibilitychange fire together: one catch-up per 10 seconds is plenty.
+    let last = 0;
     const catchUp = () => {
-      if (document.visibilityState === "visible")
-        refresh({ quiet: true }).catch(() => {});
+      if (document.visibilityState !== "visible" || Date.now() - last < 10_000) return;
+      last = Date.now();
+      refresh({ quiet: true }).catch(() => {});
     };
     const timer = window.setInterval(catchUp, 30_000);
     document.addEventListener("visibilitychange", catchUp);
