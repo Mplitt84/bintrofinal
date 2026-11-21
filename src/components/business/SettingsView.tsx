@@ -109,6 +109,9 @@ const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: "color", label: "Color theory" },
 ];
 
+/** What a team member (signed in as staff) can open in Settings. Everything else is the owner's. */
+const STAFF_SECTIONS: SettingsSection[] = ["scanner", "color"];
+
 /** Settings tab: who the business is, who works there, and which outside systems are connected. */
 export function SettingsView({
   section,
@@ -143,6 +146,9 @@ export function SettingsView({
   onChanged: () => void | Promise<void>;
   auth: AuthState;
 }) {
+  const staffOnly = auth.enabled && auth.user?.role === "staff";
+  const sections = staffOnly ? SECTIONS.filter((s) => STAFF_SECTIONS.includes(s.id)) : SECTIONS;
+  if (staffOnly && !STAFF_SECTIONS.includes(section)) section = "scanner";
   return (
     <div className="max-w-[680px]">
       <PageHead
@@ -180,7 +186,7 @@ export function SettingsView({
         role="group"
         aria-label="Settings section"
       >
-        {SECTIONS.map((s) => (
+        {sections.map((s) => (
           <button
             key={s.id}
             className="chip"
@@ -257,11 +263,20 @@ export function SettingsView({
           <ConnectionDirectory />
         </>
       )}
-      <AccessPanel auth={auth} />
-      <PilotInvitesPanel auth={auth} />
-      <RecentlyDeletedCard onRestored={onChanged} />
-      <YourDataCard />
-      <ProblemsCard />
+      {staffOnly && (
+        <p className="text-sm text-ink-2 bg-surface rounded-xl px-3.5 py-2.5 mt-6">
+          You’re signed in as a team member. The business’s settings, team, connections and billing are managed by the owner.
+        </p>
+      )}
+      <AccessPanel auth={auth} team={team.map((t) => t.name)} />
+      {!staffOnly && (
+        <>
+          <PilotInvitesPanel auth={auth} />
+          <RecentlyDeletedCard onRestored={onChanged} />
+          <YourDataCard />
+          <ProblemsCard />
+        </>
+      )}
       <HelpSupport />
       <nav
         className="mt-6 pt-4 border-t border-line flex flex-wrap gap-x-4 gap-y-1 text-[13px]"

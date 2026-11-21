@@ -1,3 +1,4 @@
+import { staffMayChangeProfile } from "../lib/auth.js";
 import { requireOwner, requireUser } from "./auth.middleware";
 import { rowsSnapshot, saveSnapshot } from "./trash.server.js";
 import { createServerFn } from "@tanstack/react-start";
@@ -65,11 +66,15 @@ const ProfileSchema = z.object({
   taxState: z.string().max(2).optional(),
   buyingPreference: z.enum(["pro", "local", "marketplace"]).optional(),
   currency: z.string().length(3).optional(),
+  hours: z.record(z.string().regex(/^[0-6]$/), z.object({ open: z.string().regex(/^\d{2}:\d{2}$/), close: z.string().regex(/^\d{2}:\d{2}$/) })).optional(),
 });
 
 export const updateBusinessProfile = createServerFn({ method: "POST" }).middleware([requireUser])
   .inputValidator(ProfileSchema)
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    if (context.user && context.user.role !== "owner" && !staffMayChangeProfile(Object.keys(data))) {
+      throw new Error("Only an owner can change the business settings.");
+    }
     const trimmed = Object.fromEntries(
       Object.entries(data).map(([k, v]) => [k, typeof v === "string" ? v.trim() : v]),
     );
@@ -100,7 +105,7 @@ export const addTeamMember = createServerFn({ method: "POST" }).middleware([requ
  * Team roles. Every flag is optional, so a screen can change one without having to
  * send the others and risk flipping a role it never showed.
  */
-export const updateTeamMemberRoles = createServerFn({ method: "POST" }).middleware([requireUser])
+export const updateTeamMemberRoles = createServerFn({ method: "POST" }).middleware([requireOwner])
   .inputValidator(z.object({ id: z.number().int(), ...Roles }))
   .handler(async ({ data }) => {
     const { id, ...roles } = data;
@@ -108,11 +113,11 @@ export const updateTeamMemberRoles = createServerFn({ method: "POST" }).middlewa
   });
 
 /** Rename a team member everywhere their name was written: scans, visits and goals. */
-export const renameTeamMemberFn = createServerFn({ method: "POST" }).middleware([requireUser])
+export const renameTeamMemberFn = createServerFn({ method: "POST" }).middleware([requireOwner])
   .inputValidator(z.object({ id: z.number().int(), name: z.string().trim().min(1).max(60) }))
   .handler(async ({ data }) => renameTeamMember(data.id, data.name));
 
-export const removeTeamMember = createServerFn({ method: "POST" }).middleware([requireUser])
+export const removeTeamMember = createServerFn({ method: "POST" }).middleware([requireOwner])
   .inputValidator(z.object({ id: z.number().int() }))
   .handler(async ({ data }) => {
     const snap = await rowsSnapshot("teamMembers", [data.id]);
@@ -142,7 +147,7 @@ export const saveProductCategories = createServerFn({ method: "POST" }).middlewa
   });
 
 /** Removes categories from the list. Products keep their category text. */
-export const removeProductCategories = createServerFn({ method: "POST" }).middleware([requireUser])
+export const removeProductCategories = createServerFn({ method: "POST" }).middleware([requireOwner])
   .inputValidator(z.object({ ids: z.array(z.number().int()).max(200) }))
   .handler(async ({ data }) => {
     return deleteProductCategories(data.ids);
@@ -266,11 +271,11 @@ export const getIntegrations = createServerFn({ method: "GET" }).middleware([req
 const ProviderSchema = z.object({ provider: z.enum(["square", "quickbooks"]) });
 
 /** Last year of failed Square / QuickBooks calls, for sharing with their support. */
-export const getIntegrationErrorLog = createServerFn({ method: "GET" }).middleware([requireUser])
+export const getIntegrationErrorLog = createServerFn({ method: "GET" }).middleware([requireOwner])
   .inputValidator(ProviderSchema)
   .handler(async ({ data }) => integrationErrorLog(data.provider));
 
-export const disconnect = createServerFn({ method: "POST" }).middleware([requireUser])
+export const disconnect = createServerFn({ method: "POST" }).middleware([requireOwner])
   .inputValidator(ProviderSchema)
   .handler(async ({ data }) => {
     await disconnectIntegration(data.provider);
@@ -287,7 +292,7 @@ async function attempt<T>(fn: () => Promise<T>): Promise<{ ok: true; result: T }
   }
 }
 
-export const squareImportCatalog = createServerFn({ method: "POST" }).middleware([requireUser]).handler(async () => {
+export const squareImportCatalog = createServerFn({ method: "POST" }).middleware([requireOwner]).handler(async () => {
   return attempt(async () => {
     await assertFeature("square");
     return importSquareCatalog();
@@ -301,7 +306,7 @@ export const getSquareRetailCategories = createServerFn({ method: "GET" }).middl
   });
 });
 
-export const setSquareRetailCategories = createServerFn({ method: "POST" }).middleware([requireUser])
+export const setSquareRetailCategories = createServerFn({ method: "POST" }).middleware([requireOwner])
   .inputValidator(z.object({ ids: z.array(z.string().max(64)).max(500) }))
   .handler(async ({ data }) => {
     return attempt(async () => {
@@ -310,7 +315,7 @@ export const setSquareRetailCategories = createServerFn({ method: "POST" }).midd
     });
   });
 
-export const squareSendCounts = createServerFn({ method: "POST" }).middleware([requireUser]).handler(async () => {
+export const squareSendCounts = createServerFn({ method: "POST" }).middleware([requireOwner]).handler(async () => {
   return attempt(async () => {
     await assertFeature("square");
     return sendAllCountsToSquare();
@@ -333,7 +338,7 @@ export const squareFixDoubleCounts = createServerFn({ method: "POST" }).middlewa
   });
 });
 
-export const quickbooksPushMonth = createServerFn({ method: "POST" }).middleware([requireUser])
+export const quickbooksPushMonth = createServerFn({ method: "POST" }).middleware([requireOwner])
   .inputValidator(MonthWindowSchema)
   .handler(async ({ data }) => {
     return attempt(async () => {

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Check, Moon, Pencil, Plus, Sparkles, Sun, Trash2 } from 'lucide-react'
+import { Check, Clock, Moon, Pencil, Plus, Sparkles, Sun, Trash2 } from 'lucide-react'
+import { useBusiness } from '@/components/business/BusinessContext'
+import { DEFAULT_DAY, WEEKDAYS, timeLabel as hourLabel, type ShopHours } from '@/lib/shop-hours'
+import { updateBusinessProfile } from '@/server/business.functions'
 import { Sheet, SheetActions } from '@/components/ui/Sheet'
 import { useToast } from '@/components/ui/Toast'
 import { TOOL_TONES } from '@/components/ui/ToolButton'
@@ -66,7 +69,10 @@ export function ShopCleanup({ staffName, isOwner }: { staffName: string; isOwner
   const [open, setOpen] = useState<HkMoment | null>(null)
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState<number | 'all' | null>(null)
+  const [hoursOpen, setHoursOpen] = useState(false)
+  const { profile } = useBusiness()
   const who = staffName.trim() || 'Team'
+  const noHours = !profile.hours || Object.keys(profile.hours).length === 0
 
   const load = useCallback(async () => {
     const day = localDayKey()
@@ -146,11 +152,25 @@ export function ShopCleanup({ staffName, isOwner }: { staffName: string; isOwner
       <div className="flex items-center justify-between gap-2 mb-2">
         <h2 className="m-0 text-lg font-bold">Shop clean-up</h2>
         {isOwner && (
-          <button type="button" className="btn btn-text btn-sm" onClick={() => setEditing(true)}>
-            <Pencil size={14} /> Edit the list
-          </button>
+          <span className="flex gap-1">
+            <button type="button" className="btn btn-text btn-sm" onClick={() => setHoursOpen(true)}>
+              <Clock size={14} /> Shop hours
+            </button>
+            <button type="button" className="btn btn-text btn-sm" onClick={() => setEditing(true)}>
+              <Pencil size={14} /> Edit the list
+            </button>
+          </span>
         )}
       </div>
+      {isOwner && noHours && (
+        <p className="text-[13px] bg-gold-tint text-gold-ink rounded-xl px-3 py-2 mb-2">
+          Everyone who signs in gets a pop-up for the opening and closing jobs. Set your{' '}
+          <button type="button" className="underline font-semibold bg-transparent border-0 p-0 cursor-pointer text-inherit" onClick={() => setHoursOpen(true)}>
+            shop hours
+          </button>{' '}
+          so they come at the right time (until then: 9am–6pm every day).
+        </p>
+      )}
       {!tasks ? (
         <div className="skel h-24 rounded-2xl" />
       ) : (
@@ -239,6 +259,7 @@ export function ShopCleanup({ staffName, isOwner }: { staffName: string; isOwner
         )}
       </Sheet>
 
+      {isOwner && hoursOpen && <ShopHoursSheet hours={profile.hours ?? {}} onClose={() => setHoursOpen(false)} />}
       {isOwner && editing && tasks && (
         <EditListSheet
           tasks={tasks}
@@ -401,6 +422,71 @@ function EditListSheet({ tasks, today, onClose, onTasks }: { tasks: HkTask[]; to
           </SheetActions>
         </>
       )}
+    </Sheet>
+  )
+}
+
+/** Owner: the days and times the shop opens. Reminders come 30 minutes before opening and before closing. */
+function ShopHoursSheet({ hours, onClose }: { hours: ShopHours; onClose: () => void }) {
+  const toast = useToast()
+  const { onProfile } = useBusiness()
+  const start = Object.keys(hours).length ? hours : Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [String(d), { ...DEFAULT_DAY }]))
+  const [h, setH] = useState<ShopHours>(start)
+  const [saving, setSaving] = useState(false)
+  const set = (d: number, v: { open: string; close: string } | null) =>
+    setH((cur) => {
+      const next = { ...cur }
+      if (v) next[String(d)] = v
+      else delete next[String(d)]
+      return next
+    })
+  async function save() {
+    if (Object.values(h).some((d) => d.close <= d.open)) return toast('Closing time has to be after opening time.')
+    setSaving(true)
+    try {
+      const p = await updateBusinessProfile({ data: { hours: h } })
+      onProfile?.(p)
+      toast('Shop hours saved')
+      onClose()
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Couldn’t save the hours.')
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <Sheet open onClose={onClose} title="Shop hours" subtitle="Opening and closing reminders pop up 30 minutes before, for everyone signed in.">
+      <ul className="list-none m-0 p-0 grid gap-2">
+        {WEEKDAYS.map((name, d) => {
+          const day = h[String(d)]
+          return (
+            <li key={name} className="flex items-center gap-2 flex-wrap">
+              <label className="flex items-center gap-2 w-32 text-sm font-semibold">
+                <input type="checkbox" checked={Boolean(day)} onChange={(e) => set(d, e.target.checked ? { ...DEFAULT_DAY } : null)} />
+                {name}
+              </label>
+              {day ? (
+                <span className="flex items-center gap-1.5 text-sm">
+                  <input className="field-input !w-auto !py-1.5" type="time" value={day.open} onChange={(e) => set(d, { ...day, open: e.target.value })} aria-label={`${name} opens`} />
+                  to
+                  <input className="field-input !w-auto !py-1.5" type="time" value={day.close} onChange={(e) => set(d, { ...day, close: e.target.value })} aria-label={`${name} closes`} />
+                  <span className="text-ink-2 text-[12px] hidden min-[500px]:inline">{hourLabel(day.open)}–{hourLabel(day.close)}</span>
+                </span>
+              ) : (
+                <span className="text-sm text-ink-2">Closed</span>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+      <SheetActions>
+        <button type="button" className="btn btn-text" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="button" className="btn btn-primary" disabled={saving} onClick={save}>
+          Save hours
+        </button>
+      </SheetActions>
     </Sheet>
   )
 }

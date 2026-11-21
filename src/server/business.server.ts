@@ -30,6 +30,7 @@ export async function findBusinessProfile(): Promise<BusinessProfile> {
     buyingPreference: row.buyingPreference,
     retailCommissionPct: row.retailCommissionPct,
     currency: row.currency,
+    hours: row.hours ?? {},
   };
 }
 

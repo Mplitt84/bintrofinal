@@ -131,6 +131,8 @@ export const businessProfile = pgTable("business_profile", {
   retailCommissionPct: integer("retail_commission_pct").notNull().default(0),
   /** Service costs: what an hour of team time costs the shop (owner-set; 0 = leave labor out). */
   laborCentsPerHour: integer("labor_cents_per_hour").notNull().default(0),
+  /** Shop hours by weekday ("0" = Sunday): {open, close} as HH:MM, missing = closed. Drives opening / closing reminders. */
+  hours: jsonb().$type<Record<string, { open: string; close: string }>>().notNull().default({}),
   /** Color bar: markup on product cost for the client's product charge, whole percent. */
   productMarkupPct: integer("product_markup_pct").notNull().default(0),
   /** ISO 4217 code the money on every screen is shown in (see src/lib/money.ts). */
@@ -583,6 +585,10 @@ export const appUsers = pgTable("app_users", {
   /** Google's stable account id, set on first sign-in. */
   googleSub: text("google_sub").notNull().default(""),
   addedBy: text("added_by").notNull().default(""),
+  /** The team member this sign-in is (their name on scans, visits and clean-up). */
+  teamName: text("team_name").notNull().default(""),
+  /** Opening / closing pop-ups for this person. */
+  remindersOn: boolean("reminders_on").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastSignInAt: timestamp("last_sign_in_at"),
 });
