@@ -35,7 +35,7 @@ export const LEGAL = {
   governingState: 'Texas',
   /** County for disputes. */
   venue: 'Travis County, Texas',
-  effectiveDate: 'November 16, 2026',
+  effectiveDate: 'November 21, 2026',
 }
 
 export const LEGAL_IS_DRAFT = Object.values(LEGAL).some((v) => v.includes('['))
@@ -62,7 +62,9 @@ export const TERMS: LegalSection[] = [
   {
     heading: '3. Plans, billing and cancellation',
     paragraphs: [
-      'Paid plans are billed in advance, monthly or yearly, through our payment processor. Prices are shown in the app before you subscribe. Plans renew automatically until canceled.',
+      'Paid plans are billed in advance, monthly or yearly, through our payment processor. Prices are shown in the app before you subscribe. Plans renew automatically at the then-current price for the same period until canceled, and you agree to this before you subscribe.',
+      'Before a yearly plan renews, we email the billing contact 15 to 30 days ahead with the renewal date, the price and how to cancel. Monthly plans get the same reminder once a year.',
+      'Promotional discounts, such as a founding-member discount, apply only for the period stated in the offer. After that, the plan renews at the regular price.',
       'You can pause a plan for 1 to 3 months or cancel at any time in Settings → Account & billing. A cancellation takes effect at the end of the current billing period, and you keep access until then. Except where the law requires otherwise, payments are not refundable.',
       'Free trials and pilot programs end on the date shown in the app. When a pilot or trial ends without a paid plan, the account moves to the Free plan; your data is kept.',
       'We may change prices with at least 30 days\' notice. A new price applies from your next renewal after the notice.',

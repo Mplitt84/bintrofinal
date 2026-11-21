@@ -51,16 +51,16 @@ export const saveAccountDetails = createServerFn({ method: "POST" }).middleware(
   });
 
 export const selectPlan = createServerFn({ method: "POST" }).middleware([requireOwner])
-  .inputValidator(z.object({ plan: z.enum(["free", "plus", "premium"]), interval: z.enum(["month", "year"]) }))
+  .inputValidator(z.object({ plan: z.enum(["free", "plus", "premium"]), interval: z.enum(["month", "year"]), autoRenewConsent: z.boolean().optional() }))
   .handler(async ({ data }) => {
-    return attempt<BillingResult>(() => changePlan(data.plan, data.interval, origin()));
+    return attempt<BillingResult>(() => changePlan(data.plan, data.interval, origin(), data.autoRenewConsent === true));
   });
 
 /** Pilot testers: lock in the founding rate now; billing starts when the free pilot ends. */
 export const lockInFounding = createServerFn({ method: "POST" }).middleware([requireOwner])
-  .inputValidator(z.object({ plan: z.enum(["plus", "premium"]), interval: z.enum(["month", "year"]) }))
+  .inputValidator(z.object({ plan: z.enum(["plus", "premium"]), interval: z.enum(["month", "year"]), autoRenewConsent: z.boolean().optional() }))
   .handler(async ({ data }) => {
-    return attempt<BillingResult>(() => lockInFoundingRate(data.plan, data.interval, origin()));
+    return attempt<BillingResult>(() => lockInFoundingRate(data.plan, data.interval, origin(), data.autoRenewConsent === true));
   });
 
 export const pausePlan = createServerFn({ method: "POST" }).middleware([requireOwner])
@@ -69,9 +69,11 @@ export const pausePlan = createServerFn({ method: "POST" }).middleware([requireO
     return attempt<BillingResult>(() => pauseBilling(data.months));
   });
 
-export const resumePlan = createServerFn({ method: "POST" }).middleware([requireOwner]).handler(async () => {
-  return attempt<BillingResult>(resumeBilling);
-});
+export const resumePlan = createServerFn({ method: "POST" }).middleware([requireOwner])
+  .inputValidator(z.object({ autoRenewConsent: z.boolean().optional() }))
+  .handler(async ({ data }) => {
+    return attempt<BillingResult>(() => resumeBilling(data.autoRenewConsent === true));
+  });
 
 export const cancelSubscription = createServerFn({ method: "POST" }).middleware([requireOwner])
   .inputValidator(z.object({ reason: z.string().trim().max(500) }))

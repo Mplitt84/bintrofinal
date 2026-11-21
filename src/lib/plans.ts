@@ -193,6 +193,8 @@ export type AccountSummary = {
   lockedIn: { plan: PlanId; interval: BillingInterval; startsAt: string | null } | null
   memberSince: string
   usage: { products: number; team: number }
+  /** Public founding-member offer, when open to this account: percent off the first year of a yearly plan. */
+  foundingOffer?: { percent: number; endsOn: string | null; seatsLeft: number } | null
 }
 
 export const PAUSE_OPTIONS = [1, 2, 3] as const
