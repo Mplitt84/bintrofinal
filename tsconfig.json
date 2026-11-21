@@ -1,5 +1,7 @@
 {
   "include": ["**/*.ts", "**/*.tsx"],
+  // Netlify Visual Editor config on PILOT; its types package is installed by the editor, not here.
+  "exclude": ["node_modules", "dist", "stackbit.config.ts"],
   "compilerOptions": {
     "target": "ES2022",
     "jsx": "react-jsx",
