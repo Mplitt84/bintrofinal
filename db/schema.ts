@@ -67,6 +67,8 @@ export const movements = pgTable("movements", {
   staffInitials: text("staff_initials").notNull().default(""),
   staffName: text("staff_name").notNull().default(""),
   note: text().notNull().default(""),
+  /** Who was signed in when it was made (team name, else email); "" for Square, schedules and open sites. */
+  signedInAs: text("signed_in_as").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (t) => [
   index("movements_business").on(t.businessId),
