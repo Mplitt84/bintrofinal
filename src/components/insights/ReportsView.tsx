@@ -171,6 +171,7 @@ export function ReportsView({ isOwner = true, staffName = '' }: { isOwner?: bool
           )}
           <TopItems title="Top sellers" rows={report.topSold} kind="sold" onPick={setFixing} />
           <TopItems title="Most used on clients" rows={report.topUsed} kind="used" onPick={setFixing} />
+          {report.colorBar && <ColorBarCard t={report.colorBar} />}
           <AllItems items={report.items ?? []} onPick={setFixing} />
           {report.current.soldCents > 0 && (
             <Breakdown
@@ -481,6 +482,35 @@ function Breakdown({
         ))}
       </ul>
       {note && <p className="m-0 mt-3 text-[12px] text-ink-2">{note}</p>}
+    </section>
+  )
+}
+
+/** Color bar bowls in the period: product cost per bowl, what clients were charged for it, and what went in the bin. */
+function ColorBarCard({ t }: { t: NonNullable<Report['colorBar']> }) {
+  const { money: fmt } = useMoney()
+  const net = t.chargedCents - t.costCents
+  const cells: { label: string; value: string; hint?: string }[] = [
+    { label: 'Bowls', value: String(t.bowls), hint: `${t.grams.toLocaleString()} g mixed` },
+    { label: 'Product cost', value: fmt(t.costCents), hint: t.bowls ? `${fmt(Math.round(t.costCents / t.bowls))} a bowl` : undefined },
+    { label: 'Charged for product', value: fmt(t.chargedCents), hint: t.chargedCents ? `${net >= 0 ? '+' : ''}${fmt(net)} vs cost` : 'Nothing charged' },
+    { label: 'Thrown away', value: fmt(t.wasteCents), hint: `${t.wasteGrams.toLocaleString()} g left in bowls` },
+  ]
+  return (
+    <section className="bg-white border border-line rounded-2xl p-4">
+      <h3 className="m-0 text-[15px] font-bold mb-3 flex items-center gap-2">
+        <Sparkles size={15} /> Color bar
+      </h3>
+      <div className="grid grid-cols-2 gap-3">
+        {cells.map((c) => (
+          <div key={c.label}>
+            <div className="text-[12px] text-ink-2">{c.label}</div>
+            <div className="text-[17px] font-bold tabular-nums">{c.value}</div>
+            {c.hint && <div className="text-[12px] text-ink-2">{c.hint}</div>}
+          </div>
+        ))}
+      </div>
+      <p className="text-[12px] text-ink-2 m-0 mt-3">From bowls weighed in Formulas → Color bar. Stock still goes down when a tube is scanned as used.</p>
     </section>
   )
 }

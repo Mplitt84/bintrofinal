@@ -70,7 +70,7 @@ import {
   type BusinessProfile,
 } from "@/lib/business-types";
 import type { ProductCategory } from "@/lib/tax-categories";
-import { listProducts, getRecentMovements } from "@/server/inventory.functions";
+import { listProducts, getRecentMovements, getChangeStamp } from "@/server/inventory.functions";
 import { getInsights } from "@/server/insights.functions";
 import type { Insights } from "@/lib/insights";
 import { WelcomeSetup } from "@/components/business/WelcomeSetup";
@@ -263,6 +263,8 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
   const belowPar = useMemo(() => selectBelowPar(products), [products]);
   const stats = useMemo(() => stockStats(products), [products]);
   const refreshSeq = useRef(0);
+  /** Fingerprint of the data last downloaded (see getChangeStamp). */
+  const lastStamp = useRef("");
   const [staffName, setStaffName] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [staffPrompt, setStaffPrompt] = useState<StaffPrompt | null>(null);
@@ -513,6 +515,11 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
     async ({ quiet = false }: { quiet?: boolean } = {}) => {
       const seq = ++refreshSeq.current;
       if (!quiet) loadInsights();
+      // Background catch-ups ask "did anything change?" first (a 32-character answer)
+      // and skip re-downloading every product when nothing did. The fingerprint is read
+      // before the lists, so a change landing mid-download shows as new next time.
+      const stamp = await getChangeStamp().catch(() => "");
+      if (quiet && stamp && stamp === lastStamp.current) return;
       const [p, r] = await Promise.allSettled([
         listProducts(),
         getRecentMovements({ data: { limit: 25 } }),
@@ -520,6 +527,7 @@ function Home({ auth, initial }: { auth: AuthState; initial: HomeData }) {
       if (seq !== refreshSeq.current) return;
       if (p.status === "fulfilled") setProducts(p.value as Product[]);
       if (r.status === "fulfilled") setRecent(r.value as MovementRow[]);
+      lastStamp.current = p.status === "fulfilled" && r.status === "fulfilled" ? stamp : "";
       if (quiet) return;
       // Usage (products, team) shows on the Account page.
       getAccount()

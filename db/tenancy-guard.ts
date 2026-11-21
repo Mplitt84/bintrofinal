@@ -48,6 +48,7 @@ export const TENANT_TABLES = [
   "sustainability_partners",
   "color_waste_logs",
   "color_mixes",
+  "ai_usage",
   "square_synced_orders",
   "price_alternatives",
   "price_history",

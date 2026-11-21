@@ -1,0 +1,64 @@
+# Outside uptime monitor: if the whole site is down, the in-app help line is down too,
+# so this runs on GitHub, not Netlify. Every 10 minutes it checks both sites and their
+# databases. On a failure it opens (or comments on) a "Site down" issue — GitHub pushes
+# that to your phone (GitHub app) and email — and texts you if the Twilio secrets are set.
+# GitHub runs schedules on a best-effort basis; a check can start a few minutes late.
+name: Uptime
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+permissions:
+  issues: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check sites
+        id: check
+        run: |
+          down=""
+          for site in bintro1020 bintropilot; do
+            for path in / /api/health; do
+              ok=""
+              for try in 1 2 3; do
+                code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "https://$site.netlify.app$path" || true)
+                if [ "$code" = "200" ]; then ok=1; break; fi
+                sleep 20
+              done
+              [ -z "$ok" ] && down="$down $site.netlify.app$path ($code)"
+            done
+          done
+          echo "down=$down" >> "$GITHUB_OUTPUT"
+          [ -z "$down" ] || { echo "Down:$down"; exit 1; }
+      - name: Report outage
+        if: failure() && steps.check.outputs.down != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DOWN: ${{ steps.check.outputs.down }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_FROM: ${{ secrets.TWILIO_FROM }}
+          BINTRO_OWNER_PHONE: ${{ secrets.BINTRO_OWNER_PHONE }}
+        run: |
+          msg="Bintro is down:$DOWN — $(date -u '+%b %d %H:%M UTC')"
+          open=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "Site down in:title" --json number --jq '.[0].number')
+          if [ -n "$open" ]; then gh issue comment "$open" -R "$GITHUB_REPOSITORY" --body "$msg"
+          else gh issue create -R "$GITHUB_REPOSITORY" --title "Site down" --body "$msg" --assignee "$GITHUB_REPOSITORY_OWNER"; fi
+          if [ -n "$TWILIO_ACCOUNT_SID" ] && [ -n "$BINTRO_OWNER_PHONE" ]; then
+            curl -s -o /dev/null -u "$TWILIO_ACCOUNT_SID:$TWILIO_AUTH_TOKEN" \
+              --data-urlencode "From=$TWILIO_FROM" --data-urlencode "To=$BINTRO_OWNER_PHONE" --data-urlencode "Body=$msg" \
+              "https://api.twilio.com/2010-04-01/Accounts/$TWILIO_ACCOUNT_SID/Messages.json"
+          fi
+  recovered:
+    needs: check
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close the outage issue once both sites are back
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          open=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "Site down in:title" --json number --jq '.[0].number')
+          [ -z "$open" ] || gh issue close "$open" -R "$GITHUB_REPOSITORY" --comment "Back up — $(date -u '+%b %d %H:%M UTC')"

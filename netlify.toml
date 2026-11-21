@@ -1,5 +1,8 @@
 [build]
-  command = "vite build"
+  # Unit tests gate every deploy: a failing test stops the release. The database is
+  # unset for the tests so the integration tests skip and never touch live data;
+  # those run in GitHub Actions (.github/workflows/tests.yml) against a throwaway database.
+  command = "npm run build"
   publish = "dist/client"
 [dev]
   command = "npm run dev"

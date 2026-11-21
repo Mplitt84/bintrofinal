@@ -18,6 +18,7 @@ import { findBusinessProfile } from "./business.server.js";
 import { displayBusinessName } from "../lib/business-types.js";
 import { pushToStaff, saveSubscription } from "./push.server.js";
 import { sendNote } from "./email.server.js";
+import { textOwner } from "./sms.server.js";
 
 /** The push "team member" name the site owner's alert devices are saved under, in business 1. */
 export const OWNER_DEVICE = "__site_owner__";
@@ -52,7 +53,7 @@ const toMsg = (r: typeof supportMessages.$inferSelect): SupportMessage => ({
   readAt: r.readAt?.toISOString() ?? null,
 });
 
-/** Push to the site owner's phones, with an email as the backup. Never throws. */
+/** Push to the site owner's phones, a text (when Twilio is set up) and an email as the backup. Never throws. */
 export async function alertOwner(title: string, body: string) {
   let pushed = 0;
   try {
@@ -60,6 +61,8 @@ export async function alertOwner(title: string, body: string) {
   } catch (error) {
     console.error("Owner push failed", error);
   }
+  // A text too, when Twilio is set up (works even when the phone has no Bintro alerts on).
+  await textOwner(`Bintro: ${title} — ${body}`);
   const to = ownerEmail();
   if (to) {
     try {
