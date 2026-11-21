@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { and, asc, count, desc, eq, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { DEFAULT_BUSINESS_ID, businessId, mine, owned, runForBusiness } from "./tenant.js";
 import { account, billingEvents, movements, products, teamMembers } from "../../db/schema.js";
@@ -20,6 +20,10 @@ import {
   type PlanId,
   centsLabel,
 } from "../lib/plans.js";
+import { renewalEmail, renewalNoticeDue } from "../lib/renewals.js";
+import { findBusinessProfile } from "./business.server.js";
+import { displayBusinessName } from "../lib/business-types.js";
+import { sendNote } from "./email.server.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -235,7 +239,61 @@ async function countUsage() {
 
 export async function getAccountSummary(): Promise<AccountSummary> {
   const [row, usage] = await Promise.all([loadAccount(), countUsage()]);
-  return summarize(row, usage);
+  return { ...summarize(row, usage), foundingOffer: await foundingOffer(row) };
+}
+
+// --- Public founding-member offer -------------------------------------------------
+// 30% off the first year of a yearly plan, for the first N new subscribers, until a date.
+// Off until STRIPE_COUPON_FOUNDING is set: a Stripe coupon, "once" duration, the same percent.
+// BINTRO_FOUNDING_PERCENT (display, default 30) must match the coupon; BINTRO_FOUNDING_ENDS
+// (YYYY-MM-DD, last day, Central time) and BINTRO_FOUNDING_LIMIT (default 100) are optional.
+// Pilot sites keep their own founding rate (FOUNDING_CENTS) instead.
+
+function foundingConfig() {
+  const percent = Number(env("BINTRO_FOUNDING_PERCENT"));
+  const limit = Number(env("BINTRO_FOUNDING_LIMIT"));
+  return {
+    coupon: env("STRIPE_COUPON_FOUNDING"),
+    percent: Number.isFinite(percent) && percent > 0 && percent < 100 ? percent : 30,
+    endsOn: /^\d{4}-\d{2}-\d{2}$/.test(env("BINTRO_FOUNDING_ENDS")) ? env("BINTRO_FOUNDING_ENDS") : null,
+    limit: Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 100,
+  };
+}
+
+/** Founding seats taken across every business (the cap is site-wide). */
+async function foundingSeatsTaken() {
+  const [r] = await db
+    .select({ n: count() })
+    .from(account)
+    .where(and(sql`/* cross-business: founding offer seat count */ true`, isNotNull(account.foundingAt)));
+  return Number(r?.n ?? 0);
+}
+
+async function foundingOffer(row: AccountRow): Promise<AccountSummary["foundingOffer"]> {
+  const c = foundingConfig();
+  if (pilotPremium() || !billingLive() || !c.coupon) return null;
+  // New subscribers only: not someone already paying or who used it before.
+  if (row.stripeSubscriptionId || row.foundingAt || row.paidSince) return null;
+  if (c.endsOn && Date.now() > Date.parse(`${c.endsOn}T23:59:59-06:00`)) return null;
+  const left = c.limit - (await foundingSeatsTaken());
+  return left > 0 ? { percent: c.percent, endsOn: c.endsOn, seatsLeft: left } : null;
+}
+
+/** The terms the owner agrees to before any paid plan, recorded with the date (consent record). */
+async function recordAutoRenewConsent(target: Exclude<PlanId, "free">, interval: BillingInterval, founding = false) {
+  const plan = planById(target);
+  const price = centsLabel(priceFor(plan, interval, founding));
+  await saveAccount({ autoRenewConsentAt: new Date() });
+  await logEvent("consent", `Agreed: ${plan.name} renews automatically every ${interval} at ${price} until canceled`);
+}
+
+function renewalDisclosure(target: Exclude<PlanId, "free">, interval: BillingInterval, founding = false, firstYearPercent = 0) {
+  const plan = planById(target);
+  const price = centsLabel(priceFor(plan, interval, founding));
+  const first = firstYearPercent
+    ? `Founding member: ${firstYearPercent}% off your first year. After that, `
+    : "";
+  return `${first}${plan.name} renews automatically every ${interval} at ${price} until you cancel. Cancel anytime in Bintro: Settings → Account & billing → Cancel plan.`;
 }
 
 export async function currentPlan(): Promise<PlanId> {
@@ -292,8 +350,12 @@ export async function updateAccountDetails(data: { ownerName?: string; billingEm
 
 export type BillingResult = { account: AccountSummary; redirect?: string; message: string };
 
-export async function changePlan(target: PlanId, interval: BillingInterval, origin: string): Promise<BillingResult> {
+export async function changePlan(target: PlanId, interval: BillingInterval, origin: string, autoRenewConsent = false): Promise<BillingResult> {
   if (pilotActive(await loadAccount())) return { account: await getAccountSummary(), message: PILOT_MESSAGE };
+  if (target !== "free") {
+    if (!autoRenewConsent) throw new PlanLimitError("Tick the box to agree that the plan renews automatically until you cancel.");
+    await recordAutoRenewConsent(target, interval);
+  }
   const row = await loadAccount();
   const plan = planById(target);
   const from = planById(row.plan);
@@ -351,9 +413,14 @@ export async function pauseBilling(months: number): Promise<BillingResult> {
   };
 }
 
-export async function resumeBilling(): Promise<BillingResult> {
+export async function resumeBilling(autoRenewConsent = false): Promise<BillingResult> {
   if (pilotActive(await loadAccount())) return { account: await getAccountSummary(), message: PILOT_MESSAGE };
   const row = await loadAccount();
+  // Keeping a canceled plan turns automatic renewal back on, so it needs the same agreement.
+  if (row.cancelAtPeriodEnd && isPlanId(row.plan) && row.plan !== "free") {
+    if (!autoRenewConsent) throw new PlanLimitError("Tick the box to agree that the plan renews automatically until you cancel.");
+    await recordAutoRenewConsent(row.plan, row.interval === "year" ? "year" : "month");
+  }
   if (billingLive() && row.stripeSubscriptionId) {
     await stripe(`/v1/subscriptions/${row.stripeSubscriptionId}`, { pause_collection: "", cancel_at_period_end: "false" });
     await syncSubscription(row.stripeSubscriptionId);
@@ -475,6 +542,7 @@ type StripeSubscription = {
   pause_collection: { resumes_at: number | null } | null;
   default_payment_method: { card?: StripeCard } | string | null;
   items: { data: { id: string; current_period_end?: number; price: { id: string; recurring?: { interval: string } } }[] };
+  metadata?: Record<string, string>;
 };
 
 async function stripe<T = Record<string, unknown>>(
@@ -539,15 +607,23 @@ async function changeStripePlan(
   }
 
   // No subscription yet: send the owner to Stripe Checkout to add a card.
+  const offer = interval === "year" ? await foundingOffer(row) : null;
   const params: Record<string, string> = {
     mode: "subscription",
     "line_items[0][price]": price,
     "line_items[0][quantity]": "1",
     success_url: `${origin}/api/billing/return?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/?settings=account&billing=canceled`,
-    allow_promotion_codes: "true",
     "metadata[plan]": target,
+    "custom_text[submit][message]": renewalDisclosure(target, interval, false, offer?.percent ?? 0),
   };
+  if (offer) {
+    // Stripe takes either a set discount or a promo-code box, not both.
+    params["discounts[0][coupon]"] = foundingConfig().coupon;
+    params["subscription_data[metadata][founding_offer]"] = "1";
+  } else {
+    params.allow_promotion_codes = "true";
+  }
   if (row.stripeCustomerId) params.customer = row.stripeCustomerId;
   else if (row.billingEmail) params.customer_email = row.billingEmail;
   // Keep what's left of the trial (Stripe needs at least 48 hours).
@@ -564,15 +640,17 @@ async function changeStripePlan(
  * end date, so nothing is charged until then. (On a pilot site the STRIPE_PRICE_*
  * variables point at the founding prices.) Changing the locked plan just swaps the price.
  */
-export async function lockInFoundingRate(target: Exclude<PlanId, "free">, interval: BillingInterval, origin: string): Promise<BillingResult> {
+export async function lockInFoundingRate(target: Exclude<PlanId, "free">, interval: BillingInterval, origin: string, autoRenewConsent = false): Promise<BillingResult> {
   const row = await loadAccount();
   if (!pilotActive(row)) throw new PlanLimitError("The founding rate lock-in is for pilot testers during their pilot.");
+  if (!autoRenewConsent) throw new PlanLimitError("Tick the box to agree that the plan renews automatically until you cancel.");
   if (!billingLive()) throw new PlanLimitError("Payments aren't switched on for the pilot yet. The founding rate opens here before your pilot ends.");
   const end = pilotEndsAt(row);
   if (!end) throw new PlanLimitError(`Your ${PILOT_MONTHS} free months start with your first Scan In. Scan something in, then lock in your rate.`);
   const price = stripePrice(target, interval);
   const name = planById(target).name;
   const when = end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  await recordAutoRenewConsent(target, interval, true);
 
   if (row.stripeSubscriptionId) {
     const sub = await stripe<StripeSubscription>(`/v1/subscriptions/${row.stripeSubscriptionId}`, undefined, "GET");
@@ -590,7 +668,7 @@ export async function lockInFoundingRate(target: Exclude<PlanId, "free">, interv
     cancel_url: `${origin}/?settings=account&billing=canceled`,
     "metadata[plan]": target,
     "metadata[founding]": "true",
-    "custom_text[submit][message]": `Founding rate for pilot testers. You won't be charged until your free pilot ends on ${when}.`,
+    "custom_text[submit][message]": `Founding rate for pilot testers. You won't be charged until your free pilot ends on ${when}. ${renewalDisclosure(target, interval, true)}`,
   };
   if (row.stripeCustomerId) params.customer = row.stripeCustomerId;
   else if (row.billingEmail) params.customer_email = row.billingEmail;
@@ -654,8 +732,13 @@ export async function syncSubscription(subscriptionId: string) {
         ? "trialing"
         : "active";
 
-  await loadAccount();
+  const before = await loadAccount();
+  const paying = !ended && (status === "active" || status === "paused");
   await saveAccount({
+    // Annual reminders for monthly plans count from when paying started; a new subscription restarts it.
+    paidSince: ended ? null : paying ? (before.paidSince ?? new Date()) : before.paidSince,
+    ...(sub.metadata?.founding_offer === "1" && !before.foundingAt ? { foundingAt: new Date() } : {}),
+    ...(ended ? { renewalNoticeFor: null, annualReminderAt: null } : {}),
     plan: ended ? "free" : (mapped?.plan ?? "free"),
     interval: mapped?.interval ?? "month",
     status,
@@ -787,4 +870,54 @@ export async function stripeCheck(): Promise<StripeCheck> {
   }
   if (key && !account && secretKey !== "invalid") return { secretKey: "invalid", account, webhookSecret: Boolean(env("STRIPE_WEBHOOK_SECRET")), prices };
   return { secretKey, account, webhookSecret: Boolean(env("STRIPE_WEBHOOK_SECRET")), prices };
+}
+
+// --- Renewal notices ----------------------------------------------------------------
+
+/**
+ * Daily: emails the owner before a yearly plan renews (15–30 days ahead, once per period)
+ * and once a year for monthly plans, with the price, how often, and how to cancel.
+ * Runs inside one business's scope. Returns what it sent, for the log.
+ */
+export async function sendRenewalNotice(appUrl: string): Promise<string | null> {
+  const row = await loadAccount();
+  if (pilotActive(row) || !billingLive() || !isPlanId(row.plan)) return null;
+  const interval: BillingInterval = row.interval === "year" ? "year" : "month";
+  const now = new Date();
+  const kind = renewalNoticeDue(
+    {
+      plan: row.plan,
+      interval,
+      status: row.status,
+      cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+      hasSubscription: Boolean(row.stripeSubscriptionId),
+      currentPeriodEnd: row.currentPeriodEnd,
+      paidSince: row.paidSince,
+      renewalNoticeFor: row.renewalNoticeFor,
+      annualReminderAt: row.annualReminderAt,
+    },
+    now,
+  );
+  if (!kind) return null;
+  const profile = await findBusinessProfile();
+  const to = row.billingEmail || profile.email;
+  if (!to) return null;
+  const plan = planById(row.plan);
+  // Pilot founders keep their founding rate when they renew; everyone else renews at the regular price.
+  const priceLabel = centsLabel(priceFor(plan, interval, pilotPremium()));
+  const renewsOn = row.currentPeriodEnd?.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Chicago" }) ?? null;
+  const email = renewalEmail({
+    shop: displayBusinessName(profile) || row.ownerName || "there",
+    planName: plan.name,
+    interval,
+    priceLabel,
+    renewsOn,
+    manageUrl: `${appUrl.replace(/\/$/, "")}/?settings=account`,
+    kind,
+  });
+  const sent = await sendNote(profile, to, email.subject, email.text);
+  if (!sent.ok) throw new Error(`Renewal notice not sent: ${"message" in sent ? sent.message : "unknown"}`);
+  await saveAccount(kind === "renewal" ? { renewalNoticeFor: row.currentPeriodEnd, annualReminderAt: now } : { annualReminderAt: now });
+  await logEvent("notice", kind === "renewal" ? `Renewal notice emailed to ${to} (renews ${renewsOn})` : `Yearly auto-renewal reminder emailed to ${to}`);
+  return `${kind} → ${to}`;
 }

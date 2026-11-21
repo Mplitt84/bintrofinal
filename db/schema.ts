@@ -432,6 +432,16 @@ export const account = pgTable("account", {
   pilotStartedAt: timestamp("pilot_started_at"),
   /** Pilot sites: set once the free pilot has run out and the account moved to Free. */
   pilotEndedAt: timestamp("pilot_ended_at"),
+  /** When the current paid subscription started (annual reminders for monthly plans count from here). */
+  paidSince: timestamp("paid_since"),
+  /** Last time the owner ticked "renews automatically" before choosing a paid plan (consent record). */
+  autoRenewConsentAt: timestamp("auto_renew_consent_at"),
+  /** The renewal date the last pre-renewal notice was sent for (yearly plans), so it goes once per period. */
+  renewalNoticeFor: timestamp("renewal_notice_for"),
+  /** Last yearly reminder of the auto-renewal terms (monthly plans). */
+  annualReminderAt: timestamp("annual_reminder_at"),
+  /** Joined through the public founding-member offer (30% off the first year); counts toward its cap. */
+  foundingAt: timestamp("founding_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [

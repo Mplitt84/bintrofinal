@@ -60,6 +60,28 @@ function daysUntil(iso: string | null) {
 type BillingCall = { ok: true; result: { account: AccountSummary; redirect?: string; message: string } } | { ok: false; message: string }
 
 /** Settings → Account & billing: the plan the business is on, usage, plan picker, payment, pause and cancel. */
+/**
+ * The owner's express agreement to automatic renewal, required before any paid plan
+ * (California's auto-renewal law; the server records it with the date and refuses without it).
+ */
+function AutoRenewConsent({ checked, onChange, interval, note }: { checked: boolean; onChange: (v: boolean) => void; interval: BillingInterval; note?: string }) {
+  return (
+    <label className="flex items-start gap-2.5 text-[13px] bg-surface rounded-xl px-3 py-2.5 cursor-pointer mb-3">
+      <input type="checkbox" className="mt-0.5 w-4 h-4 shrink-0 accent-[var(--color-action)]" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span>
+        I agree that a paid plan <b>renews automatically every {interval}</b> at the price shown until I cancel. I can cancel anytime here in
+        Account &amp; billing, in one tap.{note ? ` ${note}` : ''}
+      </span>
+    </label>
+  )
+}
+
+/** Shown beside every "Keep plan" button: keeping a canceled plan turns automatic renewal back on. */
+function keepDisclosure(account: AccountSummary) {
+  const plan = planById(account.plan)
+  return `Tapping Keep ${plan.name} means it renews automatically every ${account.interval} at ${centsLabel(priceFor(plan, account.interval, account.founding))} until you cancel.`
+}
+
 export function AccountView({ panel, onPanel }: { panel: AccountPanel; onPanel: (p: AccountPanel) => void }) {
   const { account, onAccount } = useBusiness()
   const toast = useToast()
@@ -235,12 +257,13 @@ function PlanSummary({
         <span className={`text-[12px] font-bold rounded-full px-2.5 py-1 shrink-0 ${TONE[status.tone]}`}>{status.label}</span>
       </div>
       <p className="m-0 mt-2 text-[14px] text-white/85">{status.detail}</p>
+      {canResume && account.cancelAtPeriodEnd && <p className="m-0 mt-1 text-[12px] text-white/75">{keepDisclosure(account)}</p>}
       <div className="flex flex-wrap gap-2 mt-4">
         {canResume && (
           <button
             className="btn btn-gold btn-sm"
             disabled={!!busy}
-            onClick={() => run('resume', () => resumePlan() as Promise<BillingCall>)}
+            onClick={() => run('resume', () => resumePlan({ data: { autoRenewConsent: true } }) as Promise<BillingCall>)}
           >
             <PlayCircle size={16} />
             {busy === 'resume' ? 'Working…' : account.status === 'paused' ? 'Resume now' : `Keep ${plan.name}`}
@@ -329,7 +352,9 @@ function IncludedFeatures({ account }: { account: AccountSummary }) {
 function PlanPicker({ account, busy, run }: { account: AccountSummary; busy: string; run: RunFn }) {
   const [interval, setBillingInterval] = useState<BillingInterval>(account.plan === 'free' ? 'month' : account.interval)
   const [confirm, setConfirm] = useState<Plan | null>(null)
+  const [agreed, setAgreed] = useState(false)
   const current = planById(account.plan)
+  const offer = account.foundingOffer ?? null
 
   function action(target: Plan): { label: string; disabled: boolean; tone: string } {
     const trial = account.status === 'trialing'
@@ -351,13 +376,13 @@ function PlanPicker({ account, busy, run }: { account: AccountSummary; busy: str
     // Downgrades lose features, so they get a second look first.
     if (account.status !== 'trialing' && planRank(target.id) < planRank(account.plan)) setConfirm(target)
     else if (target.id === account.plan && (account.status === 'paused' || account.cancelAtPeriodEnd))
-      run('resume', () => resumePlan() as Promise<BillingCall>)
+      run('resume', () => resumePlan({ data: { autoRenewConsent: agreed } }) as Promise<BillingCall>)
     else commit(target.id)
   }
 
   function commit(plan: PlanId) {
     setConfirm(null)
-    run(`plan-${plan}`, () => selectPlan({ data: { plan, interval } }) as Promise<BillingCall>)
+    run(`plan-${plan}`, () => selectPlan({ data: { plan, interval, autoRenewConsent: plan !== 'free' && agreed } }) as Promise<BillingCall>)
   }
 
   const losing = confirm ? current.features.filter((f) => !confirm.features.includes(f)) : []
@@ -386,9 +411,23 @@ function PlanPicker({ account, busy, run }: { account: AccountSummary; busy: str
         </div>
       </div>
 
+      {offer && (
+        <div className="rounded-xl bg-action text-white px-4 py-3 mb-3 text-sm">
+          <b>Founding members: {offer.percent}% off your first year</b> on a yearly plan. {offer.seatsLeft} spot{offer.seatsLeft === 1 ? '' : 's'} left
+          {offer.endsOn ? `, through ${fmtDate(`${offer.endsOn}T12:00:00`)}` : ''}. After the first year it renews at the regular yearly price.
+          {interval !== 'year' && (
+            <button type="button" className="ml-2 underline bg-transparent border-0 text-white font-semibold cursor-pointer p-0" onClick={() => setBillingInterval('year')}>
+              Show yearly prices
+            </button>
+          )}
+        </div>
+      )}
+      {!account.pilotPremium && <AutoRenewConsent checked={agreed} onChange={setAgreed} interval={interval} />}
+
       <div className="grid min-[640px]:grid-cols-3 gap-3">
         {PLANS.map((p) => {
           const a = action(p)
+          const needsConsent = p.id !== 'free' && !agreed
           const isCurrent = p.id === account.plan
           const price = priceFor(p, interval, account.founding)
           return (
@@ -415,11 +454,15 @@ function PlanPicker({ account, busy, run }: { account: AccountSummary; busy: str
               <p className="m-0 mt-1 mb-3">
                 <span className="num text-[28px] font-extrabold text-royal">{centsLabel(price)}</span>
                 {price > 0 && <span className="text-ink-2 text-sm">/{interval}</span>}
-                {price > 0 && interval === 'year' && (
+                {price > 0 && interval === 'year' && offer ? (
+                  <span className="block text-[12px] text-good font-semibold">
+                    {centsLabel(Math.round((price * (100 - offer.percent)) / 100))} your first year, then {centsLabel(price)}/year
+                  </span>
+                ) : price > 0 && interval === 'year' ? (
                   <span className="block text-[12px] text-good font-semibold">
                     {centsLabel(Math.round(price / 12))}/mo, saves {centsLabel(priceFor(p, 'month', account.founding) * 12 - price)}
                   </span>
-                )}
+                ) : null}
               </p>
               <p className="text-ink-2 text-[13px] m-0 mb-3">{p.tagline}</p>
               <ul className="list-none m-0 p-0 mb-4 flex flex-col gap-1.5 text-[13px] flex-1">
@@ -432,7 +475,8 @@ function PlanPicker({ account, busy, run }: { account: AccountSummary; busy: str
               </ul>
               <button
                 className={`btn btn-sm w-full ${a.tone}`}
-                disabled={a.disabled || !!busy}
+                disabled={a.disabled || !!busy || needsConsent}
+                title={needsConsent && !a.disabled ? 'Tick the renewal box above first' : undefined}
                 onClick={() => choose(p)}
               >
                 {busy === `plan-${p.id}` ? 'Working…' : a.label}
@@ -694,7 +738,7 @@ function Billing({ account, busy, run }: { account: AccountSummary; busy: string
               <button
                 className="flex items-start gap-3 text-left border border-good bg-good-tint rounded-2xl p-4 cursor-pointer"
                 disabled={!!busy}
-                onClick={() => run('resume', () => resumePlan() as Promise<BillingCall>)}
+                onClick={() => run('resume', () => resumePlan({ data: {} }) as Promise<BillingCall>)}
               >
                 <PlayCircle size={24} className="text-good shrink-0" />
                 <span className="text-sm">
@@ -721,12 +765,12 @@ function Billing({ account, busy, run }: { account: AccountSummary; busy: string
               <button
                 className="flex items-start gap-3 text-left border border-good bg-good-tint rounded-2xl p-4 cursor-pointer"
                 disabled={!!busy}
-                onClick={() => run('resume', () => resumePlan() as Promise<BillingCall>)}
+                onClick={() => run('resume', () => resumePlan({ data: { autoRenewConsent: true } }) as Promise<BillingCall>)}
               >
                 <PlayCircle size={24} className="text-good shrink-0" />
                 <span className="text-sm">
                   <b className="block text-[15px]">Keep {plan.name}</b>
-                  <span className="text-ink-2">Cancellation is set for {fmtDate(account.currentPeriodEnd)}. Undo it.</span>
+                  <span className="text-ink-2">Cancellation is set for {fmtDate(account.currentPeriodEnd)}. Undo it. {keepDisclosure(account)}</span>
                 </span>
               </button>
             ) : (
@@ -886,6 +930,7 @@ function Billing({ account, busy, run }: { account: AccountSummary; busy: string
  */
 function FoundingOffer({ account, busy, run }: { account: AccountSummary; busy: string; run: RunFn }) {
   const [interval, setInterval] = useState<BillingInterval>('month')
+  const [agreed, setAgreed] = useState(false)
   const left = account.pilotEndsAt ? daysUntil(account.pilotEndsAt) : null
   const urgent = left !== null && left <= 30
   const paid = PLANS.filter((p) => p.id !== 'free')
@@ -899,7 +944,8 @@ function FoundingOffer({ account, busy, run }: { account: AccountSummary; busy: 
         </h3>
         <p className="m-0 mt-1 text-sm">
           Bintro {plan.name} at <b>{centsLabel(priceFor(plan, account.lockedIn.interval, true))}/{account.lockedIn.interval}</b>, yours for life.
-          Nothing is charged until {fmtDate(account.lockedIn.startsAt)}.
+          Nothing is charged until {fmtDate(account.lockedIn.startsAt)}. Then it renews automatically every {account.lockedIn.interval} until you cancel;
+          switching plans below keeps that agreement.
         </p>
         <div className="flex flex-wrap gap-2 mt-3">
           {paid
@@ -910,7 +956,7 @@ function FoundingOffer({ account, busy, run }: { account: AccountSummary; busy: 
                 type="button"
                 className="btn btn-tonal btn-sm"
                 disabled={!!busy}
-                onClick={() => run(`lock-${p.id}`, () => lockInFounding({ data: { plan: p.id as 'plus' | 'premium', interval: account.lockedIn!.interval } }) as Promise<BillingCall>)}
+                onClick={() => run(`lock-${p.id}`, () => lockInFounding({ data: { plan: p.id as 'plus' | 'premium', interval: account.lockedIn!.interval, autoRenewConsent: true } }) as Promise<BillingCall>)}
               >
                 Switch to {p.name} ({centsLabel(priceFor(p, account.lockedIn!.interval, true))}/{account.lockedIn!.interval})
               </button>
@@ -954,7 +1000,10 @@ function FoundingOffer({ account, busy, run }: { account: AccountSummary; busy: 
         ))}
       </div>
 
-      <div className="grid min-[520px]:grid-cols-2 gap-3 mt-3">
+      <div className="mt-3">
+        <AutoRenewConsent checked={agreed} onChange={setAgreed} interval={interval} note="Nothing is charged until your free pilot ends." />
+      </div>
+      <div className="grid min-[520px]:grid-cols-2 gap-3">
         {paid.map((p) => {
           const price = priceFor(p, interval, true)
           const standard = priceFor(p, interval)
@@ -973,8 +1022,8 @@ function FoundingOffer({ account, busy, run }: { account: AccountSummary; busy: 
                 <button
                   type="button"
                   className={`btn btn-sm mt-2 w-full ${p.id === 'premium' ? 'btn-gold' : 'btn-primary'}`}
-                  disabled={!!busy}
-                  onClick={() => run(`lock-${p.id}`, () => lockInFounding({ data: { plan: p.id as 'plus' | 'premium', interval } }) as Promise<BillingCall>)}
+                  disabled={!!busy || !agreed}
+                  onClick={() => run(`lock-${p.id}`, () => lockInFounding({ data: { plan: p.id as 'plus' | 'premium', interval, autoRenewConsent: agreed } }) as Promise<BillingCall>)}
                 >
                   {busy === `lock-${p.id}` ? 'Opening checkout…' : `Lock in ${p.name}`}
                 </button>
